@@ -1,0 +1,13 @@
+# =============================================================================
+# Custom ROS2 Tools & Extensions (User extensions)
+# =============================================================================
+# 핵심 ROS2 패키지(desktop, tf2, nav-msgs 등)는 빌드 속도(캐시)를 위해 
+# 이미 Dockerfile 내부에 하드코딩되어 설치됩니다.
+#
+# 이 파일에는 프로젝트 특화로 추가 필요한 ROS2 관련 OS 패키지만 기입하세요.
+# 예: ros-${ROS_DISTRO}-pcl-ros, ros-${ROS_DISTRO}-realsense2-camera 등
+#
+# 운영 환경(Dockerfile.prod)에도 포함되어야 하는 패키지는 뒤에 '# runtime'을 붙이세요.
+# 예: ros-${ROS_DISTRO}-navigation2 # runtime
+#
+# 패키지 추가 후 호스트 터미널에서 'make rebuild' 실행

@@ -1,0 +1,119 @@
+# =============================================================================
+# ros2_docker_template/docker-compose.prod.yml
+# 운영(Production) 환경 배포를 위한 컴포즈 파일
+#
+# 사용 방법:
+#   ROS 배포:        docker compose --profile ros up -d
+#   ROS 배포 (NV):   docker compose --profile ros-nv up -d
+#   순수 개발 배포:   docker compose --profile dev up -d
+#   순수 개발 (NV):   docker compose --profile dev-nv up -d
+#
+# 특징:
+#   - 'privileged: true' 제거 및 명시적 장치 마운트 (보안 강화)
+#   - 빌드 아티팩트가 이미지 내부에 포함됨 (소스 마운트 없음)
+# =============================================================================
+
+# ── 공통 환경변수 (런타임 제어용) ──────────────────────────────────────
+x-common-env: &common-env
+  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-10}  # 배포망에서는 충돌을 피하기 위해 10 등 명시적 ID 사용 권장
+  RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+  ROS_MASTER_URI: ${ROS_MASTER_URI:-http://localhost:11311}
+  ROS_HOSTNAME: ${ROS_HOSTNAME:-localhost}
+  ROS_IP: ${ROS_IP:-}
+  DISPLAY: ${DISPLAY:-:0}
+  WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-}
+
+# ── 공통 서비스 보안 정책 (최소 권한) ───────────────────────────────────
+x-prod-svc: &prod-svc
+  restart: always
+  network_mode: host      # ROS2 DDS/DDS discovery (운영망에서도 필요)
+  ipc: host               # FastDDS zero-copy 통신 최적화
+  # ❌ privileged: true 가 없습니다! 대신 명시적 장치를 마운트합니다.
+  cap_add:
+    - NET_ADMIN           # SocketCAN 인터페이스 접근 용도
+
+# ── NVIDIA GPU 예약 공통 설정 ──────────────────────────────────────────
+x-nvidia-deploy: &nvidia-deploy
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu, compute, video, utility, graphics, display]
+
+services:
+  # ── [ROS] 기본 배포 환경 (Intel/AMD/CPU) ───────────────────────────
+  ros-prod:
+    <<: *prod-svc
+    image: ${COMPOSE_PROJECT_NAME}/ros-runtime:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      target: ros-runtime
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-humble}
+    profiles: ["ros"]
+    environment:
+      <<: *common-env
+      GPU_MODE: auto
+    devices:
+      - /dev/dri:/dev/dri
+    command: ["bash", "-c", "echo 'Add your main ROS launch command here' && sleep infinity"]
+
+  # ── [ROS] NVIDIA 배포 환경 ──────────────────────────────────────────
+  ros-prod-nv:
+    <<: *prod-svc
+    image: ${COMPOSE_PROJECT_NAME}/ros-runtime-nv:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      target: ros-runtime
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-humble}
+    profiles: ["ros-nv"]
+    environment:
+      <<: *common-env
+      GPU_MODE: nvidia
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+      LIBGL_ALWAYS_SOFTWARE: "0"
+      __NV_PRIME_RENDER_OFFLOAD: "1"
+      __GLX_VENDOR_LIBRARY_NAME: nvidia
+    deploy: *nvidia-deploy
+    command: ["bash", "-c", "echo 'Add your main ROS launch command here' && sleep infinity"]
+
+  # ── [Dev] 순수 C++/Python 배포 환경 (ROS 없음) ──────────────────────
+  dev-prod:
+    <<: *prod-svc
+    image: ${COMPOSE_PROJECT_NAME}/dev-runtime:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      target: dev-runtime
+    profiles: ["dev"]
+    environment:
+      <<: *common-env
+      GPU_MODE: auto
+    devices:
+      - /dev/dri:/dev/dri
+    command: ["bash", "-c", "echo 'Add your main dev executable command here' && sleep infinity"]
+
+  # ── [Dev] 순수 C++/Python NVIDIA 배포 환경 ───────────────────────────
+  dev-prod-nv:
+    <<: *prod-svc
+    image: ${COMPOSE_PROJECT_NAME}/dev-runtime-nv:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+      target: dev-runtime
+    profiles: ["dev-nv"]
+    environment:
+      <<: *common-env
+      GPU_MODE: nvidia
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+      LIBGL_ALWAYS_SOFTWARE: "0"
+      __NV_PRIME_RENDER_OFFLOAD: "1"
+      __GLX_VENDOR_LIBRARY_NAME: nvidia
+    deploy: *nvidia-deploy
+    command: ["bash", "-c", "echo 'Add your main dev executable command here' && sleep infinity"]

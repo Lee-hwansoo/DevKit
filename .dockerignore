@@ -1,0 +1,42 @@
+# =============================================================================
+# Docker Build Context에서 제외할 파일
+# =============================================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# ROS2 Build Artifacts
+build/
+install/
+log/
+.ccache/
+
+# Thirdparty (컨테이너 내에서 vcs import)
+thirdparty/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# C++ CMake cache
+CMakeCache.txt
+CMakeFiles/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment (보안)
+.env
+.env.*
+
+# Archives
+*.zip
+*.tar.gz
+
+# Documentation
+*.md

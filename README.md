@@ -1,0 +1,183 @@
+# 🚀 All-in-One Docker Dev Environment Template
+
+[![ROS1](https://img.shields.io/badge/ROS-Noetic-blue?logo=ros)](https://www.ros.org/)
+[![ROS2](https://img.shields.io/badge/ROS2-Humble-red?logo=ros)](https://docs.ros.org/en/humble/index.html)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://www.python.org/)
+[![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=c%2B%2B)](https://isocpp.org/)
+[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker)](https://www.docker.com/)  
+
+본 저장소는 호스트 시스템을 오염시키지 않고 **C++, Python(uv), ROS 1 / ROS 2** 개발을 수행할 수 있도록 설계된 **독립 개발 환경 템플릿**입니다. 복잡한 설정 없이 어떤 프로젝트에서든 즉시 개발을 시작하세요.
+
+## 💡 핵심 가치 (Why this Template?)
+
+*   **Zero-Pollution (격리)**: 호스트 PC에는 Docker만 설치하세요. 모든 라이브러리와 의존성은 컨테이너가 관리하여 시스템 충돌을 방지합니다.
+*   **Hardware Agnostic (범용성)**: NVIDIA, Intel, AMD GPU를 자동 감지합니다. **X11은 물론 최신 Wayland 환경**에서도 하드웨어 가속을 즉시 제공합니다.
+*   **Production Ready (운영)**: 개발 환경 아티팩트를 그대로 운영 이미지로 빌드하는 **Bake & Switch** 전략과 **의존성 자동 검증(Sanity Check)** 기능을 내장하고 있습니다.
+*   **Unified Workspace (표준)**: 모든 프로젝트가 동일한 디렉토리 구조(`src`, `build`, `install`)를 따라 팀 협업과 유지보수가 비약적으로 쉬워집니다.
+
+## 🌟 주요 기능 (Features)
+
+- **지능형 진단 엔진**: `make status` 시 호스트의 GPU, 아키텍처(AMD64/ARM64), 디스플레이 서버 및 **Wayland 소켓 경로**를 정밀 진단하여 최적의 환경을 자동 구성합니다.
+- **Unified Workspace (Everything is a Package)**: 모든 프로젝트(C++, Python, ROS)가 **`src/` (소스), `build/` (빌드), `install/` (아티팩트)** 표준 구조를 강제하여 개발과 배포의 일관성을 극대화합니다.
+- **APT Snapshot 기반 완벽한 재현성**: `APT_SNAPSHOT_DATE`를 통해 특정 시점의 패키지 버전을 자동 고정하여 빌드 재현성을 100% 보장합니다.
+- **런타임 의존성 가디언 (Sanity Check)**: 배포 이미지 빌드 시 `ldd`를 활용하여 실행 파일 및 라이브러리의 의존성 누락을 자동 검사, 실행 시점의 'Shared library not found' 에러를 원천 차단합니다.
+- **초경량/고보안 배포 (Bake & Switch)**: 배포용 이미지 빌드 시 소스 코드를 제외하고 `install/` 아티팩트만 포함하여 보안성과 효율성을 동시에 잡았습니다.
+- **네이티브 Multi-Arch 지원**: 단일 Dockerfile로 인텔 PC와 ARM 기반(Jetson, M1/M2) 환경을 모두 지원합니다.
+- **일관된 권한 체계 (Root Unity)**: 개발과 배포 환경 모두 `root` 유저를 사용하여 호스트 볼륨 마운트 시의 권한 충돌을 방지했습니다.
+
+---
+
+## 🚀 표준 워크스페이스 구조 (Standard Layout)
+
+모든 프로젝트는 언어와 프레임워크에 상관없이 다음 구조를 따릅니다.
+
+- **`src/`**: 모든 소스 코드 및 빌드 설정 (CMakeLists.txt, pyproject.toml 등)
+- **`build/`**: 컴파일러와 빌드 시스템이 사용하는 임시 빌드 공간
+- **`install/`**: 최종 실행 파일, 라이브러리, Python 가상환경(`.venv`)이 모이는 **배포 아티팩트** 폴더
+    - *Note: Python 가상환경을 `install/` 내부에 두어 배포 시 소스 없이도 독립적인 실행이 가능하도록 설계되었습니다. IDE 호환성을 위해 프로젝트 루트에 `.venv` 심볼릭 링크가 생성됩니다.*
+
+---
+
+## 🚀 빠른 시작 가이드 (Quick Start)
+
+### 1. 템플릿 복사 및 새로운 프로젝트 생성
+
+호스트 PC에서 독립된 새 프로젝트 폴더를 만들고 템플릿 파일들을 복사합니다. (또는 GitHub의 **Use this template** 버튼 사용)
+
+```bash
+# 템플릿 복사
+mkdir -p /path/to/my_new_project
+cp -r /path/to/project_template/* /path/to/my_new_project/
+cp -r /path/to/project_template/.[!.]* /path/to/my_new_project/
+
+cd /path/to/my_new_project
+```
+
+### 2. 환경 변수 초기화 및 설정 (핵심 ⭐️)
+
+`make setup`을 통해 프로젝트 전용격리 환경을 구성하기 위한 `.env` 파일을 생성합니다.
+
+```bash
+make setup
+nano .env
+```
+
+`.env` 파일 내에서 **BASE_IMAGE와 ROS_DISTRO를 짝지어 선택**하고 다음 항목을 수정해야 합니다.
+
+```ini
+COMPOSE_PROJECT_NAME=my_new_project         # 도커 리소스 고유 식별자 (필수 변경)
+WORKSPACE_PATH=/path/to/my_new_project      # 현재 프로젝트의 절대 경로 (필수 변경)
+
+# ROS 2 (기본)
+BASE_IMAGE=ubuntu:22.04
+ROS_DISTRO=humble
+
+# ROS 1 (레거시 전환 시)
+# BASE_IMAGE=ubuntu:20.04
+# ROS_DISTRO=noetic
+```
+
+### 3. SSH 호스트 키 보안 설정 (선택 사항)
+
+도커 컨테이너에서 깃(Git) 서버와 원활히 통신하려면 호스트의 개인키 권한을 확인해야 합니다.
+
+```bash
+# 호스트 PC에서 실행
+chmod 600 ~/.ssh/id_rsa  # 또는 id_ed25519
+```
+
+### 4. 개발 환경 시작 및 상태 확인
+
+```bash
+make status         # 현재 프로젝트 설정 및 GPU/아키텍처/툴킷 자동 감지 상태 확인
+make build-ros      # ROS 이미지 빌드 (Multi-Arch 자동 대응)
+make ros            # ROS 컨테이너 시작 및 진입 (GPU 자동 감지)
+# 또는
+make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
+```
+
+---
+
+## 💻 GPU 및 개발 환경 실행 방법
+
+시스템이 최적의 모드를 자동으로 선택합니다.
+
+| 환경 구분 | 실행 명령어 (GPU 자동 감지) | 셸 진입 (Enter Shell) |
+| :--- | :--- | :--- |
+| **ROS 환경** | **`make ros`** | **`make ros-shell`** |
+| **순수 개발** | **`make dev`** | **`make dev-shell`** |
+
+> **Tip:** `make status`를 통해 현재 시스템이 NVIDIA GPU와 Container Toolkit을 올바르게 인식하고 있는지, 그리고 현재 아키텍처(AMD64/ARM64)가 무엇인지 확인할 수 있습니다.
+
+---
+
+## 🛠 컨테이너 내부 개발 워크플로우
+
+어떤 프로젝트든 동일한 UX를 제공합니다.
+
+| 명령어 | 설명 | 특징 |
+| :--- | :--- | :--- |
+| **`hw_check`** | 하드웨어 상태 진단 | GPU 가속 여부 및 **XWayland/Wayland 상태**, 렌더러 진단 |
+| **`mbuild`** | **일반 C++ 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
+| **`mkenv`** | **Python 가상환경 생성** | `install/.venv` 경로에 생성 및 **루트 심볼릭 링크 자동 생성** |
+| **`cb`** | **ROS 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
+| **`sync_deps`** | 의존성 동기화 | `.repos` 기반 소스 다운로드 및 `src/thirdparty` 병합 |
+
+---
+
+## 🧹 유지관리 및 정리 명령어
+
+호스트 터미널에서 프로젝트 상태를 관리하기 위한 통합 명령어입니다.
+
+| 명령어 | 설명 | 특징 |
+| :--- | :--- | :--- |
+| **`make status`** | 프로젝트 상태 요약 | 컨테이너 실행 여부, **진단 엔진 결과** 등 출력 |
+| **`make check-host`** | 호스트 환경 사전 점검 | GPU 드라이버 및 X11 권한 상태를 확인하여 빌드 전 에러 차단 |
+| **`make logs`** | 실시간 로그 스트리밍 | 현재 실행 중인 컨테이너의 출력을 실시간으로 확인 |
+| **`make down`** | 서비스 중지 | 현재 프로젝트와 관련된 모든 컨테이너를 안전하게 중지 및 제거 |
+| **`make clean`** | 빌드 결과물 삭제 | **`/workspace` 내의 build, install, log** 볼륨 및 임시 볼륨 삭제 |
+| **`make clean-cache`** | 컴파일 캐시 명시적 삭제 | 호스트 측 `.docker_cache`(ccache, uv) 폴더를 강제로 삭제 |
+| **`make clean-builder`** | 도커 빌드 캐시 정리 | Docker BuildKit 내부 캐시를 비워 호스트 디스크 용량 확보 |
+| **`make clean-all`** | 시스템 전체 초기화 | 모든 도커 볼륨 및 호스트 캐시를 삭제하여 초기화 |
+
+---
+
+## 🚀 운영(Production) 배포 워크플로우
+
+배포 환경은 **Bake & Switch** 전략을 통해 소스 코드 없이 동작합니다.
+
+### 1. 배포 이미지의 특징 (`Dockerfile.prod`)
+- **소스 코드 제외**: 빌드 단계(Builder)에서 생성된 `install/` 아티팩트만 최종 런타임 이미지로 복제합니다.
+- **자동 의존성 검증 (Sanity Check)**: 빌드 과정 중 `ldd`를 통해 필요한 공유 라이브러리가 모두 포함되었는지 검사하여 런타임 안정성을 보장합니다.
+- **결정성 극대화**: APT 스냅샷과 `uv sync --frozen`을 통해 환경의 완벽한 일관성을 유지합니다.
+- **보안 강화**: 최소 권한 원칙에 따라 `privileged` 모드를 제거하고 필요한 장치만 마운트합니다.
+
+### 2. 배포 서비스 제어 명령어 (자동 GPU 감지)
+| 환경 구분 | 실행 명령어 | 특징 |
+| :--- | :--- | :--- |
+| **ROS 배포** | **`make ros-prod`** | 최적화된 ROS 아티팩트 기반 서비스 시작 |
+| **순수 배포** | **`make dev-prod`** | 가벼운 C++/Python 아티팩트 전용 서비스 시작 |
+
+---
+
+## 📦 외부 의존성 관리 전략 (SSOT Determinism)
+
+### 1. System Layer (APT)
+- **방법:** `dependencies/apt.txt`에 기입. 런타임 패키지는 뒤에 `# runtime` 주석 추가.
+- **효과:** BuildKit 캐시 마운트로 인해 패키지 추가 시 전체 레이어를 다시 받지 않고 즉시 설치됩니다.
+
+### 2. Language Layer (C++/Python)
+- **C++:** `FetchDependencies.cmake`를 활용한 빌드 타임 의존성 해결.
+- **Python:** `uv.lock`과 `Dockerfile.prod` 내 가상환경 구축으로 결정성 있는 관리.
+
+### 3. Workspace Layer (vcstool)
+- **방법:** `dependencies/dependencies.repos`에 명시. 브랜치 대신 **태그나 커밋 해시** 사용을 권장합니다.
+- **오버레이:** `dependencies/overlay/`의 파일이 `/workspace/src/thirdparty` 위로 안전하게 병합됩니다.
+
+---
+
+## ⚠️ 보안 및 아키텍처 제약 사항 (Security Notes)
+
+1. **`root` 권한 일관성**: 개발 및 배포 컨테이너 모두 `root` 유저로 실행됩니다. 이는 마운트된 호스트 볼륨의 파일 소유권 문제를 해결하고 장치 접근성을 높이기 위한 설계입니다.
+2. **`privileged: true`**: ROS 개발 시 센서, USB, CAN 통신 등의 장치를 자유롭게 사용하기 위해 개발용 컨테이너는 특권 모드로 실행됩니다.
+3. **`network_mode: host`**: ROS의 DDS 통신 성능을 위해 호스트 네트워크를 직접 사용합니다. 여러 프로젝트 실행 시 `.env`의 `ROS_DOMAIN_ID`를 고유하게 설정하여 간섭을 피하세요.

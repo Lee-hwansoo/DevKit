@@ -1,0 +1,63 @@
+# =============================================================================
+# ROS2 / C++ / Python / Docker 범용 .gitignore 템플릿
+# =============================================================================
+
+# ── ROS2 Build Artifacts ─────────────────────────────────
+build/
+install/
+log/
+.ccache/
+
+# ── Thirdparty (vcs import) ───────────────────────────────
+src/thirdparty/*
+!src/thirdparty/.gitkeep
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+.eggs/
+.venv/
+venv/
+env/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── C++ Build ─────────────────────────────────────────────
+*.o
+*.a
+*.so
+*.so.*
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+_build/
+
+# ── Docker / Environment ──────────────────────────────────
+.env
+.env.local
+.env.*.local
+.docker_cache/
+
+# ── IDE ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Archives ──────────────────────────────────────────────
+*.zip
+*.tar.gz
+*.tar.xz

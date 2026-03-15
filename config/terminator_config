@@ -1,0 +1,106 @@
+[global_config]
+    title_hide_sizetext = True
+    suppress_multiple_term_dialog = True
+    inactive_color_offset = 0.8
+
+[keybindings]
+    # --- 창 관리 ---
+    open_new_term = <Alt>t
+    close_term = <Alt>w
+
+    # --- 화면 분할 ---
+    split_horiz = <Alt>h    # 가로로 자르기 (상/하)
+    split_vert = <Alt>v     # 세로로 자르기 (좌/우)
+
+    # --- 포커스 이동 (방향키) ---
+    go_up = <Alt>Up
+    go_down = <Alt>Down
+    go_left = <Alt>Left
+    go_right = <Alt>Right
+
+    # [Broadcast] 모든 창에 동시 입력 (source, Ctrl+C 등)
+    broadcast_all = <Alt>a
+    broadcast_off = <Alt>o
+
+    # [Zoom] 현재 창 전체화면 토글 (로그 확인용)
+    toggle_zoom = <Alt>z
+
+    # [Resize] 창 크기 조절 (Ctrl+Shift+방향키)
+    resize_up = <Ctrl><Shift>Up
+    resize_down = <Ctrl><Shift>Down
+    resize_left = <Ctrl><Shift>Left
+    resize_right = <Ctrl><Shift>Right
+
+[profiles]
+    [[default]]
+        login_shell = True
+
+        use_system_font = False
+        font = D2Coding 12
+        title_font = D2Coding 12
+
+        background_color = "#1e1e1e"
+        foreground_color = "#f8fafc"
+        scrollback_infinite = True
+        exit_action = hold
+
+        cursor_shape = ibeam
+        cursor_color = "#f8fafc"
+        cursor_blink = True
+
+        show_titlebar = False
+        title_transmit_bg_color = "#3a3a3a"
+        title_transmit_fg_color = "#f8fafc"
+        title_inactive_bg_color = "#1e1e1e"
+
+[layouts]
+    [[default]]
+        # --- 2x2 Grid Layout ---
+        # 최상위 윈도우
+        [[[window0]]]
+            type = Window
+            parent = ""
+            size = 720, 600
+
+        # 1단계: 상하 분리 (VPaned)
+        [[[child1]]]
+            type = VPaned
+            parent = window0
+            ratio = 0.5  # [설정] 상단 50%, 하단 50% 크기
+
+        # 2단계-상단: 좌우 분리 (HPaned)
+        [[[child2]]]
+            type = HPaned
+            parent = child1
+            ratio = 0.5  # [설정] 왼쪽(메인) 50%, 오른쪽(서브 및 모니터링) 50%
+
+        # 3단계-하단: 좌우 분리 (HPaned)
+        [[[child3]]]
+            type = HPaned
+            parent = child1
+            ratio = 0.5  # [설정] 왼쪽(로그1) 50%, 오른쪽(로그2) 50%
+
+        # 1. 메인 작업창 (상단 왼쪽)
+        [[[terminal_main]]]
+            type = Terminal
+            parent = child2
+            profile = default
+
+        # 2. htop 모니터링창 (상단 오른쪽) -> [설정] 자동 실행
+        [[[terminal_htop]]]
+            type = Terminal
+            parent = child2
+            profile = default
+            command = htop
+
+        # 3. 로그창 1 (하단 왼쪽)
+        [[[terminal_log1]]]
+            type = Terminal
+            parent = child3
+            profile = default
+
+        # 4. 로그창 2 (하단 오른쪽)
+        [[[terminal_log2]]]
+            type = Terminal
+            parent = child3
+            profile = default

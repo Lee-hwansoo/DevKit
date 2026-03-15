@@ -1,0 +1,26 @@
+{
+    "names": {
+        "Eigen3": {
+            "cmake-args": [
+                "-DBUILD_TESTING=OFF",
+                "-DEIGEN_BUILD_DOC=OFF",
+                "-DEIGEN_BUILD_PKGCONFIG=OFF"
+            ]
+        },
+        "gtsam": {
+            "cmake-args": [
+                "-DGTSAM_USE_SYSTEM_EIGEN=ON",
+                "-DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF",
+                "-DGTSAM_BUILD_TESTS=OFF",
+                "-DGTSAM_BUILD_UNSTABLE=OFF"
+            ]
+        },
+        "librealsense2": {
+            "cmake-args": [
+                "-DBUILD_TOOLS=OFF",
+                "-DBUILD_EXAMPLES=OFF",
+                "-DBUILD_GRAPHICAL_EXAMPLES=OFF"
+            ]
+        }
+    }
+}
