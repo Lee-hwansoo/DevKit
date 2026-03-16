@@ -73,9 +73,9 @@ x-ros-volumes: &ros-volumes
   - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
   - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw
   # 하이브리드 볼륨: .env에서 변수 조정으로 네임드 볼륨 vs 호스트 바인드 마운트 전환 가능
-  - ${ROS_BUILD_VOL:-ros_build_${ROS_DISTRO:-humble}}:/workspace/build
-  - ${ROS_INSTALL_VOL:-ros_install_${ROS_DISTRO:-humble}}:/workspace/install
-  - ${ROS_LOG_VOL:-ros_log_${ROS_DISTRO:-humble}}:/workspace/log
+  - ${ROS_BUILD_VOL:-ros_build_data}:/workspace/build
+  - ${ROS_INSTALL_VOL:-ros_install_data}:/workspace/install
+  - ${ROS_LOG_VOL:-ros_log_data}:/workspace/log
   - ${DOCKER_DEV_CACHE_DIR:-${WORKSPACE_PATH}/.docker_cache}:/cache:rw
   - /dev:/dev:rw
   - /sys/devices:/sys/devices:rw
@@ -90,8 +90,8 @@ x-dev-volumes: &dev-volumes
   # 소스 코드 및 작업 공간 (bind mount — /workspace)
   - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw
   # 빌드 아티팩트 격리 (하이브리드 대응)
-  - ${DEV_BUILD_VOL:-dev_build}:/workspace/build
-  - ${DEV_INSTALL_VOL:-dev_install}:/workspace/install
+  - ${DEV_BUILD_VOL:-dev_build_data}:/workspace/build
+  - ${DEV_INSTALL_VOL:-dev_install_data}:/workspace/install
   # 컴파일러/패키지 캐시 (호스트 바인드 마운트로 ros2 서비스와 공유 및 영구 유지)
   - ${DOCKER_DEV_CACHE_DIR:-${WORKSPACE_PATH}/.docker_cache}:/cache:rw
   # 하드웨어 접근
@@ -192,10 +192,8 @@ services:
 
 # Docker Compose가 COMPOSE_PROJECT_NAME을 자동으로 prefix로 붙임
 volumes:
-  ros_build_humble:
-  ros_build_noetic:
-  ros_install_humble:
-  ros_install_noetic:
-  ros_log_humble:
-  ros_log_noetic:
-  dev_build:
+  ros_build_data:
+  ros_install_data:
+  ros_log_data:
+  dev_build_data:
+  dev_install_data:

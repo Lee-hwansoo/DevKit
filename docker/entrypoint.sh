@@ -54,7 +54,12 @@ elif [ -n "${WAYLAND_DISPLAY:-}" ]; then
     export QT_QPA_PLATFORM="wayland;xcb"
     export GDK_BACKEND="wayland,x11"
     log_ok "Exported Wayland GUI variables (QT_QPA_PLATFORM, GDK_BACKEND)"
-    
+
+    cat >> /root/.gpu_env.sh << EOF
+export QT_QPA_PLATFORM="wayland;xcb"
+export GDK_BACKEND="wayland,x11"
+EOF
+
     if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
         log_warn "WAYLAND_DISPLAY is set but XDG_RUNTIME_DIR is empty."
     fi

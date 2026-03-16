@@ -63,6 +63,7 @@ COPY dependencies/ dependencies/
 COPY pyproject.toml* uv.lock* ./
 
 # Python 의존성 설치 (Strict Determinism: uv.lock 존재 시 --frozen 사용)
+ENV UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
 RUN uv venv /workspace/install/.venv && \
     . /workspace/install/.venv/bin/activate && \
     if [ -f uv.lock ]; then \

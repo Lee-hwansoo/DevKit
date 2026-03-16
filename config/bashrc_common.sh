@@ -10,6 +10,7 @@ export CCACHE_DIR=/cache/ccache
 export UV_CACHE_DIR=/cache/uv
 export UV_TOOL_DIR=/cache/uv/tools
 export UV_PYTHON=${UV_PYTHON:-3.11}
+export UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
 
 # C++ 표준
 export CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}

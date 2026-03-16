@@ -269,16 +269,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     fi || echo "No additional user ROS apt packages installed."
 
 # 서드파티 의존성 빌드 타임 패키징 (오버레이 포함)
-COPY dependencies/dependencies.repos /tmp/dependencies.repos
-COPY dependencies/overlay/ /tmp/overlay/
+COPY dependencies/ /tmp/dependencies/
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     mkdir -p /tmp/staging && \
-    (vcs import /tmp/staging < /tmp/dependencies.repos 2>/dev/null || true) && \
-    (cp -a /tmp/overlay/. /tmp/staging/ 2>/dev/null || true) && \
+    if [ -f /tmp/dependencies/dependencies.repos ]; then vcs import /tmp/staging < /tmp/dependencies/dependencies.repos 2>/dev/null || true; fi && \
+    if [ -d /tmp/dependencies/overlay ]; then cp -a /tmp/dependencies/overlay/. /tmp/staging/ 2>/dev/null || true; fi && \
     apt-get update && \
     (rosdep install --from-paths /tmp/staging --ignore-src -r -y --rosdistro ${ROS_DISTRO} || true) && \
-    rm -rf /tmp/staging /tmp/overlay
+    rm -rf /tmp/staging /tmp/dependencies
 
 ENV ROS_DISTRO=${ROS_DISTRO} \
     COLCON_HOME=/workspace

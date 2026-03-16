@@ -212,9 +212,11 @@ clean-builder:
 
 clean: down
 	$(COMPOSE) down -v
-	@docker volume rm $(COMPOSE_PROJECT_NAME)_ros_build_$(ROS_DISTRO) 2>/dev/null || true
-	@docker volume rm $(COMPOSE_PROJECT_NAME)_ros_install_$(ROS_DISTRO) 2>/dev/null || true
-	@docker volume rm $(COMPOSE_PROJECT_NAME)_ros_log_$(ROS_DISTRO) 2>/dev/null || true
+	@docker volume rm $(COMPOSE_PROJECT_NAME)_ros_build_data 2>/dev/null || true
+	@docker volume rm $(COMPOSE_PROJECT_NAME)_ros_install_data 2>/dev/null || true
+	@docker volume rm $(COMPOSE_PROJECT_NAME)_ros_log_data 2>/dev/null || true
+	@docker volume rm $(COMPOSE_PROJECT_NAME)_dev_build_data 2>/dev/null || true
+	@docker volume rm $(COMPOSE_PROJECT_NAME)_dev_install_data 2>/dev/null || true
 
 clean-cache:
 	@CACHE_DIR=$(WORKSPACE_PATH)/.docker_cache; \
