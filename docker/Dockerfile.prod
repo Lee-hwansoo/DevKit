@@ -24,8 +24,15 @@ ARG TARGETARCH
 
 # APT 스냅샷 설정
 RUN if [ "${APT_SNAPSHOT_DATE}" != "latest" ]; then \
-        sed -i "s|http://archive.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list && \
-        sed -i "s|http://security.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list; \
+        if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
+            echo "APT::Snapshot \"${APT_SNAPSHOT_DATE}\";" > /etc/apt/apt.conf.d/99-snapshot; \
+        elif [ -f /etc/apt/sources.list ]; then \
+            echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99-disable-valid-until && \
+            sed -i "s|http://archive.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list && \
+            sed -i "s|http://security.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list && \
+            sed -i "s|http://ports.ubuntu.com/ubuntu-ports/|http://snapshot.ubuntu.com/ubuntu-ports/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list; \
+        fi && \
+        echo "Using APT Snapshot: ${APT_SNAPSHOT_DATE}"; \
     fi
 
 # 빌드 도구 및 시스템 패키지 설치
@@ -61,6 +68,12 @@ WORKDIR /workspace
 COPY src/ src/
 COPY dependencies/ dependencies/
 COPY pyproject.toml* uv.lock* ./
+
+# 사용자 정의 apt 패키지 설치 (개발 환경과 동일한 빌드 의존성 확보)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    grep -E '^[^#]+' dependencies/apt.txt | sed 's/ # runtime.*//' | xargs -r apt-get install -y --no-install-recommends || true
 
 # Python 의존성 설치 (Strict Determinism: uv.lock 존재 시 --frozen 사용)
 ENV UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
@@ -160,6 +173,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 WORKDIR /workspace
 COPY src/ src/
 COPY dependencies/ dependencies/
+
+# 사용자 정의 apt 패키지 설치 (개발 환경과 동일한 빌드 의존성 확보)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    grep -E '^[^#]+' dependencies/apt.txt | sed 's/ # runtime.*//' | xargs -r apt-get install -y --no-install-recommends && \
+    if [ -f dependencies/apt_ros.txt ]; then \
+        grep -E '^[^#]+' dependencies/apt_ros.txt | sed 's/ # runtime.*//' | sed "s/\${ROS_DISTRO}/${ROS_DISTRO}/g" | xargs -r apt-get install -y --no-install-recommends; \
+    fi || true
 
 # 서드파티 소스 및 오버레이 병합
 RUN if [ -f dependencies/dependencies.repos ]; then \

@@ -37,6 +37,7 @@ x-common-env: &common-env
 # ── 공통 빌드 인자 ────────────────────────────────────────────────────────
 x-build-args: &build-args
   LANG: ${LANG:-en_US.UTF-8}
+  APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
   UV_VERSION: ${UV_VERSION:-0.5.14}
   PYTHON_VERSION: ${UV_PYTHON:-3.11}
   CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}

@@ -23,8 +23,14 @@ RUN rm -f /etc/apt/apt.conf.d/docker-clean \
     && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 RUN if [ "${APT_SNAPSHOT_DATE}" != "latest" ]; then \
-        sed -i "s|http://archive.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list && \
-        sed -i "s|http://security.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list && \
+        if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
+            echo "APT::Snapshot \"${APT_SNAPSHOT_DATE}\";" > /etc/apt/apt.conf.d/99-snapshot; \
+        elif [ -f /etc/apt/sources.list ]; then \
+            echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99-disable-valid-until && \
+            sed -i "s|http://archive.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list && \
+            sed -i "s|http://security.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list && \
+            sed -i "s|http://ports.ubuntu.com/ubuntu-ports/|http://snapshot.ubuntu.com/ubuntu-ports/${APT_SNAPSHOT_DATE}/|g" /etc/apt/sources.list; \
+        fi && \
         echo "Using APT Snapshot: ${APT_SNAPSHOT_DATE}"; \
     fi
 

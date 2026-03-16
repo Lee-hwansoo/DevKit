@@ -19,7 +19,7 @@
 
 - **지능형 진단 엔진**: `make status` 시 호스트의 GPU, 아키텍처(AMD64/ARM64), 디스플레이 서버 및 **Wayland 소켓 경로**를 정밀 진단하여 최적의 환경을 자동 구성합니다.
 - **Unified Workspace (Everything is a Package)**: 모든 프로젝트(C++, Python, ROS)가 **`src/` (소스), `build/` (빌드), `install/` (아티팩트)** 표준 구조를 강제하여 개발과 배포의 일관성을 극대화합니다.
-- **APT Snapshot 기반 완벽한 재현성**: `APT_SNAPSHOT_DATE`를 통해 특정 시점의 패키지 버전을 자동 고정하여 빌드 재현성을 100% 보장합니다.
+- **APT Snapshot 기반 완벽한 재현성**: `APT_SNAPSHOT_DATE`를 통해 특정 시점의 패키지 버전을 고정하여 100% 재현성을 보장합니다. 호스트 터미널에서 `date -u +%Y%m%dT%H%M%SZ`를 실행해 얻은 UTC 날짜를 `.env`에 입력하면 그 시점으로 환경이 영구 동결됩니다.
 - **런타임 의존성 가디언 (Sanity Check)**: 배포 이미지 빌드 시 `ldd`를 활용하여 실행 파일 및 라이브러리의 의존성 누락을 자동 검사, 실행 시점의 'Shared library not found' 에러를 원천 차단합니다.
 - **초경량/고보안 배포 (Bake & Switch)**: 배포용 이미지 빌드 시 소스 코드를 제외하고 `install/` 아티팩트만 포함하여 보안성과 효율성을 동시에 잡았습니다.
 - **네이티브 Multi-Arch 지원**: 단일 Dockerfile로 인텔 PC와 ARM 기반(Jetson, M1/M2) 환경을 모두 지원합니다.

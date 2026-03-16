@@ -60,6 +60,7 @@ services:
       target: ros-runtime
       args:
         ROS_DISTRO: ${ROS_DISTRO:-humble}
+        APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
     profiles: ["ros"]
     environment:
       <<: *common-env
@@ -79,6 +80,7 @@ services:
       target: ros-runtime
       args:
         ROS_DISTRO: ${ROS_DISTRO:-humble}
+        APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
     profiles: ["ros-nv"]
     environment:
       <<: *common-env
@@ -100,6 +102,8 @@ services:
       context: .
       dockerfile: docker/Dockerfile.prod
       target: dev-runtime
+      args:
+        APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
     profiles: ["dev"]
     environment:
       <<: *common-env
@@ -117,6 +121,8 @@ services:
       context: .
       dockerfile: docker/Dockerfile.prod
       target: dev-runtime
+      args:
+        APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
     profiles: ["dev-nv"]
     environment:
       <<: *common-env
