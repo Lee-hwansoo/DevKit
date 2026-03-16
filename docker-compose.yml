@@ -20,7 +20,7 @@ x-common-env: &common-env
   DISPLAY: ${DISPLAY:-:0}
   WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
   XDG_RUNTIME_DIR: /tmp/runtime-root
-  XAUTHORITY: ${XAUTHORITY_PATH:-/root/.Xauthority}
+  XAUTHORITY: /root/.Xauthority
   QT_X11_NO_MITSHM: "1"
   ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
   RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
@@ -68,7 +68,7 @@ x-nvidia-deploy: &nvidia-deploy
 # ── 공통 볼륨 설정 ────────────────────────────────────────────────────────
 x-ros-volumes: &ros-volumes
   - /tmp/.X11-unix:/tmp/.X11-unix:rw
-  - ${XAUTHORITY_PATH:-${HOME}/.Xauthority}:/root/.Xauthority:ro
+  - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
   # 호스트의 Wayland 런타임 폴더(있을 경우)를 컨테이너 내부 런타임 폴더로 마운트
   - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
   - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw
@@ -85,7 +85,7 @@ x-ros-volumes: &ros-volumes
 x-dev-volumes: &dev-volumes
   # GUI (X11 / Wayland)
   - /tmp/.X11-unix:/tmp/.X11-unix:rw
-  - ${XAUTHORITY_PATH:-${HOME}/.Xauthority}:/root/.Xauthority:ro
+  - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
   - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
   # 소스 코드 및 작업 공간 (bind mount — /workspace)
   - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw

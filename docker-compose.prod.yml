@@ -21,7 +21,9 @@ x-common-env: &common-env
   ROS_HOSTNAME: ${ROS_HOSTNAME:-localhost}
   ROS_IP: ${ROS_IP:-}
   DISPLAY: ${DISPLAY:-:0}
-  WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-}
+  WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
+  XDG_RUNTIME_DIR: /tmp/runtime-root
+  XAUTHORITY: /root/.Xauthority
 
 # ── 공통 서비스 보안 정책 (최소 권한) ───────────────────────────────────
 x-prod-svc: &prod-svc
@@ -41,6 +43,12 @@ x-nvidia-deploy: &nvidia-deploy
           count: all
           capabilities: [gpu, compute, video, utility, graphics, display]
 
+# ── 공통 볼륨 설정 (GUI 및 운영) ────────────────────────────────────────
+x-prod-volumes: &prod-volumes
+  - /tmp/.X11-unix:/tmp/.X11-unix:rw
+  - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
+  - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
+
 services:
   # ── [ROS] 기본 배포 환경 (Intel/AMD/CPU) ───────────────────────────
   ros-prod:
@@ -58,6 +66,7 @@ services:
       GPU_MODE: auto
     devices:
       - /dev/dri:/dev/dri
+    volumes: *prod-volumes
     command: ["bash", "-c", "echo 'Add your main ROS launch command here' && sleep infinity"]
 
   # ── [ROS] NVIDIA 배포 환경 ──────────────────────────────────────────
@@ -80,6 +89,7 @@ services:
       __NV_PRIME_RENDER_OFFLOAD: "1"
       __GLX_VENDOR_LIBRARY_NAME: nvidia
     deploy: *nvidia-deploy
+    volumes: *prod-volumes
     command: ["bash", "-c", "echo 'Add your main ROS launch command here' && sleep infinity"]
 
   # ── [Dev] 순수 C++/Python 배포 환경 (ROS 없음) ──────────────────────
@@ -96,6 +106,7 @@ services:
       GPU_MODE: auto
     devices:
       - /dev/dri:/dev/dri
+    volumes: *prod-volumes
     command: ["bash", "-c", "echo 'Add your main dev executable command here' && sleep infinity"]
 
   # ── [Dev] 순수 C++/Python NVIDIA 배포 환경 ───────────────────────────
@@ -116,4 +127,5 @@ services:
       __NV_PRIME_RENDER_OFFLOAD: "1"
       __GLX_VENDOR_LIBRARY_NAME: nvidia
     deploy: *nvidia-deploy
+    volumes: *prod-volumes
     command: ["bash", "-c", "echo 'Add your main dev executable command here' && sleep infinity"]

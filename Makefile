@@ -22,7 +22,7 @@ $(foreach line,$(shell $(DETECTOR)),$(eval $(line)))
 
 .PHONY: help setup check xauth status \
         build-ros build-dev rebuild-ros rebuild-dev \
-        ros dev ros-shell dev-shell \
+        ros dev ros-shell dev-shell ros-term dev-term \
         ros-prod dev-prod \
         clean clean-cache clean-all clean-builder
 
@@ -30,29 +30,36 @@ $(foreach line,$(shell $(DETECTOR)),$(eval $(line)))
 # Default & Help
 # =============================================================================
 help:
+	@echo "======================================================================"
+	@echo "        🚀 All-in-One Docker Dev Environment Template 🚀              "
+	@echo "======================================================================"
 	@echo ""
-	@echo "  Docker 개발환경 템플릿"
+	@echo "  [ 초기 설정 & 상태 (Setup & Status) ]"
+	@echo "    make setup          : .env 초기화 및 기본 환경 구성 (최초 1회 실행)"
+	@echo "    make status         : 현재 프로젝트 설정, GPU 가속, 디스플레이 상태 확인"
 	@echo ""
-	@echo "  [설정]"
-	@echo "    make setup          .env 초기화 및 X11 권한 설정"
-	@echo "    make status         컨테이너 상태 및 GPU 정보 출력"
+	@echo "  [ 개발 환경 (Development) ] - 💡 GPU 및 GUI(X11/Wayland) 자동 감지 적용"
+	@echo "    make ros            : ROS 개발 컨테이너 백그라운드 실행"
+	@echo "    make ros-shell      : 실행 중인 ROS 컨테이너 셸(bash) 진입"
+	@echo "    make ros-term       : 새 창(Terminator)으로 ROS 셸 실행 (GUI 필수)"
+	@echo "    make dev            : 순수 C++/Python 컨테이너 백그라운드 실행 (ROS 미포함)"
+	@echo "    make dev-shell      : 실행 중인 순수 개발 컨테이너 셸(bash) 진입"
+	@echo "    make dev-term       : 새 창(Terminator)으로 순수 개발 셸 실행 (GUI 필수)"
+	@echo "    make build-ros      : ROS용 도커 이미지 빌드"
+	@echo "    make build-dev      : 순수 개발용 도커 이미지 빌드"
 	@echo ""
-	@echo "  [개발 환경 (Dev)]"
-	@echo "    make ros            ROS 컨테이너 시작 (NVIDIA 자동 감지)"
-	@echo "    make dev            순수 환경 컨테이너 시작 (NVIDIA 자동 감지)"
-	@echo "    make ros-shell      ROS 컨테이너 셸 진입"
-	@echo "    make dev-shell      순수 환경 셸 진입"
-	@echo "    make build-ros      ROS 이미지 빌드"
-	@echo "    make build-dev      순수 환경 이미지 빌드"
+	@echo "  [ 배포 환경 (Production) ] - 💡 Bake & Switch 전략 기반 초경량 런타임"
+	@echo "    make ros-prod       : 배포용 ROS 서비스 실행"
+	@echo "    make dev-prod       : 배포용 순수 C++/Python 서비스 실행"
 	@echo ""
-	@echo "  [배포 환경 (Prod)]"
-	@echo "    make ros-prod       ROS 릴리즈 서비스 시작 (NVIDIA 자동 감지)"
-	@echo "    make dev-prod       순수 릴리즈 서비스 시작 (NVIDIA 자동 감지)"
-	@echo ""
-	@echo "  [유지보수]"
-	@echo "    make clean          임시 볼륨 및 빌드 아티팩트 삭제"
-	@echo "    make clean-all      모든 볼륨 및 캐시 완전 초기화"
-	@echo ""
+	@echo "  [ 유지보수 & 도구 (Maintenance) ]"
+	@echo "    make logs           : 현재 실행 중인 컨테이너의 실시간 로그 스트리밍 (계속 감시, Ctrl+C로 종료)"
+	@echo "    make down           : 실행 중인 모든 컨테이너 중지 및 제거"
+	@echo "    make clean          : 빌드 결과물(build, install, log) 도커 볼륨 삭제"
+	@echo "    make clean-cache    : 호스트 측 .docker_cache (ccache, uv) 완전 삭제"
+	@echo "    make clean-builder  : 도커 빌드 캐시(BuildKit) 정리 (디스크 용량 확보)"
+	@echo "    make clean-all      : ⚠️ 프로젝트 관련 모든 도커 리소스(볼륨/이미지) 완전 초기화"
+	@echo "======================================================================"
 
 # =============================================================================
 # 초기 설정 및 상태 확인
@@ -109,14 +116,15 @@ check-host:
 	fi
 
 xauth:
-	@touch ~/.Xauthority
+	@touch $(HOST_XAUTHORITY)
 	@if command -v xauth &> /dev/null && [ -n "$$DISPLAY" ]; then \
-		xauth nlist $$DISPLAY | sed -e 's/^..../ffff/' | xauth -f ~/.Xauthority nmerge - 2>/dev/null || true; \
+		xauth nlist $$DISPLAY | sed -e 's/^..../ffff/' | xauth -f $(HOST_XAUTHORITY) nmerge - 2>/dev/null || true; \
 	fi
+	@xhost +local:root > /dev/null 2>&1 || true
 
 check: check-host
 	@if [ ! -f .env ]; then echo "  오류: .env가 없습니다. make setup 실행 필요"; exit 1; fi
-	@mkdir -p ~/.ssh && touch ~/.gitconfig ~/.Xauthority
+	@mkdir -p ~/.ssh && touch ~/.gitconfig $(HOST_XAUTHORITY)
 
 # =============================================================================
 # 빌드 (Build)
@@ -144,7 +152,7 @@ ros: check xauth
 		echo "  기본 모드로 ROS 환경을 시작합니다..."; \
 		$(COMPOSE) up -d ros-basic; \
 	fi
-	@echo "  셸 진입: make ros-shell"
+	@echo "  셸 진입: make ros-shell (기존 창) 또는 make ros-term (새 창)"
 
 dev: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
@@ -154,7 +162,7 @@ dev: check xauth
 		echo "  기본 모드로 순수 개발 환경을 시작합니다..."; \
 		$(COMPOSE) up -d basic; \
 	fi
-	@echo "  셸 진입: make dev-shell"
+	@echo "  셸 진입: make dev-shell (기존 창) 또는 make dev-term (새 창)"
 
 ros-shell: check
 	@if docker ps --format '{{.Names}}' | grep -q "$(COMPOSE_PROJECT_NAME)_ros"; then \
@@ -163,9 +171,25 @@ ros-shell: check
 		echo "  실행 중인 ROS 컨테이너가 없습니다. make ros를 먼저 실행하세요."; \
 	fi
 
+ros-term: check xauth
+	@if docker ps --format '{{.Names}}' | grep -q "$(COMPOSE_PROJECT_NAME)_ros"; then \
+		echo "  새 창(Terminator)을 엽니다..."; \
+		docker exec -d $$(docker ps --filter "name=$(COMPOSE_PROJECT_NAME)_ros" --format "{{.Names}}" | head -n 1) terminator; \
+	else \
+		echo "  실행 중인 ROS 컨테이너가 없습니다. make ros를 먼저 실행하세요."; \
+	fi
+
 dev-shell: check
 	@if docker ps --format '{{.Names}}' | grep -q "$(COMPOSE_PROJECT_NAME)_basic\|$(COMPOSE_PROJECT_NAME)_nvidia"; then \
 		docker exec -it $$(docker ps --filter "name=$(COMPOSE_PROJECT_NAME)_basic\|$(COMPOSE_PROJECT_NAME)_nvidia" --format "{{.Names}}" | head -n 1) bash; \
+	else \
+		echo "  실행 중인 개발 컨테이너가 없습니다. make dev를 먼저 실행하세요."; \
+	fi
+
+dev-term: check xauth
+	@if docker ps --format '{{.Names}}' | grep -q "$(COMPOSE_PROJECT_NAME)_basic\|$(COMPOSE_PROJECT_NAME)_nvidia"; then \
+		echo "  새 창(Terminator)을 엽니다..."; \
+		docker exec -d $$(docker ps --filter "name=$(COMPOSE_PROJECT_NAME)_basic\|$(COMPOSE_PROJECT_NAME)_nvidia" --format "{{.Names}}" | head -n 1) terminator; \
 	else \
 		echo "  실행 중인 개발 컨테이너가 없습니다. make dev를 먼저 실행하세요."; \
 	fi
@@ -198,7 +222,10 @@ down:
 	$(COMPOSE) down
 
 logs:
-	@if [ -f docker-compose.prod.yml ] && docker compose -f docker-compose.prod.yml ps --format '{{.Names}}' | grep -q "$(COMPOSE_PROJECT_NAME)"; then \
+	@if [ -n "$$(docker compose ps --status running -q 2>/dev/null)" ]; then \
+		echo "  [Dev] 개발 환경 로그를 스트리밍합니다..."; \
+		docker compose logs -f --tail 100; \
+	elif [ -f docker-compose.prod.yml ] && [ -n "$$(docker compose -f docker-compose.prod.yml ps --status running -q 2>/dev/null)" ]; then \
 		echo "  [Prod] 배포 환경 로그를 스트리밍합니다..."; \
 		docker compose -f docker-compose.prod.yml logs -f --tail 100; \
 	else \

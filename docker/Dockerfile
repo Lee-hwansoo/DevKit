@@ -85,7 +85,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ninja-build \
     python3-dev \
     python3-pip \
-    python3-vcstool \
     python3-venv
 
 # ── Stage 4: gui-tools ─────────────────────────────────────────────────────
@@ -193,6 +192,7 @@ RUN mkdir -p /root/.config/terminator \
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]
 
 # ── Stage 4a: dev ─────────────────────────────────────────────────────────
@@ -213,7 +213,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     || echo "No additional user apt packages installed."
 
 WORKDIR /workspace
-ENTRYPOINT ["/entrypoint.sh"]
 
 # ── Stage 4b: ros-base (Dynamic ROS1 / ROS2) ──────────────────────────────
 FROM common AS ros-base
@@ -228,7 +227,7 @@ RUN if [ "${ROS_DISTRO}" = "noetic" ]; then \
         apt-get update && apt-get install -y --no-install-recommends \
             ros-${ROS_DISTRO}-desktop-full \
             python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential \
-            python3-catkin-tools python3-osrf-pycommon python3-colcon-common-extensions; \
+            python3-catkin-tools python3-osrf-pycommon python3-colcon-common-extensions python3-vcstool; \
     else \
         curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg && \
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2.list && \
@@ -237,7 +236,7 @@ RUN if [ "${ROS_DISTRO}" = "noetic" ]; then \
             ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
             ros-${ROS_DISTRO}-gazebo-ros-pkgs \
             ros-${ROS_DISTRO}-xacro ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-tf2-ros \
-            python3-colcon-common-extensions python3-rosdep python3-argcomplete; \
+            python3-colcon-common-extensions python3-rosdep python3-argcomplete python3-vcstool; \
     fi
 
 RUN rosdep init && rosdep update --rosdistro ${ROS_DISTRO}
@@ -283,4 +282,3 @@ ENV ROS_DISTRO=${ROS_DISTRO} \
     COLCON_HOME=/workspace
 
 WORKDIR /workspace
-ENTRYPOINT ["/entrypoint.sh"]

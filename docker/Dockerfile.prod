@@ -130,6 +130,7 @@ ENV PATH="/workspace/install/.venv/bin:/workspace/install/bin:$PATH" \
     VIRTUAL_ENV="/workspace/install/.venv"
 
 ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]
 
 
 # ── Stage 1B: builder-ros ──────────────────────────────────────────────────
@@ -211,3 +212,4 @@ COPY scripts/gpu_setup.sh /opt/scripts/gpu_setup.sh
 RUN chmod +x /entrypoint.sh /opt/scripts/gpu_setup.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]

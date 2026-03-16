@@ -4,7 +4,7 @@
 [![ROS2](https://img.shields.io/badge/ROS2-Humble-red?logo=ros)](https://docs.ros.org/en/humble/index.html)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://www.python.org/)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=c%2B%2B)](https://isocpp.org/)
-[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker)](https://www.docker.com/)  
+[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker)](https://www.docker.com/)
 
 본 저장소는 호스트 시스템을 오염시키지 않고 **C++, Python(uv), ROS 1 / ROS 2** 개발을 수행할 수 있도록 설계된 **독립 개발 환경 템플릿**입니다. 복잡한 설정 없이 어떤 프로젝트에서든 즉시 개발을 시작하세요.
 
@@ -102,10 +102,10 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 
 시스템이 최적의 모드를 자동으로 선택합니다.
 
-| 환경 구분 | 실행 명령어 (GPU 자동 감지) | 셸 진입 (Enter Shell) |
-| :--- | :--- | :--- |
-| **ROS 환경** | **`make ros`** | **`make ros-shell`** |
-| **순수 개발** | **`make dev`** | **`make dev-shell`** |
+| 환경 구분 | 실행 명령어 (GPU 자동 감지) | 셸 진입 (기존 창) | 새 창 띄우기 (GUI) |
+| :--- | :--- | :--- | :--- |
+| **ROS 환경** | **`make ros`** | **`make ros-shell`** | **`make ros-term`** |
+| **순수 개발** | **`make dev`** | **`make dev-shell`** | **`make dev-term`** |
 
 > **Tip:** `make status`를 통해 현재 시스템이 NVIDIA GPU와 Container Toolkit을 올바르게 인식하고 있는지, 그리고 현재 아키텍처(AMD64/ARM64)가 무엇인지 확인할 수 있습니다.
 
@@ -133,7 +133,7 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 | :--- | :--- | :--- |
 | **`make status`** | 프로젝트 상태 요약 | 컨테이너 실행 여부, **진단 엔진 결과** 등 출력 |
 | **`make check-host`** | 호스트 환경 사전 점검 | GPU 드라이버 및 X11 권한 상태를 확인하여 빌드 전 에러 차단 |
-| **`make logs`** | 실시간 로그 스트리밍 | 현재 실행 중인 컨테이너의 출력을 실시간으로 확인 |
+| **`make logs`** | 실시간 로그 스트리밍 | 현재 실행 중인 컨테이너의 출력을 실시간으로 확인 (종료 시 Ctrl+C) |
 | **`make down`** | 서비스 중지 | 현재 프로젝트와 관련된 모든 컨테이너를 안전하게 중지 및 제거 |
 | **`make clean`** | 빌드 결과물 삭제 | **`/workspace` 내의 build, install, log** 볼륨 및 임시 볼륨 삭제 |
 | **`make clean-cache`** | 컴파일 캐시 명시적 삭제 | 호스트 측 `.docker_cache`(ccache, uv) 폴더를 강제로 삭제 |
