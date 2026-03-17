@@ -256,8 +256,11 @@ clean-builder:
 	@echo "  Docker BuildKit 캐시를 정리하여 용량을 확보합니다..."
 	docker builder prune -f
 
-clean: down
+clean:
 	$(COMPOSE) down -v
+	@if [ -f docker-compose.prod.yml ]; then \
+		$(COMPOSE) -f docker-compose.prod.yml down -v 2>/dev/null || true; \
+	fi
 	@echo "  $(COMPOSE_PROJECT_NAME) 관련 모든 네임드 볼륨을 삭제합니다..."
 	@VOLUMES=$$(docker volume ls -q --filter "name=$(COMPOSE_PROJECT_NAME)"); \
 	if [ -n "$$VOLUMES" ]; then \

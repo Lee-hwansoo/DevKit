@@ -11,10 +11,14 @@
 # 특징:
 #   - 'privileged: true' 제거 및 명시적 장치 마운트 (보안 강화)
 #   - 빌드 아티팩트가 이미지 내부에 포함됨 (소스 마운트 없음)
+#
+# ⚠ 주의: x-common-env, x-nvidia-env, x-nvidia-deploy, x-ros-healthcheck는
+#   docker-compose.yml과 동기화가 필요합니다. 한쪽을 수정하면 다른 쪽도 확인하세요.
 # =============================================================================
 
 # ── 공통 환경변수 (런타임 제어용) ──────────────────────────────────────
 x-common-env: &common-env
+  LANG: ${LANG:-ko_KR.UTF-8}
   DISPLAY: ${DISPLAY:-:0}
   WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
   XDG_RUNTIME_DIR: /tmp/runtime-root
@@ -47,8 +51,8 @@ x-prod-svc: &prod-svc
     - NET_ADMIN           # SocketCAN 인터페이스 접근용
     - NET_RAW             # ROS 2 DDS Discovery 및 통신 최적화
     - SYS_PTRACE          # Shared Memory transport (FastDDS 등) 권한
-  devices:
-    - /dev/dri:/dev/dri
+  # /dev/dri는 GPU 프로파일(ros-nv, dev-nv)에서만 마운트합니다.
+  # GPU 없는 환경(CI/클라우드)에서도 기본 프로파일이 동작하도록 공통 설정에서 제외합니다.
 
 # ── NVIDIA GPU 예약 공통 설정 ──────────────────────────────────────────
 x-nvidia-deploy: &nvidia-deploy
@@ -113,6 +117,8 @@ services:
     environment:
       <<: [*common-env, *nvidia-env]
     deploy: *nvidia-deploy
+    devices:
+      - /dev/dri:/dev/dri
     volumes: *prod-volumes
     command: ["bash", "-c", "echo 'Add your main ROS launch command here' && sleep infinity"]
     healthcheck: *ros-healthcheck
@@ -141,5 +147,7 @@ services:
     environment:
       <<: [*common-env, *nvidia-env]
     deploy: *nvidia-deploy
+    devices:
+      - /dev/dri:/dev/dri
     volumes: *prod-volumes
     command: ["bash", "-c", "echo 'Add your main dev executable command here' && sleep infinity"]

@@ -4,9 +4,8 @@
 #
 # 사용 방법:
 #   ROS 환경:        make ros       / make ros-shell
-#   ROS 환경 (NV):   make ros-nv    / make ros-shell
 #   순수 환경:        make dev       / make dev-shell
-#   순수 환경 (NV):   make dev-nv    / make dev-shell
+#   (NVIDIA GPU 자동 감지 — .env의 GPU_MODE로 수동 설정 가능)
 #
 # 특징:
 #   - 하드웨어 가속(GPU), GUI(X11/Wayland) 자동 연동
@@ -17,6 +16,7 @@
 # ── 공통 환경변수 (map 형식 — anchor merge로 선택적 override 가능) ─────────
 # GPU 프로파일 서비스는 GPU_MODE만 override, 나머지는 여기서 상속
 x-common-env: &common-env
+  LANG: ${LANG:-ko_KR.UTF-8}
   DISPLAY: ${DISPLAY:-:0}
   WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
   XDG_RUNTIME_DIR: /tmp/runtime-root

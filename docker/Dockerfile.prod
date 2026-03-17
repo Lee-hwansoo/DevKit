@@ -114,12 +114,15 @@ RUN chmod +x /opt/scripts/check_deps.sh && \
 FROM base-ubuntu AS dev-runtime
 ARG DEBIAN_FRONTEND=noninteractive
 ARG ROS_DISTRO
+ARG LANG=ko_KR.UTF-8
 COPY dependencies/apt.txt /tmp/apt.txt
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
-    apt-get install -y --no-install-recommends libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils \
+    apt-get install -y --no-install-recommends locales libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils \
+    && locale-gen ${LANG} && update-locale LANG=${LANG} \
     && rm -rf /var/lib/apt/lists/*
+ENV LANG=${LANG} LC_ALL=${LANG}
 
 WORKDIR /workspace
 COPY --from=verifier-dev /workspace/verify_dev_success /tmp/verify_success
@@ -175,13 +178,16 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
 FROM base-ros-runtime AS ros-runtime
 ARG DEBIAN_FRONTEND=noninteractive
 ARG ROS_DISTRO
+ARG LANG=ko_KR.UTF-8
 COPY dependencies/apt.txt /tmp/apt.txt
 COPY dependencies/apt_ros.txt* /tmp/apt_ros.txt
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
-    apt-get install -y --no-install-recommends libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils \
+    apt-get install -y --no-install-recommends locales libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils \
+    && locale-gen ${LANG} && update-locale LANG=${LANG} \
     && rm -rf /var/lib/apt/lists/*
+ENV LANG=${LANG} LC_ALL=${LANG}
 
 WORKDIR /workspace
 # ROS 바이너리 검증 확인 및 아티팩트 복사

@@ -20,17 +20,8 @@ log_warn()  { echo -e "\033[0;33m${LOG_PREFIX} [WARN] $1\033[0m"; }
 log_info "GPU mode: ${GPU_MODE:-auto}"
 source /docker_dev/scripts/gpu_setup.sh "${GPU_MODE:-auto}"
 
-# GPU env를 /root/.gpu_env.sh에 기록하여 .bashrc에서 source 하도록 유지
-# (다중 터미널 접속 시 활용 — gpu_setup.sh의 일부 코드 경로에서 write_gpu_env 미호출 방지)
-cat > /root/.gpu_env.sh << EOF
-# __GPU_ENV_START (managed by entrypoint.sh)
-export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
-$([ -n "${GALLIUM_DRIVER:-}" ] && echo "export GALLIUM_DRIVER=${GALLIUM_DRIVER}")
-$([ -n "${MESA_LOADER_DRIVER_OVERRIDE:-}" ] && echo "export MESA_LOADER_DRIVER_OVERRIDE=${MESA_LOADER_DRIVER_OVERRIDE}")
-$([ -n "${__NV_PRIME_RENDER_OFFLOAD:-}" ] && echo "export __NV_PRIME_RENDER_OFFLOAD=${__NV_PRIME_RENDER_OFFLOAD}")
-$([ -n "${__GLX_VENDOR_LIBRARY_NAME:-}" ] && echo "export __GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME}")
-# __GPU_ENV_END
-EOF
+# GPU env는 gpu_setup.sh 내부의 write_gpu_env()에서 /root/.gpu_env.sh에 기록됨
+# (다중 터미널 접속 시 .bashrc에서 source 하여 활용)
 
 # root로 실행되므로 DEV_HOME=/root
 DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")

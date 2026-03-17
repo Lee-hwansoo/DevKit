@@ -165,6 +165,7 @@ setup_auto() {
     elif has_any_dri; then
         reset_gpu_env
         export LIBGL_ALWAYS_SOFTWARE=0
+        write_gpu_env
         log_ok "Auto-detected: GPU (DRI/Mesa, driver auto-selected)"
         detected=true
     fi
