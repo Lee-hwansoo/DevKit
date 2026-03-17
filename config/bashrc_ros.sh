@@ -3,8 +3,8 @@
 # =============================================================================
 
 # ROS 코어 환경 동적 소싱
-if [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]; then
-    source /opt/ros/${ROS_DISTRO}/setup.bash
+if [ -f "/opt/ros/${ROS_DISTRO:-humble}/setup.bash" ]; then
+    source /opt/ros/${ROS_DISTRO:-humble}/setup.bash
 fi
 
 # 워크스페이스 오버레이 (colcon 빌드 후 자동 소스)

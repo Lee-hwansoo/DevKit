@@ -18,69 +18,81 @@ log_warn()  { echo -e "\033[0;33m${LOG_PREFIX} [WARN] $1\033[0m"; }
 # GPU_MODE는 .env → docker-compose environment → 여기서 읽힘
 # 값: auto (기본) | nvidia | intel | amd | cpu
 log_info "GPU mode: ${GPU_MODE:-auto}"
-source /docker_dev/scripts/gpu_setup.sh "${GPU_MODE:-auto}"
 
-# GPU env는 gpu_setup.sh 내부의 write_gpu_env()에서 /root/.gpu_env.sh에 기록됨
-# (다중 터미널 접속 시 .bashrc에서 source 하여 활용)
+if [ -f "/docker_dev/scripts/gpu_setup.sh" ]; then
+    source /docker_dev/scripts/gpu_setup.sh "${GPU_MODE:-auto}"
+elif [ -f "/opt/scripts/gpu_setup.sh" ]; then
+    source /opt/scripts/gpu_setup.sh "${GPU_MODE:-auto}"
+else
+    log_warn "gpu_setup.sh not found. Skipping GPU configuration."
+fi
 
 # root로 실행되므로 DEV_HOME=/root
 DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")
 
 # =============================================================================
-# [2] Display / X11 / Wayland 체크
+# [2] Environment Detection (Dev vs Prod)
 # =============================================================================
-if [ -n "${DISPLAY:-}" ]; then
-    DISPLAY_NUM="${DISPLAY#:}"
-    DISPLAY_NUM="${DISPLAY_NUM%%.*}"
-    if [ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ] 2>/dev/null; then
-        log_ok "X11 display ${DISPLAY} available"
-    else
-        log_warn "DISPLAY=${DISPLAY} set but X11 socket not found."
-    fi
-    if [ ! -f "${XAUTHORITY:-/root/.Xauthority}" ]; then
-        log_warn "Xauthority file not found at ${XAUTHORITY:-/root/.Xauthority}. GUI apps may fail."
-    fi
-elif [ -n "${WAYLAND_DISPLAY:-}" ]; then
-    log_ok "Wayland display ${WAYLAND_DISPLAY} set"
-    export QT_QPA_PLATFORM="wayland;xcb"
-    export GDK_BACKEND="wayland,x11"
-    log_ok "Exported Wayland GUI variables (QT_QPA_PLATFORM, GDK_BACKEND)"
-
-    cat >> /root/.gpu_env.sh << EOF
-export QT_QPA_PLATFORM="wayland;xcb"
-export GDK_BACKEND="wayland,x11"
-EOF
-
-    if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
-        log_warn "WAYLAND_DISPLAY is set but XDG_RUNTIME_DIR is empty."
-    fi
+# if /docker_dev exists, it's a dev environment
+if [ -d "/docker_dev" ]; then
+    IS_DEV=true
+    log_info "Environment: Development"
 else
-    log_warn "No DISPLAY or WAYLAND_DISPLAY set — GUI apps will not work."
+    IS_DEV=false
+    log_info "Environment: Production"
 fi
 
 # =============================================================================
-# [3] 캐시 디렉토리 초기화
+# [3] Display / X11 / Wayland 체크 (Dev Only)
 # =============================================================================
-# named volume이 처음 마운트될 때 디렉토리 생성
-mkdir -p /cache/ccache /cache/uv /cache/apt
-log_ok "Cache dirs ready: /cache/{ccache,uv,apt}"
+if [ "$IS_DEV" = true ]; then
+    if [ -n "${DISPLAY:-}" ]; then
+        DISPLAY_NUM="${DISPLAY#:}"
+        DISPLAY_NUM="${DISPLAY_NUM%%.*}"
+        if [ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ] 2>/dev/null; then
+            log_ok "X11 display ${DISPLAY} available"
+        else
+            log_warn "DISPLAY=${DISPLAY} set but X11 socket not found."
+        fi
+        if [ ! -f "${XAUTHORITY:-$HOME/.Xauthority}" ]; then
+            log_warn "Xauthority file not found. GUI apps may fail."
+        fi
+    elif [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        log_ok "Wayland display ${WAYLAND_DISPLAY} set"
+        export QT_QPA_PLATFORM="wayland;xcb"
+        export GDK_BACKEND="wayland,x11"
+        log_ok "Exported Wayland GUI variables"
+
+        if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+            log_warn "WAYLAND_DISPLAY is set but XDG_RUNTIME_DIR is empty. Attempting to set default..."
+            export XDG_RUNTIME_DIR="/tmp/runtime-root"
+            mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+        fi
+    else
+        log_warn "No DISPLAY or WAYLAND_DISPLAY set — GUI apps will not work."
+    fi
+fi
 
 # =============================================================================
-# [4] Git safe.directory 설정
+# [4] 캐시 디렉토리 초기화 (Dev Only)
 # =============================================================================
-# 호스트 마운트 디렉토리는 소유자가 달라 git이 거부할 수 있음
-# '*'로 설정해 컨테이너 내 모든 경로를 안전하게 허용
-if command -v git &>/dev/null; then
+if [ "$IS_DEV" = true ]; then
+    mkdir -p /cache/ccache /cache/uv /cache/apt
+    log_ok "Cache dirs ready: /cache/{ccache,uv,apt}"
+fi
+
+# =============================================================================
+# [5] Git safe.directory 설정 (Dev Only)
+# =============================================================================
+if [ "$IS_DEV" = true ] && command -v git &>/dev/null; then
     git config --global --add safe.directory '*' 2>/dev/null || true
     log_ok "Git safe.directory configured"
 fi
 
 # =============================================================================
-# [5] SSH 키 권한 확인
+# [6] SSH 키 권한 확인 (Dev Only)
 # =============================================================================
-# 호스트 .ssh는 read-only bind mount이므로 chmod 불가
-# 권한 문제가 있으면 호스트에서 수정 필요
-if [ -d "${DEV_HOME}/.ssh" ]; then
+if [ "$IS_DEV" = true ] && [ -d "${DEV_HOME}/.ssh" ]; then
     BAD_PERMS=$(find "${DEV_HOME}/.ssh" -name "id_*" ! -perm 600 2>/dev/null | head -1)
     if [ -n "${BAD_PERMS}" ]; then
         log_warn "SSH key permissions may cause issues (read-only mount)."
@@ -91,19 +103,21 @@ if [ -d "${DEV_HOME}/.ssh" ]; then
 fi
 
 # =============================================================================
-# [6] 워크스페이스 상태 안내
+# [7] 워크스페이스 상태 안내 (Dev Only)
 # =============================================================================
-if [ ! -f /workspace/install/setup.bash ] && [ ! -d /workspace/install/.venv ]; then
-    log_warn "Workspace not yet built or environment not set up."
-    if [ -f "/opt/ros/${ROS_DISTRO:-humble}/setup.bash" ]; then
-        log_warn "  Run: cb     (colcon build for ROS)"
-    else
-        log_warn "  Run: mbuild (for C++) or mkenv (for Python)"
+if [ "$IS_DEV" = true ]; then
+    if [ ! -f /workspace/install/setup.bash ] && [ ! -d /workspace/install/.venv ]; then
+        log_warn "Workspace not yet built or environment not set up."
+        if [ -f "$ROS_SETUP" ]; then
+            log_warn "  Run: cb     (colcon build for ROS)"
+        else
+            log_warn "  Run: mbuild (for C++) or mkenv (for Python)"
+        fi
     fi
 fi
 
 # =============================================================================
-# [7] SocketCAN (선택적)
+# [8] SocketCAN (선택적)
 # =============================================================================
 if ip link show can0 >/dev/null 2>&1; then
     log_ok "SocketCAN can0 available"
@@ -112,11 +126,12 @@ elif ip link show 2>/dev/null | grep -q ": can"; then
 fi
 
 # =============================================================================
-# [8] 환경 소스 (ROS 및 Python venv)
+# [9] 환경 소스 (ROS 및 Python venv)
 # =============================================================================
 # ROS2 환경 소스
-if [ -f "/opt/ros/${ROS_DISTRO:-humble}/setup.bash" ]; then
-    source "/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
+if [ -f "$ROS_SETUP" ]; then
+    source "$ROS_SETUP"
     log_ok "ROS2 ${ROS_DISTRO:-humble} sourced"
 
     if [ -f /workspace/install/setup.bash ]; then
@@ -124,29 +139,30 @@ if [ -f "/opt/ros/${ROS_DISTRO:-humble}/setup.bash" ]; then
         log_ok "Workspace overlay sourced"
     fi
 else
-    log_info "dev target — ROS2 not installed, skipping ROS2 setup"
+    log_info "ROS2 not installed or not in /opt/ros, skipping ROS2 setup"
 fi
 
-# Python 가상환경 자동 활성화 및 심볼릭 링크 (IDE 호환)
+# Python 가상환경 자동 활성화
 if [ -f "/workspace/install/.venv/bin/activate" ]; then
-    ln -sf /workspace/install/.venv /workspace/.venv
+    if [ "$IS_DEV" = true ]; then
+        ln -sf /workspace/install/.venv /workspace/.venv
+    fi
     source "/workspace/install/.venv/bin/activate"
-    log_ok "Python virtualenv activated (/workspace/install/.venv) and linked to root"
+    log_ok "Python virtualenv activated (/workspace/install/.venv)"
 fi
 
 # =============================================================================
-# [9] 의존성 자동 동기화 (sync_deps.sh)
+# [10] 의존성 자동 동기화 (Dev Only)
 # =============================================================================
-# 컨테이너 시작 시 호스트의 서드파티 폴더가 비어있다면 자동 다운로드 수행
-TARGET_DIR="src/thirdparty"
-if [ "$PWD" == "/workspace" ]; then
-    if [ ! -d "$TARGET_DIR" ] || [ -z "$(ls -A $TARGET_DIR 2>/dev/null)" ]; then
-        log_info "Thirdparty directory is empty. Running sync_deps.sh..."
-        bash /docker_dev/scripts/sync_deps.sh
+if [ "$IS_DEV" = true ]; then
+    TARGET_DIR="src/thirdparty"
+    if [ "$PWD" == "/workspace" ]; then
+        if [ ! -d "$TARGET_DIR" ] || [ -z "$(ls -A $TARGET_DIR 2>/dev/null)" ]; then
+            log_info "Thirdparty directory is empty. Running sync_deps.sh..."
+            bash /docker_dev/scripts/sync_deps.sh
+        fi
     fi
 fi
 
-# =============================================================================
 # Execute
-# =============================================================================
 exec "$@"

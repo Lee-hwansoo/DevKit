@@ -48,6 +48,14 @@ if [ -e "/dev/nvidia0" ]; then
     echo -e "  ${GREEN}✓${NC} /dev/nvidia0"
 fi
 
+# Intel/AMD (DRI)
+if [ -d "/dev/dri" ]; then
+    DRI_LIST=$(ls /dev/dri/renderD* 2>/dev/null | xargs -n1 basename | tr '\n' ' ')
+    if [ -n "$DRI_LIST" ]; then
+        echo -e "  ${GREEN}✓${NC} /dev/dri ($DRI_LIST)"
+    fi
+fi
+
 # nvidia-smi (NVIDIA)
 if command -v nvidia-smi &>/dev/null; then
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)

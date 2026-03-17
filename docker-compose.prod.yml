@@ -1,198 +1,85 @@
 # =============================================================================
 # ros2_docker_template/docker-compose.prod.yml
 # 운영(Production) 환경 배포를 위한 컴포즈 파일
-#
-# 사용 방법:
-#   ROS 배포:        docker compose --profile ros up -d
-#   ROS 배포 (NV):   docker compose --profile ros-nv up -d
-#   순수 개발 배포:   docker compose --profile dev up -d
-#   순수 개발 (NV):   docker compose --profile dev-nv up -d
-#
-# 특징:
-#   - 'privileged: true' 제거 및 명시적 장치 마운트 (보안 강화)
-#   - 빌드 아티팩트가 이미지 내부에 포함됨 (소스 마운트 없음)
-#
-# ⚠ 주의: x-common-env, x-nvidia-env, x-nvidia-deploy, x-ros-healthcheck는
-#   docker-compose.dev.yml과 동기화가 필요합니다. 한쪽을 수정하면 다른 쪽도 확인하세요.
 # =============================================================================
 
-# ── 공통 환경변수 (런타임 제어용) ──────────────────────────────────────
-x-common-env: &common-env
-  LANG: ${LANG:-ko_KR.UTF-8}
-  TZ: ${TZ:-Asia/Seoul}
-  DISPLAY: ${DISPLAY:-:0}
-  WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
-  XDG_RUNTIME_DIR: /tmp/runtime-root
-  XAUTHORITY: /root/.Xauthority
-  QT_X11_NO_MITSHM: "1"   # GUI 호환성 및 성능 최적화
-  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}  # 배포망 충돌 방지를 위해 명시적 ID 사용 권장
-  RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
-  ROS_MASTER_URI: ${ROS_MASTER_URI:-http://localhost:11311}
-  ROS_HOSTNAME: ${ROS_HOSTNAME:-localhost}
-  ROS_IP: ${ROS_IP:-}
-  GPU_MODE: ${GPU_MODE:-auto}
+include:
+  - path: docker-compose.common.yml
 
-# ── NVIDIA GPU 전용 환경변수 (Anchor) ───────────────────────────────────
-x-nvidia-env: &nvidia-env
-  GPU_MODE: nvidia
-  NVIDIA_VISIBLE_DEVICES: all
-  NVIDIA_DRIVER_CAPABILITIES: all
-  LIBGL_ALWAYS_SOFTWARE: "0"
-  __NV_PRIME_RENDER_OFFLOAD: "1"
-  __GLX_VENDOR_LIBRARY_NAME: nvidia
+# ── 운영 환경 전용 앵커 ────────────────────────────────────────────────────
+x-gpu-devices: &gpu-devices
+  devices:
+    - /dev/dri:/dev/dri
 
-# ── 공통 서비스 보안 정책 (최소 권한) ───────────────────────────────────
-# 운영 환경에서는 'privileged: true'를 제거하고 필요한 권한만 명시적으로 부여
 x-prod-svc: &prod-svc
   restart: always
-  network_mode: host      # ROS2 DDS discovery
-  ipc: host               # Shared memory transport 최적화
-  # privileged: true 대신 명시적 장치를 마운트합니다.
+  privileged: ${PRIVILEGED:-true}
   cap_add:
-    - NET_ADMIN           # SocketCAN 인터페이스 접근용
-    - NET_RAW             # ROS 2 DDS Discovery 및 통신 최적화
-    - SYS_PTRACE          # Shared Memory transport (FastDDS 등) 권한
-  # /dev/dri는 GPU 프로파일(ros-nv, dev-nv)에서만 마운트합니다.
-  # GPU 없는 환경(CI/클라우드)에서도 기본 프로파일이 동작하도록 공통 설정에서 제외합니다.
+    - NET_ADMIN
+    - NET_RAW
+    - SYS_PTRACE
 
-# ── NVIDIA GPU 예약 공통 설정 ──────────────────────────────────────────
-x-nvidia-deploy: &nvidia-deploy
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: all
-          capabilities: [gpu, compute, video, utility, graphics, display]
-
-# ── 공통 볼륨 설정 (GUI 및 운영) ────────────────────────────────────────
+# 배포 환경 전용 볼륨 (로그 등 영구 데이터)
 x-prod-volumes: &prod-volumes
-  - /tmp/.X11-unix:/tmp/.X11-unix:rw
-  - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
-  - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
+  - ${ROS_LOG_VOL:-ros_prod_log_data}:/workspace/log
 
-# ── 공통 빌드 설정 (Bake & Switch) ──────────────────────────────────────
-# 개발 환경(.env)과 동일한 베이스 이미지 및 스냅샷 날짜를 빌드 타임에 주입
-x-prod-build: &prod-build
-  context: .
-  dockerfile: docker/Dockerfile.prod
-  args:
-    LANG: ${LANG:-ko_KR.UTF-8}
-    BASE_IMAGE: ${BASE_IMAGE:-ubuntu:22.04}
-    ROS_DISTRO: ${ROS_DISTRO:-humble}
-    APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
-    UV_VERSION: ${UV_VERSION:-0.10.10}
-    PYTHON_VERSION: ${UV_PYTHON:-3.10}
-    CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
+# ── 배포 환경 서비스 공유 설정 앵커 ──────────────────────────────────────────
+x-ros-prod-shared: &ros-prod-shared
+  <<: *prod-svc
+  image: ${COMPOSE_PROJECT_NAME}/ros-runtime:${IMAGE_TAG:-latest}
+  build:
+    target: ros-runtime
+  volumes: *prod-volumes
+  command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:?ROS_LAUNCH_COMMAND를 .env에 설정하세요}"]
 
-# ── 공통 Healthcheck ──────────────────────────────────────────────────────
-x-ros-healthcheck: &ros-healthcheck
-  test:
-    [
-      "CMD",
-      "bash",
-      "-c",
-      "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
-    ]
-  interval: 30s
-  timeout: 10s
-  retries: 3
-  start_period: 15s
+x-dev-prod-shared: &dev-prod-shared
+  <<: *prod-svc
+  image: ${COMPOSE_PROJECT_NAME}/dev-runtime:${IMAGE_TAG:-latest}
+  build:
+    target: dev-runtime
+  volumes: *prod-volumes
+  command: ["bash", "-c", "${APP_COMMAND:?APP_COMMAND를 .env에 설정하세요}"]
 
 services:
-  # ── [ROS] 기본 배포 환경 (CPU 전용 - 가속 없음) ──────────────────────
+  # ── [ROS] 배포 서비스 (CPU/iGPU/NVIDIA) ─────────────────────────────────
   ros-prod:
-    <<: *prod-svc
-    image: ${COMPOSE_PROJECT_NAME}/ros-runtime:latest
-    build:
-      <<: *prod-build
-      target: ros-runtime
+    extends:
+      file: docker-compose.common.yml
+      service: base-ros
+    <<: *ros-prod-shared
     profiles: ["ros"]
-    environment:
-      <<: *common-env
-      LIBGL_ALWAYS_SOFTWARE: "1"
-    volumes: *prod-volumes
-    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-echo 'Add ROS_LAUNCH_COMMAND to .env' && sleep infinity}"]
-    healthcheck: *ros-healthcheck
 
-  # ── [ROS] iGPU 배포 환경 (Intel/AMD 가속) ──────────────────────────
   ros-prod-igpu:
-    <<: *prod-svc
-    image: ${COMPOSE_PROJECT_NAME}/ros-runtime:latest
-    build:
-      <<: *prod-build
-      target: ros-runtime
+    extends: ros-prod
     profiles: ["ros-igpu"]
-    environment:
-      <<: *common-env
-    devices:
-      - /dev/dri:/dev/dri
-    volumes: *prod-volumes
-    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-echo 'Add ROS_LAUNCH_COMMAND to .env' && sleep infinity}"]
-    healthcheck: *ros-healthcheck
+    <<: *gpu-devices
 
-  # ── [ROS] NVIDIA 배포 환경 ──────────────────────────────────────────
   ros-prod-nv:
-    <<: *prod-svc
-    image: ${COMPOSE_PROJECT_NAME}/ros-runtime-nv:latest
-    build:
-      <<: *prod-build
-      target: ros-runtime
+    extends:
+      file: docker-compose.common.yml
+      service: base-ros-nvidia
+    <<: *ros-prod-shared
     profiles: ["ros-nv"]
-    environment:
-      <<: [*common-env, *nvidia-env]
-    deploy: *nvidia-deploy
-    devices:
-      - /dev/dri:/dev/dri
-    volumes: *prod-volumes
-    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-echo 'Add ROS_LAUNCH_COMMAND to .env' && sleep infinity}"]
-    healthcheck: *ros-healthcheck
 
-  # ── [Dev] 순수 C++/Python 배포 환경 (CPU 전용 - 가속 없음) ─────────
+  # ── [Dev] 배포 서비스 (CPU/iGPU/NVIDIA) ──────────────────────────────────
   dev-prod:
-    <<: *prod-svc
-    image: ${COMPOSE_PROJECT_NAME}/dev-runtime:latest
-    build:
-      <<: *prod-build
-      target: dev-runtime
+    extends:
+      file: docker-compose.common.yml
+      service: base-dev
+    <<: *dev-prod-shared
     profiles: ["dev"]
-    environment:
-      <<: *common-env
-      LIBGL_ALWAYS_SOFTWARE: "1"
-    volumes: *prod-volumes
-    command:
-      [
-        "bash",
-        "-c",
-        "echo 'Add your main dev executable command here' && sleep infinity",
-      ]
 
-  # ── [Dev] 순수 C++/Python iGPU 배포 환경 (Intel/AMD 가속) ──────────
   dev-prod-igpu:
-    <<: *prod-svc
-    image: ${COMPOSE_PROJECT_NAME}/dev-runtime:latest
-    build:
-      <<: *prod-build
-      target: dev-runtime
+    extends: dev-prod
     profiles: ["dev-igpu"]
-    environment:
-      <<: *common-env
-    devices:
-      - /dev/dri:/dev/dri
-    volumes: *prod-volumes
-    command: ["bash", "-c", "${APP_COMMAND:-echo 'Add APP_COMMAND to .env' && sleep infinity}"]
+    <<: *gpu-devices
 
-  # ── [Dev] 순수 C++/Python NVIDIA 배포 환경 ───────────────────────────
   dev-prod-nv:
-    <<: *prod-svc
-    image: ${COMPOSE_PROJECT_NAME}/dev-runtime-nv:latest
-    build:
-      <<: *prod-build
-      target: dev-runtime
+    extends:
+      file: docker-compose.common.yml
+      service: base-nvidia
+    <<: *dev-prod-shared
     profiles: ["dev-nv"]
-    environment:
-      <<: [*common-env, *nvidia-env]
-    deploy: *nvidia-deploy
-    devices:
-      - /dev/dri:/dev/dri
-    volumes: *prod-volumes
-    command: ["bash", "-c", "${APP_COMMAND:-echo 'Add APP_COMMAND to .env' && sleep infinity}"]
+
+volumes:
+  ros_prod_log_data:

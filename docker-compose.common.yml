@@ -1,0 +1,107 @@
+# =============================================================================
+# ros2_docker_template/docker-compose.common.yml
+# 공통 서비스 템플릿 및 설정 (SSOT: Single Source of Truth)
+# =============================================================================
+
+# ── 공통 환경변수 (런타임) ──────────────────────────────────────────────
+# ⚠ 주의: 이 경로들은 docker/entrypoint.sh 내부 경로와 동기화되어야 합니다.
+x-common-env: &common-env
+  LANG: ${LANG:-ko_KR.UTF-8}
+  TZ: ${TZ:-Asia/Seoul}
+  DISPLAY: ${DISPLAY:-:0}
+  WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
+  UV_PYTHON: ${UV_PYTHON:-3.10}
+  GPU_MODE: ${GPU_MODE:-auto}
+  ROS_DISTRO: ${ROS_DISTRO:-humble}
+  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+  RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
+  ROS_MASTER_URI: ${ROS_MASTER_URI:-http://localhost:11311}
+  ROS_HOSTNAME: ${ROS_HOSTNAME:-localhost}
+  ROS_IP: ${ROS_IP:-}
+  CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
+
+x-nvidia-env: &nvidia-env
+  GPU_MODE: ${GPU_MODE:-nvidia}
+  NVIDIA_VISIBLE_DEVICES: all
+  NVIDIA_DRIVER_CAPABILITIES: all
+  LIBGL_ALWAYS_SOFTWARE: "0"
+  __NV_PRIME_RENDER_OFFLOAD: "1"
+  __GLX_VENDOR_LIBRARY_NAME: nvidia
+
+# ── GPU 장치 마운트 (Intel/AMD) ──────────────────────────────────────────
+# (앵커는 각 파일에서 로컬로 정의해야 호환됩니다)
+
+# ── 공통 Healthcheck ──────────────────────────────────────────────────────
+x-ros-healthcheck: &ros-healthcheck
+  test:
+    [
+      "CMD-SHELL",
+      "source /opt/ros/$${ROS_DISTRO:-humble}/setup.bash 2>/dev/null && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
+    ]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 30s
+
+# ── 템플릿 서비스 (Abstract Services) ──────────────────────────────────────
+services:
+  # 기본 서비스 템플릿
+  base-common:
+    image: busybox # 추상 서비스를 위한 플레이스홀더
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    network_mode: host
+    ipc: host
+    privileged: ${PRIVILEGED:-true}
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        LANG: ${LANG:-ko_KR.UTF-8}
+        APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
+        UV_VERSION: ${UV_VERSION:-0.10.10}
+        UV_PYTHON: ${UV_PYTHON:-3.10}
+        CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
+        BASE_IMAGE: ${BASE_IMAGE:-ubuntu:22.04}
+        ROS_DISTRO: ${ROS_DISTRO:-humble}
+        TARGETARCH: ${TARGETARCH:-amd64}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
+      - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
+
+  # 순수 개발 전용 템플릿
+  base-dev:
+    extends: base-common
+    environment:
+      <<: *common-env
+
+  # NVIDIA 가속 템플릿
+  base-nvidia:
+    extends: base-common
+    environment:
+      <<: [*common-env, *nvidia-env]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, video, utility, graphics, display]
+
+  # ROS 전용 템플릿
+  base-ros:
+    extends: base-common
+    environment:
+      <<: *common-env
+    healthcheck: *ros-healthcheck
+
+  # ROS + NVIDIA 병합 템플릿
+  base-ros-nvidia:
+    extends: base-nvidia
+    healthcheck: *ros-healthcheck

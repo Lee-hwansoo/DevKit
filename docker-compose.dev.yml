@@ -2,206 +2,88 @@
 # ros2_docker_template/docker-compose.dev.yml
 # 개발(Dev) 환경 설정 — GUI 연동 및 소스 코드 바인드 마운트
 # =============================================================================
-# 사용 방법:
-#   ROS 환경:        make ros       / make ros-shell
-#   순수 환경:        make dev       / make dev-shell
-#   (NVIDIA GPU 자동 감지 — .env의 GPU_MODE로 수동 설정 가능)
-#
-# 특징:
-#   - 하드웨어 가속(GPU), GUI(X11/Wayland) 자동 연동
-#   - 호스트 네트워크 모드 (ROS DDS 통신 최적화)
-#   - ccache/uv 캐시 호스트 볼륨 공유
-#
-# 💡 팁: 'make ros' 등을 통한 실행을 권장합니다. 'docker compose up'을 직접 실행하면
-#   Makefile의 호스트 환경 진단(Wayland 소켓 경로 등)이 누락될 수 있습니다.
-# =============================================================================
 
-# ── 공통 환경변수 (map 형식 — anchor merge로 선택적 override 가능) ─────────
-# GPU 프로파일 서비스는 GPU_MODE만 override, 나머지는 여기서 상속
-x-common-env: &common-env
-  LANG: ${LANG:-ko_KR.UTF-8}
-  TZ: ${TZ:-Asia/Seoul}
-  DISPLAY: ${DISPLAY:-:0}
-  WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
-  XDG_RUNTIME_DIR: /tmp/runtime-root
-  XAUTHORITY: /root/.Xauthority
-  QT_X11_NO_MITSHM: "1"
-  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-  RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
-  ROS_MASTER_URI: ${ROS_MASTER_URI:-http://localhost:11311}
-  ROS_HOSTNAME: ${ROS_HOSTNAME:-localhost}
-  ROS_IP: ${ROS_IP:-}
-  GPU_MODE: ${GPU_MODE:-auto}
-  CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
-  UV_CACHE_DIR: /cache/uv
-  UV_TOOL_DIR: /cache/uv/tools
-  UV_LINK_MODE: copy
-  UV_PYTHON: ${UV_PYTHON:-3.10}
+include:
+  - path: docker-compose.common.yml
 
-# ── NVIDIA GPU 전용 환경변수 (Anchor) ───────────────────────────────────
-x-nvidia-env: &nvidia-env
-  GPU_MODE: nvidia
-  NVIDIA_VISIBLE_DEVICES: all
-  NVIDIA_DRIVER_CAPABILITIES: all
-  LIBGL_ALWAYS_SOFTWARE: "0"
-  __NV_PRIME_RENDER_OFFLOAD: "1"
-  __GLX_VENDOR_LIBRARY_NAME: nvidia
+# ── 개발 환경 전용 앵커 ────────────────────────────────────────────────────
+x-gpu-devices: &gpu-devices
+  devices:
+    - /dev/dri:/dev/dri
 
-# ── 공통 빌드 인자 ────────────────────────────────────────────────────────
-x-build-args: &build-args
-  LANG: ${LANG:-ko_KR.UTF-8}
-  APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
-  UV_VERSION: ${UV_VERSION:-0.10.10}
-  PYTHON_VERSION: ${UV_PYTHON:-3.10}
-  CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
-  BASE_IMAGE: ${BASE_IMAGE:-ubuntu:22.04}
-  ROS_DISTRO: ${ROS_DISTRO:-humble}
-
-# ── 공통 서비스 설정 ──────────────────────────────────────────────────────
-x-common-svc: &common-svc
-  restart: unless-stopped
-  privileged: true # CAN bus, USB, /dev 전체 접근에 필요
-  tty: true
-  stdin_open: true
-  network_mode: host # ROS2 DDS discovery
-  ipc: host # ROS2 shared memory transport (FastDDS zero-copy)
-  ulimits:
-    nofile:
-      soft: 65535
-      hard: 65535
-
-# ── NVIDIA GPU 예약 공통 설정 ──────────────────────────────────────────
-x-nvidia-deploy: &nvidia-deploy
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: all
-          capabilities: [gpu, compute, video, utility, graphics, display]
-
-# ── 공통 볼륨 설정 ────────────────────────────────────────────────────────
-x-ros-volumes: &ros-volumes
-  - /tmp/.X11-unix:/tmp/.X11-unix:rw
-  - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
-  # 호스트의 Wayland 런타임 폴더(있을 경우)를 컨테이너 내부 런타임 폴더로 마운트
-  - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
+x-dev-volumes: &dev-volumes
   - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw
-  # 하이브리드 볼륨: .env에서 변수 조정으로 네임드 볼륨 vs 호스트 바인드 마운트 전환 가능
+  - ${GIT_CONFIG_PATH:-${HOME}/.gitconfig}:/root/.gitconfig:ro
+  - ${SSH_PATH:-${HOME}/.ssh}:/root/.ssh:ro
+  - ${DOCKER_DEV_CACHE_DIR:-${WORKSPACE_PATH}/.docker_cache}:/cache:rw
+  - ${DEV_BUILD_VOL:-dev_build_data}:/workspace/build
+  - ${DEV_INSTALL_VOL:-dev_install_data}:/workspace/install
+
+x-ros-volumes: &ros-volumes
+  - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw
+  - ${GIT_CONFIG_PATH:-${HOME}/.gitconfig}:/root/.gitconfig:ro
+  - ${SSH_PATH:-${HOME}/.ssh}:/root/.ssh:ro
+  - ${DOCKER_DEV_CACHE_DIR:-${WORKSPACE_PATH}/.docker_cache}:/cache:rw
   - ${ROS_BUILD_VOL:-ros_build_data}:/workspace/build
   - ${ROS_INSTALL_VOL:-ros_install_data}:/workspace/install
   - ${ROS_LOG_VOL:-ros_log_data}:/workspace/log
-  - ${DOCKER_DEV_CACHE_DIR:-${WORKSPACE_PATH}/.docker_cache}:/cache:rw
-  # /dev 및 /sys/devices 는 privileged: true 시 자동 접근되므로 명시적 마운트 생략
-  - ${GIT_CONFIG_PATH:-${HOME}/.gitconfig}:/root/.gitconfig:ro
-  - ${SSH_PATH:-${HOME}/.ssh}:/root/.ssh:ro
 
-x-dev-volumes: &dev-volumes # GUI (X11 / Wayland)
-  - /tmp/.X11-unix:/tmp/.X11-unix:rw
-  - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
-  - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
-  # 소스 코드 및 작업 공간 (bind mount — /workspace)
-  - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw
-  # 빌드 아티팩트 격리 (하이브리드 대응)
-  - ${DEV_BUILD_VOL:-dev_build_data}:/workspace/build
-  - ${DEV_INSTALL_VOL:-dev_install_data}:/workspace/install
-  # 컴파일러/패키지 캐시 (호스트 바인드 마운트로 ros2 서비스와 공유 및 영구 유지)
-  - ${DOCKER_DEV_CACHE_DIR:-${WORKSPACE_PATH}/.docker_cache}:/cache:rw
-  # /dev 및 /sys/devices 는 privileged: true 시 자동 접근되므로 명시적 마운트 생략
-  # Git / SSH
-  - ${GIT_CONFIG_PATH:-${HOME}/.gitconfig}:/root/.gitconfig:ro
-  - ${SSH_PATH:-${HOME}/.ssh}:/root/.ssh:ro
+# ── 개발 환경 서비스 공유 설정 앵커 ──────────────────────────────────────────
+x-dev-shared: &dev-shared
+  build: { target: dev }
+  volumes: *dev-volumes
+  command: ["bash", "-c", "${APP_COMMAND:-bash}"]
 
-# ── 공통 Healthcheck ──────────────────────────────────────────────────────
-x-ros-healthcheck: &ros-healthcheck
-  test:
-    [
-      "CMD",
-      "bash",
-      "-c",
-      "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
-    ]
-  interval: 30s
-  timeout: 10s
-  retries: 3
-  start_period: 15s
+x-ros-dev-shared: &ros-dev-shared
+  build: { target: ros }
+  volumes: *ros-volumes
+  command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-bash}"]
 
 services:
-
-  # ── 순수 C++/Python 서비스 (ROS 없음) ───────────────────────────────────
-  # make basic / make shell-dev
+  # ── 순수 C++/Python 서비스 ──────────────────────────────────────────────
   basic:
-    <<: *common-svc
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.dev
-      target: dev
-      args:
-        <<: *build-args
+    extends:
+      file: docker-compose.common.yml
+      service: base-dev
+    <<: *dev-shared
     container_name: ${COMPOSE_PROJECT_NAME}_basic
-    environment:
-      <<: *common-env
-    volumes: *dev-volumes
-    command: ["bash", "-c", "${APP_COMMAND:-bash}"]
 
-  # ── NVIDIA GPU 프로파일 (dev 타겟 기반, ROS 없음) ──────────────────────
-  # 사용: make nvidia
+  basic-igpu:
+    extends: basic
+    profiles: ["igpu"]
+    <<: *gpu-devices
+    container_name: ${COMPOSE_PROJECT_NAME}_basic_igpu
+
   nvidia:
-    <<: *common-svc
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.dev
-      target: dev
-      args:
-        <<: *build-args
-    profiles:
-      - nvidia
+    extends:
+      file: docker-compose.common.yml
+      service: base-nvidia
+    <<: *dev-shared
+    profiles: ["nvidia"]
     container_name: ${COMPOSE_PROJECT_NAME}_nvidia
-    environment:
-      <<: [*common-env, *nvidia-env]
-    volumes: *dev-volumes
-    command: ["bash", "-c", "${APP_COMMAND:-bash}"]
-    deploy: *nvidia-deploy
 
-  # ── ROS 서비스 (기본 - .env의 ROS_DISTRO에 따라 ROS1/ROS2 결정) ─────────────────
-  # make ros-basic / make shell
+  # ── ROS 서비스 (기본) ───────────────────────────────────────────────────
   ros-basic:
-    <<: *common-svc
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.dev
-      target: ros
-      args:
-        <<: *build-args
+    extends:
+      file: docker-compose.common.yml
+      service: base-ros
+    <<: *ros-dev-shared
     container_name: ${COMPOSE_PROJECT_NAME}_ros_basic
-    environment:
-      <<: *common-env
-    volumes: *ros-volumes
-    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-bash}"]
-    healthcheck: *ros-healthcheck
 
-  # ── NVIDIA GPU 프로파일 (ros 타겟 기반) ──────────────────────────────────
-  # 사용: make ros-nvidia
+  ros-igpu:
+    extends: ros-basic
+    profiles: ["ros-igpu"]
+    <<: *gpu-devices
+    container_name: ${COMPOSE_PROJECT_NAME}_ros_igpu
+
   ros-nvidia:
-    <<: *common-svc
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.dev
-      target: ros
-      args:
-        <<: *build-args
-    profiles:
-      - ros-nvidia
+    extends:
+      file: docker-compose.common.yml
+      service: base-ros-nvidia
+    <<: *ros-dev-shared
+    profiles: ["ros-nvidia"]
     container_name: ${COMPOSE_PROJECT_NAME}_ros_nvidia
-    environment:
-      <<: [*common-env, *nvidia-env]
-    volumes: *ros-volumes
-    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-bash}"]
-    deploy: *nvidia-deploy
-    healthcheck: *ros-healthcheck
 
-# Docker Compose가 COMPOSE_PROJECT_NAME을 자동으로 prefix로 붙임
-# 주의: .env에서 XXX_VOL 변수를 수정하여 새로운 네임드 볼륨을 쓰려면 아래에도 선언해야 합니다.
-# (로컬 상대 경로인 ./build 등은 아래 선언 없이 사용 가능합니다.)
 volumes:
   ros_build_data:
   ros_install_data:

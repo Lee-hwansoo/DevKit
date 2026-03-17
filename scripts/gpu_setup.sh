@@ -137,6 +137,13 @@ setup_software() {
 # Auto Detection
 # =============================================================================
 setup_auto() {
+    # If LIBGL_ALWAYS_SOFTWARE is already 1 (e.g. from docker-compose), respect it.
+    if [ "${LIBGL_ALWAYS_SOFTWARE:-0}" = "1" ]; then
+        log_info "LIBGL_ALWAYS_SOFTWARE=1 detected from environment. Using software rendering."
+        setup_software
+        return
+    fi
+
     local detected=false
     local ds=$(detect_display_server)
 
@@ -246,15 +253,17 @@ case "${1:-auto}" in
     intel)              setup_intel ;;
     amd)                setup_amd ;;
     nvidia)             setup_nvidia ;;
+    igpu)               setup_auto ;;
     cpu|software)       setup_software ;;
     status)             gpu_status ;;
     auto|"")            setup_auto ;;
     *)
-        echo "Usage: source gpu_setup.sh {auto|intel|amd|nvidia|cpu|status}"
+        echo "Usage: source gpu_setup.sh {auto|intel|amd|nvidia|igpu|cpu|status}"
         ;;
 esac
 
 # ROS2 환경 복구 (GPU 설정 후 PATH가 깨지는 경우 방지)
-if [ -f "/opt/ros/${ROS_DISTRO:-humble}/setup.bash" ]; then
-    source "/opt/ros/${ROS_DISTRO:-humble}/setup.bash" 2>/dev/null || true
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
+if [ -f "$ROS_SETUP" ]; then
+    source "$ROS_SETUP" 2>/dev/null || true
 fi

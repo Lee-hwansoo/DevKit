@@ -11,6 +11,14 @@
 #   make status      — 프로젝트 및 GPU 상태 확인
 # =============================================================================
 
+# 진단 엔진 연동 (자동 감지)
+DETECTOR := bash scripts/env_detector.sh
+$(foreach line,$(shell $(DETECTOR)),$(eval $(line)))
+
+# TARGETARCH 자동 매칭
+TARGETARCH := $(HOST_ARCH)
+
+# 환경 변수 로드 (.env 설정이 자동 감지값보다 우선하도록 나중에 로드)
 -include .env
 export
 
@@ -18,10 +26,8 @@ COMPOSE := docker compose
 COMPOSE_DEV := -f docker-compose.dev.yml
 COMPOSE_PROD := -f docker-compose.prod.yml
 
-# 진단 엔진 연동
-DETECTOR := bash scripts/env_detector.sh
-$(foreach line,$(shell $(DETECTOR)),$(eval $(line)))
-export HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_ARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY
+# 인프라 핵심 변수 export
+export HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_ARCH TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY
 
 .PHONY: help setup check xauth status \
         build-ros build-dev rebuild-ros rebuild-dev \
@@ -82,7 +88,7 @@ status: check
 	@echo "  ---------------------------------------------------"
 	@echo "  프로젝트 이름: $(COMPOSE_PROJECT_NAME)"
 	@echo "  ROS 버전:      $(ROS_DISTRO)"
-	@echo "  아키텍처:      $(HOST_ARCH)"
+	@echo "  아키텍처:      $(HOST_ARCH) (Target: $(TARGETARCH))"
 	@echo "  디스플레이:    $(DISPLAY) ($(DISPLAY_TYPE))"
 	@if [ "$(DISPLAY_TYPE)" = "Wayland" ]; then \
 		echo "  Wayland 소켓:  $(HOST_XDG_RUNTIME_DIR)/$(HOST_WAYLAND_DISPLAY)"; \
@@ -157,6 +163,9 @@ ros: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 ROS 환경을 시작합니다..."; \
 		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_DEV) --profile ros-nvidia up -d ros-nvidia; \
+	elif [ "$(HAS_DRI)" = "true" ]; then \
+		echo "  iGPU(Intel/AMD) 가속 모드로 ROS 환경을 시작합니다..."; \
+		GPU_MODE=igpu $(COMPOSE) $(COMPOSE_DEV) --profile ros-igpu up -d ros-igpu; \
 	else \
 		echo "  기본 모드로 ROS 환경을 시작합니다..."; \
 		$(COMPOSE) $(COMPOSE_DEV) up -d ros-basic; \
@@ -167,6 +176,9 @@ dev: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 순수 개발 환경을 시작합니다..."; \
 		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_DEV) --profile nvidia up -d nvidia; \
+	elif [ "$(HAS_DRI)" = "true" ]; then \
+		echo "  iGPU(Intel/AMD) 가속 모드로 순수 개발 환경을 시작합니다..."; \
+		GPU_MODE=igpu $(COMPOSE) $(COMPOSE_DEV) --profile igpu up -d basic-igpu; \
 	else \
 		echo "  기본 모드로 순수 개발 환경을 시작합니다..."; \
 		$(COMPOSE) $(COMPOSE_DEV) up -d basic; \
@@ -214,29 +226,31 @@ dev-term: check xauth
 # =============================================================================
 # 배포 실행 (Prod) - 자동 GPU 감지
 # =============================================================================
-ros-prod: check
+ros-prod: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 ROS 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) $(COMPOSE_PROD) --profile ros-nv up -d; \
+		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_PROD) up -d --profile ros-nv; \
 	elif [ "$(HAS_DRI)" = "true" ]; then \
 		echo "  iGPU(Intel/AMD) 가속 모드로 ROS 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) $(COMPOSE_PROD) --profile ros-igpu up -d; \
+		GPU_MODE=igpu $(COMPOSE) $(COMPOSE_PROD) up -d --profile ros-igpu; \
 	else \
 		echo "  기본 모드로 ROS 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) $(COMPOSE_PROD) --profile ros up -d; \
+		GPU_MODE=cpu $(COMPOSE) $(COMPOSE_PROD) up -d --profile ros; \
 	fi
+	@$(MAKE) logs
 
-dev-prod: check
+dev-prod: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 순수 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) $(COMPOSE_PROD) --profile dev-nv up -d; \
+		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_PROD) up -d --profile dev-nv; \
 	elif [ "$(HAS_DRI)" = "true" ]; then \
 		echo "  iGPU(Intel/AMD) 가속 모드로 순수 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) $(COMPOSE_PROD) --profile dev-igpu up -d; \
+		GPU_MODE=igpu $(COMPOSE) $(COMPOSE_PROD) up -d --profile dev-igpu; \
 	else \
 		echo "  기본 모드로 순수 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) $(COMPOSE_PROD) --profile dev up -d; \
+		GPU_MODE=cpu $(COMPOSE) $(COMPOSE_PROD) up -d --profile dev; \
 	fi
+	@$(MAKE) logs
 
 # =============================================================================
 # 유지보수
@@ -264,9 +278,9 @@ clean-builder:
 	docker builder prune -f
 
 clean:
-	$(COMPOSE) $(COMPOSE_DEV) down -v
+	$(COMPOSE) $(COMPOSE_DEV) down -v --remove-orphans
 	@if [ -f docker-compose.prod.yml ]; then \
-		$(COMPOSE) $(COMPOSE_PROD) down -v 2>/dev/null || true; \
+		$(COMPOSE) $(COMPOSE_PROD) down -v --remove-orphans 2>/dev/null || true; \
 	fi
 	@echo "  $(COMPOSE_PROJECT_NAME) 관련 모든 네임드 볼륨을 삭제합니다..."
 	@VOLUMES=$$(docker volume ls -q --filter "name=$(COMPOSE_PROJECT_NAME)"); \
@@ -277,7 +291,13 @@ clean:
 clean-cache:
 	@CACHE_DIR=$(DOCKER_DEV_CACHE_DIR); \
 	if [ -z "$$CACHE_DIR" ]; then CACHE_DIR=$(WORKSPACE_PATH)/.docker_cache; fi; \
+	if [ -z "$$CACHE_DIR" ] || [ "$$CACHE_DIR" = "/" ] || ! (echo "$$CACHE_DIR" | grep -q "$(COMPOSE_PROJECT_NAME)" || echo "$$CACHE_DIR" | grep -q "$(WORKSPACE_PATH)"); then \
+		echo "  [오류] 캐시 경로($$CACHE_DIR)가 유효하지 않거나 안전하지 않습니다."; \
+		exit 1; \
+	fi; \
 	if [ -d "$$CACHE_DIR" ]; then \
+		echo "  호스트 측 도커 캐시 폴더($$CACHE_DIR)를 정말 삭제하시겠습니까? [y/N]"; \
+		read ans && if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo "  삭제를 취소합니다."; exit 1; fi; \
 		echo "  호스트 측 도커 캐시 폴더($$CACHE_DIR)를 삭제합니다..."; \
 		sudo rm -rf "$$CACHE_DIR"; \
 	fi
@@ -285,4 +305,3 @@ clean-cache:
 clean-all: clean clean-cache
 	@echo "  $(COMPOSE_PROJECT_NAME) 관련 모든 도커 빌드 캐시를 정리합니다..."
 	docker builder prune -a -f
-
