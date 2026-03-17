@@ -1,5 +1,5 @@
 # =============================================================================
-# ros2_docker_template/docker/Dockerfile
+# ros2_docker_template/docker/Dockerfile.dev
 # 멀티스테이지 기반 고성능 개발 환경 이미지
 # =============================================================================
 
@@ -8,7 +8,7 @@ ARG BASE_IMAGE=ubuntu:22.04
 ARG ROS_DISTRO=humble
 ARG APT_SNAPSHOT_DATE=latest
 ARG UV_VERSION=0.10.10
-ARG PYTHON_VERSION=3.10
+ARG UV_PYTHON=3.10
 ARG CMAKE_CXX_STANDARD=17
 
 # ── Stage 1: base ─────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ FROM gui-tools AS python-runtime
 
 ARG UV_VERSION
 ARG ROS_DISTRO
-ARG PYTHON_VERSION
+ARG UV_PYTHON
 ARG TARGETARCH
 
 RUN case "${TARGETARCH}" in \
@@ -142,7 +142,7 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/uv
 
 # 주입된 PYTHON_VERSION을 사용하여 uv가 관리하는 Python 설치
-RUN uv python install ${PYTHON_VERSION}
+RUN uv python install ${UV_PYTHON}
 
 # ── Stage 6: common ───────────────────────────────────────────────────────
 # 공통 환경 설정
@@ -151,7 +151,7 @@ FROM python-runtime AS common
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CMAKE_CXX_STANDARD
 ARG ROS_DISTRO
-ARG PYTHON_VERSION
+ARG UV_PYTHON
 
 # 캐시 디렉토리 (named volume 초기화용 — entrypoint.sh가 mkdir -p로 보완)
 RUN mkdir -p /cache/ccache /cache/uv /workspace/install
@@ -168,7 +168,7 @@ ENV PATH="/usr/lib/ccache:/workspace/install/.venv/bin:$PATH" \
     UV_CACHE_DIR=/cache/uv \
     UV_TOOL_DIR=/cache/uv/tools \
     UV_LINK_MODE=copy \
-    UV_PYTHON=${PYTHON_VERSION} \
+    UV_PYTHON=${UV_PYTHON} \
     VIRTUAL_ENV=/workspace/install/.venv \
     CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
 
@@ -213,17 +213,17 @@ ARG ROS_DISTRO
 # ROS 1 (noetic) vs ROS 2 (humble) 리포지토리 설정 및 필수 패키지 설치
 RUN /tmp/internal_apt_helper.sh setup-ros-repo ${ROS_DISTRO} && \
     if [ "${ROS_DISTRO}" = "noetic" ]; then \
-        apt-get install -y --no-install-recommends \
-            ros-${ROS_DISTRO}-desktop-full \
-            python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential \
-            python3-catkin-tools python3-osrf-pycommon python3-colcon-common-extensions python3-vcstool; \
+    apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-desktop-full \
+    python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential \
+    python3-catkin-tools python3-osrf-pycommon python3-colcon-common-extensions python3-vcstool; \
     else \
-        apt-get install -y --no-install-recommends \
-            ros-${ROS_DISTRO}-desktop \
-            ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
-            ros-${ROS_DISTRO}-gazebo-ros-pkgs \
-            ros-${ROS_DISTRO}-xacro ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-tf2-ros \
-            python3-colcon-common-extensions python3-rosdep python3-argcomplete python3-vcstool; \
+    apt-get install -y --no-install-recommends \
+    ros-${ROS_DISTRO}-desktop \
+    ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+    ros-${ROS_DISTRO}-gazebo-ros-pkgs \
+    ros-${ROS_DISTRO}-xacro ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-tf2-ros \
+    python3-colcon-common-extensions python3-rosdep python3-argcomplete python3-vcstool; \
     fi
 
 RUN rosdep init && rosdep update --rosdistro ${ROS_DISTRO}

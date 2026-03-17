@@ -8,7 +8,7 @@ ARG BASE_IMAGE=ubuntu:22.04
 ARG ROS_DISTRO=humble
 ARG APT_SNAPSHOT_DATE=latest
 ARG UV_VERSION=0.10.10
-ARG PYTHON_VERSION=3.10
+ARG UV_PYTHON=3.10
 ARG CMAKE_CXX_STANDARD=17
 
 # ── Stage 0A: base-ubuntu (Common Setup) ────────────────────────────────────
@@ -39,7 +39,7 @@ RUN chmod +x /tmp/internal_apt_helper.sh && /tmp/internal_apt_helper.sh configur
 FROM base-ubuntu AS builder-dev
 ARG DEBIAN_FRONTEND=noninteractive
 ARG UV_VERSION
-ARG PYTHON_VERSION
+ARG UV_PYTHON
 ARG CMAKE_CXX_STANDARD
 ARG TARGETARCH
 ARG ROS_DISTRO
@@ -61,7 +61,7 @@ RUN case "${TARGETARCH}" in \
     && chmod +x /usr/local/bin/uv
 
 # 프로젝트 전용 Python 버전 설치 (재현성 보장)
-RUN uv python install ${PYTHON_VERSION}
+RUN uv python install ${UV_PYTHON}
 
 WORKDIR /workspace
 COPY src/ src/
@@ -139,7 +139,7 @@ CMD ["bash"]
 FROM base-ros AS builder-ros
 ARG DEBIAN_FRONTEND=noninteractive
 ARG ROS_DISTRO
-ARG PYTHON_VERSION
+ARG UV_PYTHON
 ARG CMAKE_CXX_STANDARD
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

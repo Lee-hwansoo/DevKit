@@ -13,7 +13,7 @@
 #   - 빌드 아티팩트가 이미지 내부에 포함됨 (소스 마운트 없음)
 #
 # ⚠ 주의: x-common-env, x-nvidia-env, x-nvidia-deploy, x-ros-healthcheck는
-#   docker-compose.yml과 동기화가 필요합니다. 한쪽을 수정하면 다른 쪽도 확인하세요.
+#   docker-compose.dev.yml과 동기화가 필요합니다. 한쪽을 수정하면 다른 쪽도 확인하세요.
 # =============================================================================
 
 # ── 공통 환경변수 (런타임 제어용) ──────────────────────────────────────
@@ -86,7 +86,13 @@ x-prod-build: &prod-build
 
 # ── 공통 Healthcheck ──────────────────────────────────────────────────────
 x-ros-healthcheck: &ros-healthcheck
-  test: ["CMD", "bash", "-c", "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)"]
+  test:
+    [
+      "CMD",
+      "bash",
+      "-c",
+      "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
+    ]
   interval: 30s
   timeout: 10s
   retries: 3
@@ -105,7 +111,7 @@ services:
       <<: *common-env
       LIBGL_ALWAYS_SOFTWARE: "1"
     volumes: *prod-volumes
-    command: ["bash", "-c", "echo 'Add your main ROS launch command here' && sleep infinity"]
+    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-echo 'Add ROS_LAUNCH_COMMAND to .env' && sleep infinity}"]
     healthcheck: *ros-healthcheck
 
   # ── [ROS] iGPU 배포 환경 (Intel/AMD 가속) ──────────────────────────
@@ -121,7 +127,7 @@ services:
     devices:
       - /dev/dri:/dev/dri
     volumes: *prod-volumes
-    command: ["bash", "-c", "echo 'Add your main ROS launch command here' && sleep infinity"]
+    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-echo 'Add ROS_LAUNCH_COMMAND to .env' && sleep infinity}"]
     healthcheck: *ros-healthcheck
 
   # ── [ROS] NVIDIA 배포 환경 ──────────────────────────────────────────
@@ -138,7 +144,7 @@ services:
     devices:
       - /dev/dri:/dev/dri
     volumes: *prod-volumes
-    command: ["bash", "-c", "echo 'Add your main ROS launch command here' && sleep infinity"]
+    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-echo 'Add ROS_LAUNCH_COMMAND to .env' && sleep infinity}"]
     healthcheck: *ros-healthcheck
 
   # ── [Dev] 순수 C++/Python 배포 환경 (CPU 전용 - 가속 없음) ─────────
@@ -153,7 +159,12 @@ services:
       <<: *common-env
       LIBGL_ALWAYS_SOFTWARE: "1"
     volumes: *prod-volumes
-    command: ["bash", "-c", "echo 'Add your main dev executable command here' && sleep infinity"]
+    command:
+      [
+        "bash",
+        "-c",
+        "echo 'Add your main dev executable command here' && sleep infinity",
+      ]
 
   # ── [Dev] 순수 C++/Python iGPU 배포 환경 (Intel/AMD 가속) ──────────
   dev-prod-igpu:
@@ -168,7 +179,7 @@ services:
     devices:
       - /dev/dri:/dev/dri
     volumes: *prod-volumes
-    command: ["bash", "-c", "echo 'Add your main dev executable command here' && sleep infinity"]
+    command: ["bash", "-c", "${APP_COMMAND:-echo 'Add APP_COMMAND to .env' && sleep infinity}"]
 
   # ── [Dev] 순수 C++/Python NVIDIA 배포 환경 ───────────────────────────
   dev-prod-nv:
@@ -184,4 +195,4 @@ services:
     devices:
       - /dev/dri:/dev/dri
     volumes: *prod-volumes
-    command: ["bash", "-c", "echo 'Add your main dev executable command here' && sleep infinity"]
+    command: ["bash", "-c", "${APP_COMMAND:-echo 'Add APP_COMMAND to .env' && sleep infinity}"]

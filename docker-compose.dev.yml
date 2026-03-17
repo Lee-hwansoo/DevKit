@@ -1,7 +1,7 @@
 # =============================================================================
-# ros2_docker_template/docker-compose.yml
-# 개발(Dev) 환경 구동을 위한 메인 컴포즈 파일
-#
+# ros2_docker_template/docker-compose.dev.yml
+# 개발(Dev) 환경 설정 — GUI 연동 및 소스 코드 바인드 마운트
+# =============================================================================
 # 사용 방법:
 #   ROS 환경:        make ros       / make ros-shell
 #   순수 환경:        make dev       / make dev-shell
@@ -60,11 +60,11 @@ x-build-args: &build-args
 # ── 공통 서비스 설정 ──────────────────────────────────────────────────────
 x-common-svc: &common-svc
   restart: unless-stopped
-  privileged: true        # CAN bus, USB, /dev 전체 접근에 필요
+  privileged: true # CAN bus, USB, /dev 전체 접근에 필요
   tty: true
   stdin_open: true
-  network_mode: host      # ROS2 DDS discovery
-  ipc: host               # ROS2 shared memory transport (FastDDS zero-copy)
+  network_mode: host # ROS2 DDS discovery
+  ipc: host # ROS2 shared memory transport (FastDDS zero-copy)
   ulimits:
     nofile:
       soft: 65535
@@ -95,8 +95,7 @@ x-ros-volumes: &ros-volumes
   - ${GIT_CONFIG_PATH:-${HOME}/.gitconfig}:/root/.gitconfig:ro
   - ${SSH_PATH:-${HOME}/.ssh}:/root/.ssh:ro
 
-x-dev-volumes: &dev-volumes
-  # GUI (X11 / Wayland)
+x-dev-volumes: &dev-volumes # GUI (X11 / Wayland)
   - /tmp/.X11-unix:/tmp/.X11-unix:rw
   - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
   - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
@@ -114,28 +113,19 @@ x-dev-volumes: &dev-volumes
 
 # ── 공통 Healthcheck ──────────────────────────────────────────────────────
 x-ros-healthcheck: &ros-healthcheck
-  test: ["CMD", "bash", "-c", "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)"]
+  test:
+    [
+      "CMD",
+      "bash",
+      "-c",
+      "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
+    ]
   interval: 30s
   timeout: 10s
   retries: 3
   start_period: 15s
 
 services:
-  # ── ROS 서비스 (기본 - .env의 ROS_DISTRO에 따라 ROS1/ROS2 결정) ─────────────────
-  # make ros-basic / make shell
-  ros-basic:
-    <<: *common-svc
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: ros
-      args:
-        <<: *build-args
-    container_name: ${COMPOSE_PROJECT_NAME}_ros_basic
-    environment:
-      <<: *common-env
-    volumes: *ros-volumes
-    healthcheck: *ros-healthcheck
 
   # ── 순수 C++/Python 서비스 (ROS 없음) ───────────────────────────────────
   # make basic / make shell-dev
@@ -143,7 +133,7 @@ services:
     <<: *common-svc
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.dev
       target: dev
       args:
         <<: *build-args
@@ -151,6 +141,7 @@ services:
     environment:
       <<: *common-env
     volumes: *dev-volumes
+    command: ["bash", "-c", "${APP_COMMAND:-bash}"]
 
   # ── NVIDIA GPU 프로파일 (dev 타겟 기반, ROS 없음) ──────────────────────
   # 사용: make nvidia
@@ -158,7 +149,7 @@ services:
     <<: *common-svc
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.dev
       target: dev
       args:
         <<: *build-args
@@ -168,7 +159,25 @@ services:
     environment:
       <<: [*common-env, *nvidia-env]
     volumes: *dev-volumes
+    command: ["bash", "-c", "${APP_COMMAND:-bash}"]
     deploy: *nvidia-deploy
+
+  # ── ROS 서비스 (기본 - .env의 ROS_DISTRO에 따라 ROS1/ROS2 결정) ─────────────────
+  # make ros-basic / make shell
+  ros-basic:
+    <<: *common-svc
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+      target: ros
+      args:
+        <<: *build-args
+    container_name: ${COMPOSE_PROJECT_NAME}_ros_basic
+    environment:
+      <<: *common-env
+    volumes: *ros-volumes
+    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-bash}"]
+    healthcheck: *ros-healthcheck
 
   # ── NVIDIA GPU 프로파일 (ros 타겟 기반) ──────────────────────────────────
   # 사용: make ros-nvidia
@@ -176,7 +185,7 @@ services:
     <<: *common-svc
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.dev
       target: ros
       args:
         <<: *build-args
@@ -186,6 +195,7 @@ services:
     environment:
       <<: [*common-env, *nvidia-env]
     volumes: *ros-volumes
+    command: ["bash", "-c", "${ROS_LAUNCH_COMMAND:-bash}"]
     deploy: *nvidia-deploy
     healthcheck: *ros-healthcheck
 

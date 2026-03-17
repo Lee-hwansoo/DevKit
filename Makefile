@@ -15,6 +15,8 @@
 export
 
 COMPOSE := docker compose
+COMPOSE_DEV := -f docker-compose.dev.yml
+COMPOSE_PROD := -f docker-compose.prod.yml
 
 # 진단 엔진 연동
 DETECTOR := bash scripts/env_detector.sh
@@ -134,20 +136,19 @@ check: check-host
 	@mkdir -p ~/.ssh && touch ~/.gitconfig
 	@if [ ! -f $(HOST_XAUTHORITY) ]; then touch $(HOST_XAUTHORITY) 2>/dev/null || true; fi
 
-# =============================================================================
 # 빌드 (Build)
 # =============================================================================
 build-ros: check
-	$(COMPOSE) build ros-basic
+	$(COMPOSE) $(COMPOSE_DEV) build ros-basic
 
 build-dev: check
-	$(COMPOSE) build basic
+	$(COMPOSE) $(COMPOSE_DEV) build basic
 
 rebuild-ros: check
-	$(COMPOSE) build --no-cache ros-basic
+	$(COMPOSE) $(COMPOSE_DEV) build --no-cache ros-basic
 
 rebuild-dev: check
-	$(COMPOSE) build --no-cache basic
+	$(COMPOSE) $(COMPOSE_DEV) build --no-cache basic
 
 # =============================================================================
 # 실행 및 셸 진입 (Dev) - 자동 GPU 감지
@@ -155,20 +156,20 @@ rebuild-dev: check
 ros: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 ROS 환경을 시작합니다..."; \
-		GPU_MODE=nvidia $(COMPOSE) --profile ros-nvidia up -d ros-nvidia; \
+		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_DEV) --profile ros-nvidia up -d ros-nvidia; \
 	else \
 		echo "  기본 모드로 ROS 환경을 시작합니다..."; \
-		$(COMPOSE) up -d ros-basic; \
+		$(COMPOSE) $(COMPOSE_DEV) up -d ros-basic; \
 	fi
 	@echo "  셸 진입: make ros-shell (기존 창) 또는 make ros-term (새 창)"
 
 dev: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 순수 개발 환경을 시작합니다..."; \
-		GPU_MODE=nvidia $(COMPOSE) --profile nvidia up -d nvidia; \
+		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_DEV) --profile nvidia up -d nvidia; \
 	else \
 		echo "  기본 모드로 순수 개발 환경을 시작합니다..."; \
-		$(COMPOSE) up -d basic; \
+		$(COMPOSE) $(COMPOSE_DEV) up -d basic; \
 	fi
 	@echo "  셸 진입: make dev-shell (기존 창) 또는 make dev-term (새 창)"
 
@@ -216,46 +217,46 @@ dev-term: check xauth
 ros-prod: check
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 ROS 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) -f docker-compose.prod.yml --profile ros-nv up -d; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile ros-nv up -d; \
 	elif [ "$(HAS_DRI)" = "true" ]; then \
 		echo "  iGPU(Intel/AMD) 가속 모드로 ROS 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) -f docker-compose.prod.yml --profile ros-igpu up -d; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile ros-igpu up -d; \
 	else \
 		echo "  기본 모드로 ROS 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) -f docker-compose.prod.yml --profile ros up -d; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile ros up -d; \
 	fi
 
 dev-prod: check
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 순수 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) -f docker-compose.prod.yml --profile dev-nv up -d; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile dev-nv up -d; \
 	elif [ "$(HAS_DRI)" = "true" ]; then \
 		echo "  iGPU(Intel/AMD) 가속 모드로 순수 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) -f docker-compose.prod.yml --profile dev-igpu up -d; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile dev-igpu up -d; \
 	else \
 		echo "  기본 모드로 순수 배포 서비스를 시작합니다..."; \
-		$(COMPOSE) -f docker-compose.prod.yml --profile dev up -d; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile dev up -d; \
 	fi
 
 # =============================================================================
 # 유지보수
 # =============================================================================
 down:
-	$(COMPOSE) down
+	$(COMPOSE) $(COMPOSE_DEV) down
 	@if [ -f docker-compose.prod.yml ]; then \
-		$(COMPOSE) -f docker-compose.prod.yml down 2>/dev/null || true; \
+		$(COMPOSE) $(COMPOSE_PROD) down 2>/dev/null || true; \
 	fi
 
 logs:
-	@if [ -n "$$($(COMPOSE) ps --status running -q 2>/dev/null)" ]; then \
+	@if [ -n "$$($(COMPOSE) $(COMPOSE_DEV) ps --status running -q 2>/dev/null)" ]; then \
 		echo "  [Dev] 개발 환경 로그를 스트리밍합니다..."; \
-		$(COMPOSE) logs -f --tail 100; \
-	elif [ -f docker-compose.prod.yml ] && [ -n "$$($(COMPOSE) -f docker-compose.prod.yml ps --status running -q 2>/dev/null)" ]; then \
+		$(COMPOSE) $(COMPOSE_DEV) logs -f --tail 100; \
+	elif [ -f docker-compose.prod.yml ] && [ -n "$$($(COMPOSE) $(COMPOSE_PROD) ps --status running -q 2>/dev/null)" ]; then \
 		echo "  [Prod] 배포 환경 로그를 스트리밍합니다..."; \
-		$(COMPOSE) -f docker-compose.prod.yml logs -f --tail 100; \
+		$(COMPOSE) $(COMPOSE_PROD) logs -f --tail 100; \
 	else \
 		echo "  [Dev] 개발 환경 로그를 스트리밍합니다..."; \
-		$(COMPOSE) logs -f --tail 100; \
+		$(COMPOSE) $(COMPOSE_DEV) logs -f --tail 100; \
 	fi
 
 clean-builder:
@@ -263,9 +264,9 @@ clean-builder:
 	docker builder prune -f
 
 clean:
-	$(COMPOSE) down -v
+	$(COMPOSE) $(COMPOSE_DEV) down -v
 	@if [ -f docker-compose.prod.yml ]; then \
-		$(COMPOSE) -f docker-compose.prod.yml down -v 2>/dev/null || true; \
+		$(COMPOSE) $(COMPOSE_PROD) down -v 2>/dev/null || true; \
 	fi
 	@echo "  $(COMPOSE_PROJECT_NAME) 관련 모든 네임드 볼륨을 삭제합니다..."
 	@VOLUMES=$$(docker volume ls -q --filter "name=$(COMPOSE_PROJECT_NAME)"); \
