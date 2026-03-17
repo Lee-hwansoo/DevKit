@@ -256,9 +256,9 @@ dev-prod: check xauth
 # 유지보수
 # =============================================================================
 down:
-	$(COMPOSE) $(COMPOSE_DEV) down
+	$(COMPOSE) $(COMPOSE_DEV) --profile "*" down --remove-orphans
 	@if [ -f docker-compose.prod.yml ]; then \
-		$(COMPOSE) $(COMPOSE_PROD) down 2>/dev/null || true; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile "*" down --remove-orphans 2>/dev/null || true; \
 	fi
 
 logs:
@@ -278,9 +278,9 @@ clean-builder:
 	docker builder prune -f
 
 clean:
-	$(COMPOSE) $(COMPOSE_DEV) down -v --remove-orphans
+	$(COMPOSE) $(COMPOSE_DEV) --profile "*" down -v --remove-orphans
 	@if [ -f docker-compose.prod.yml ]; then \
-		$(COMPOSE) $(COMPOSE_PROD) down -v --remove-orphans 2>/dev/null || true; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile "*" down -v --remove-orphans 2>/dev/null || true; \
 	fi
 	@echo "  $(COMPOSE_PROJECT_NAME) 관련 모든 네임드 볼륨을 삭제합니다..."
 	@VOLUMES=$$(docker volume ls -q --filter "name=$(COMPOSE_PROJECT_NAME)"); \

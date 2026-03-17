@@ -139,10 +139,32 @@ RUN /tmp/internal_apt_helper.sh setup-ros-repo ${ROS_DISTRO} && \
     apt-get update && \
     if [ "${ROS_DISTRO}" = "noetic" ]; then \
     apt-get install -y \
-    ros-${ROS_DISTRO}-desktop-full python3-rosdep python3-rosinstall python3-rosinstall-generator python3-wstool build-essential python3-catkin-tools python3-osrf-pycommon python3-colcon-common-extensions python3-vcstool; \
+    ros-${ROS_DISTRO}-ros-base \
+    ros-${ROS_DISTRO}-rviz \
+    ros-${ROS_DISTRO}-rqt \
+    ros-${ROS_DISTRO}-xacro \
+    ros-${ROS_DISTRO}-cv-bridge \
+    ros-${ROS_DISTRO}-tf \
+    python3-catkin-tools \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    python3-argcomplete \
+    python3-vcstool \
+    build-essential; \
     else \
     apt-get install -y \
-    ros-${ROS_DISTRO}-desktop ros-${ROS_DISTRO}-rmw-cyclonedds-cpp ros-${ROS_DISTRO}-gazebo-ros-pkgs ros-${ROS_DISTRO}-xacro ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-tf2-ros python3-colcon-common-extensions python3-rosdep python3-argcomplete python3-vcstool; \
+    ros-${ROS_DISTRO}-ros-base \
+    ros-${ROS_DISTRO}-rviz2 \
+    ros-${ROS_DISTRO}-rqt \
+    ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+    ros-${ROS_DISTRO}-gazebo-ros-pkgs \
+    ros-${ROS_DISTRO}-xacro \
+    ros-${ROS_DISTRO}-cv-bridge \
+    ros-${ROS_DISTRO}-tf2-ros \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    python3-argcomplete \
+    python3-vcstool; \
     fi
 RUN rosdep init && rosdep update --rosdistro ${ROS_DISTRO}
 

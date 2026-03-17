@@ -47,7 +47,6 @@ x-ros-healthcheck: &ros-healthcheck
 services:
   # 기본 서비스 템플릿
   base-common:
-    image: busybox # 추상 서비스를 위한 플레이스홀더
     restart: unless-stopped
     tty: true
     stdin_open: true
