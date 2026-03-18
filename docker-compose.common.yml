@@ -44,11 +44,10 @@ x-nvidia-deploy: &nvidia-deploy
 
 # ── 공통 Healthcheck ──────────────────────────────────────────────────────
 x-ros-healthcheck: &ros-healthcheck
-  test:
-    [
-      "CMD-SHELL",
-      ". /opt/ros/$${ROS_DISTRO:-humble}/setup.bash 2>/dev/null && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
-    ]
+  test: [
+    "CMD", "bash", "-c",
+    ". /opt/ros/$${ROS_DISTRO:-humble}/setup.bash 2>/dev/null && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)"
+  ]
   interval: 30s
   timeout: 10s
   retries: 3
