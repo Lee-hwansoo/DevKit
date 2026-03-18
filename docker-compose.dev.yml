@@ -32,17 +32,15 @@ x-ros-volumes: &ros-volumes
 
 # ── 개발 환경 서비스 공유 설정 앵커 ──────────────────────────────────────────
 x-dev-shared: &dev-shared
-  build: { target: dev }
+  build:
+    target: dev
   volumes: *dev-volumes
-  environment:
-    DOCKER_VOL_PREFIX: dev
   command: ${APP_COMMAND:-bash}
 
 x-ros-dev-shared: &ros-dev-shared
-  build: { target: ros }
+  build:
+    target: ros
   volumes: *ros-volumes
-  environment:
-    DOCKER_VOL_PREFIX: ros
   command: ${ROS_LAUNCH_COMMAND:-bash}
 
 services:

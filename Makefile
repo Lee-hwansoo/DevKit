@@ -86,6 +86,15 @@ define SCALE_SERVICE
 	$(COMPOSE) $1 --profile $$TARGET_SVC up -d --scale $$TARGET_SVC=$(N) $$TARGET_SVC
 endef
 
+# $1: COMPOSE_FILES, $2: SERVICE_PREFIX, $3: MSG, $4: EXTRA_ARGS, $5: HINT_MSG
+define BUILD_SERVICE
+	@$(DETECT_MODE) \
+	TARGET_SVC=$2-$$CHOSEN_MODE; \
+	echo "  [$3] 이미지를 빌드합니다 (Service: $$TARGET_SVC)..."; \
+	$(COMPOSE) $1 build $4 $$TARGET_SVC
+	@echo "\n  [Hint] $5"
+endef
+
 # 인프라 핵심 변수 export
 export HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_ARCH TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR
 
@@ -202,63 +211,32 @@ check: check-host
 # 빌드 (Build)
 # =============================================================================
 build-ros: check
-	@$(DETECT_MODE) \
-	TARGET_SVC=ros-$$CHOSEN_MODE; \
-	echo "  [Build] ROS 이미지를 빌드합니다 (Service: $$TARGET_SVC)..."; \
-	$(COMPOSE) $(COMPOSE_DEV) build $$TARGET_SVC
-	@echo "\n[Hint] 빌드가 완료되었습니다! 'make ros'를 실행하여 컨테이너를 시작하세요."
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,Build ROS,,"빌드가 완료되었습니다! 'make ros'를 실행하여 컨테이너를 시작하세요.")
 
 build-dev: check
-	@$(DETECT_MODE) \
-	TARGET_SVC=basic-$$CHOSEN_MODE; \
-	echo "  [Build] 순수 개발 이미지를 빌드합니다 (Service: $$TARGET_SVC)..."; \
-	$(COMPOSE) $(COMPOSE_DEV) build $$TARGET_SVC
-	@echo "\n[Hint] 빌드가 완료되었습니다! 'make dev'를 실행하여 컨테이너를 시작하세요."
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Build 순수 개발,,"빌드가 완료되었습니다! 'make dev'를 실행하여 컨테이너를 시작하세요.")
 
 rebuild-ros: check
-	@$(DETECT_MODE) \
-	TARGET_SVC=ros-$$CHOSEN_MODE; \
-	echo "  [Rebuild] 캐시 없이 ROS 이미지를 처음부터 다시 빌드합니다 (Service: $$TARGET_SVC)..."; \
-	$(COMPOSE) $(COMPOSE_DEV) build --no-cache $$TARGET_SVC
-	@echo "\n[Hint] 빌드가 완료되었습니다! 'make ros'를 실행하여 컨테이너를 시작하세요."
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,Rebuild 캐시 없이 ROS,--no-cache,"빌드가 완료되었습니다! 'make ros'를 실행하여 컨테이너를 시작하세요.")
 
 rebuild-dev: check
-	@$(DETECT_MODE) \
-	TARGET_SVC=basic-$$CHOSEN_MODE; \
-	echo "  [Rebuild] 캐시 없이 순수 개발 이미지를 처음부터 다시 빌드합니다 (Service: $$TARGET_SVC)..."; \
-	$(COMPOSE) $(COMPOSE_DEV) build --no-cache $$TARGET_SVC
-	@echo "\n[Hint] 빌드가 완료되었습니다! 'make dev'를 실행하여 컨테이너를 시작하세요."
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Rebuild 캐시 없이 순수 개발,--no-cache,"빌드가 완료되었습니다! 'make dev'를 실행하여 컨테이너를 시작하세요.")
 
 build-ros-prod: check
 	@echo "  [Notice] 최상의 빌드 품질을 위해 'make clean'을 먼저 수행하는 것이 권장됩니다 (현재 빌드 시작...)"
-	@$(DETECT_MODE) \
-	TARGET_SVC=ros-$$CHOSEN_MODE; \
-	$(COMPOSE) $(COMPOSE_PROD) build $$TARGET_SVC
-	@echo "\n  [Hint] 배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make ros-prod'로 실행하세요."
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Bake 배포용 ROS,,"배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make ros-prod'로 실행하세요.")
 
 build-dev-prod: check
 	@echo "  [Notice] 최상의 빌드 품질을 위해 'make clean'을 먼저 수행하는 것이 권장됩니다 (현재 빌드 시작...)"
-	@$(DETECT_MODE) \
-	TARGET_SVC=basic-$$CHOSEN_MODE; \
-	echo "  [Bake] 배포용 순수 개발 이미지를 빌드합니다 (Service: $$TARGET_SVC)..."; \
-	$(COMPOSE) $(COMPOSE_PROD) build $$TARGET_SVC
-	@echo "\n  [Hint] 배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make dev-prod'로 실행하세요."
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Bake 배포용 순수 개발,,"배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make dev-prod'로 실행하세요.")
 
 rebuild-ros-prod: check
 	@echo "  [Notice] 최상의 빌드 품질을 위해 'make clean'을 먼저 수행하는 것이 권장됩니다 (현재 빌드 시작...)"
-	@$(DETECT_MODE) \
-	TARGET_SVC=ros-$$CHOSEN_MODE; \
-	echo "  [Rebuild] 캐시 없이 배포용 ROS 이미지를 처음부터 다시 빌드합니다 (Service: $$TARGET_SVC)..."; \
-	$(COMPOSE) $(COMPOSE_PROD) build --no-cache $$TARGET_SVC
-	@echo "\n  [Hint] 배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make ros-prod'로 실행하세요."
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Rebuild 캐시 없이 배포용 ROS,--no-cache,"배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make ros-prod'로 실행하세요.")
 
 rebuild-dev-prod: check
 	@echo "  [Notice] 최상의 빌드 품질을 위해 'make clean'을 먼저 수행하는 것이 권장됩니다 (현재 빌드 시작...)"
-	@$(DETECT_MODE) \
-	TARGET_SVC=basic-$$CHOSEN_MODE; \
-	echo "  [Rebuild] 캐시 없이 배포용 순수 개발 이미지를 처음부터 다시 빌드합니다 (Service: $$TARGET_SVC)..."; \
-	$(COMPOSE) $(COMPOSE_PROD) build --no-cache $$TARGET_SVC
-	@echo "\n  [Hint] 배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make dev-prod'로 실행하세요."
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Rebuild 캐시 없이 배포용 순수 개발,--no-cache,"배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make dev-prod'로 실행하세요.")
 
 # =============================================================================
 # 실행 및 셸 진입 (Dev) - 자동 GPU 감지
