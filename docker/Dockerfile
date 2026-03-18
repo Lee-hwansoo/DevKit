@@ -17,8 +17,13 @@ ARG TARGETARCH=amd64
 # ── Stage 1: base (Shared OS Context) ───────────────────────────────────────
 FROM ${BASE_IMAGE} AS base
 ARG LANG
+ARG ROS_DISTRO
 ARG APT_SNAPSHOT_DATE
 ARG DEBIAN_FRONTEND
+ENV LANG=${LANG} \
+    LC_ALL=${LANG} \
+    ROS_DISTRO=${ROS_DISTRO} \
+    DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 
 # 공통 빌드 헬퍼 및 의존성 정의 파일 중앙화
 COPY scripts/internal_apt_helper.sh /tmp/internal_apt_helper.sh
@@ -35,11 +40,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && locale-gen ${LANG} \
     && update-locale LANG=${LANG}
 
-ENV LANG=${LANG} LC_ALL=${LANG}
-
 # ── Stage: runtime-common (Shared Runtime Context) ─────────────────────────
 FROM base AS runtime-common
-ARG LANG
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -52,7 +54,6 @@ RUN chmod +x /entrypoint.sh /opt/scripts/gpu_setup.sh
 
 # ── Stage 2: base-tools (Shared Utilities) ───────────────────────────────
 FROM base AS base-tools
-ARG DEBIAN_FRONTEND
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -63,7 +64,7 @@ FROM base-tools AS build-tools
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev python3-pip python3-venv
+    build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev
 
 # ── Stage 4: gui-tools (Graphics & Display) ───────────────────────────────
 FROM build-tools AS gui-tools
@@ -83,6 +84,7 @@ RUN wget -q https://github.com/naver/d2codingfont/releases/download/VER1.3.2/D2C
 FROM gui-tools AS python-runtime
 ARG UV_VERSION
 ARG UV_PYTHON
+ARG TARGETARCH
 
 RUN case "${TARGETARCH}" in \
     amd64) UV_ARCH="x86_64-unknown-linux-musl" ;; \
@@ -129,7 +131,7 @@ WORKDIR /workspace
 
 FROM common AS ros-base
 ARG ROS_DISTRO
-ARG DEBIAN_FRONTEND
+ENV ROS_DISTRO=${ROS_DISTRO}
 RUN /tmp/internal_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -138,9 +140,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rosdep update --rosdistro ${ROS_DISTRO}
 
 FROM ros-base AS ros
-ARG ROS_DISTRO
-ARG CMAKE_CXX_STANDARD
-ENV ROS_DISTRO=${ROS_DISTRO} COLCON_HOME=/workspace
+ENV COLCON_HOME=/workspace
 RUN mkdir -p /workspace/src && \
     cat /docker_dev/config/bashrc_ros.sh >> /root/.bashrc && \
     ln -sf /docker_dev/config/colcon.meta /workspace/colcon.meta
@@ -153,8 +153,6 @@ WORKDIR /workspace
 
 # ── Stage 8: Production Builds (Bake) ───────────────────────────────────────
 FROM python-runtime AS builder-dev
-ARG CMAKE_CXX_STANDARD
-ARG ROS_DISTRO
 WORKDIR /workspace
 COPY src/ src/
 COPY pyproject.toml* uv.lock* ./
@@ -170,8 +168,6 @@ RUN mkdir -p build && cd build && \
     make -j$(nproc) && make install DESTDIR=/workspace/install
 
 FROM ros-base AS builder-ros
-ARG ROS_DISTRO
-ARG CMAKE_CXX_STANDARD
 WORKDIR /workspace
 COPY src/ src/
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -185,8 +181,6 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
 
 # ── Stage 9: Final Runtime Images (Switch) ──────────────────────────────────
 FROM runtime-common AS dev-runtime
-ARG ROS_DISTRO
-ARG LANG
 WORKDIR /workspace
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -198,10 +192,6 @@ ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]
 
 FROM runtime-common AS ros-runtime
-ARG ROS_DISTRO
-ARG APT_SNAPSHOT_DATE
-ARG LANG
-ENV ROS_DISTRO=${ROS_DISTRO}
 WORKDIR /workspace
 RUN /tmp/internal_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

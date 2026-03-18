@@ -19,12 +19,14 @@ init_apt() {
 setup_snapshot() {
     local date=$1
     if [ "$date" != "latest" ] && [ -n "$date" ]; then
+        # [Common] Disable Valid-Until for snapshots
+        echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99-disable-valid-until
+
         if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
             # [Ubuntu 24.04+ (DEB822 Format)]
             echo "APT::Snapshot \"$date\";" > /etc/apt/apt.conf.d/99-snapshot
         elif [ -f /etc/apt/sources.list ]; then
             # [Ubuntu 20.04 / 22.04 (Legacy Format)]
-            echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99-disable-valid-until
             sed -i "s|http://archive.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/$date/|g" /etc/apt/sources.list
             sed -i "s|http://security.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/$date/|g" /etc/apt/sources.list
             sed -i "s|http://ports.ubuntu.com/ubuntu-ports/|http://snapshot.ubuntu.com/ubuntu-ports/$date/|g" /etc/apt/sources.list
@@ -110,7 +112,13 @@ install_packages() {
 
     if [ -n "$pkgs" ]; then
         echo "[APT Helper] Installing ($filter) packages for $distro ($target_tag): $pkgs"
-        apt-get update
+        if ! apt-get update; then
+            echo "[APT Helper] ERROR: 'apt-get update' failed."
+            if [ -f /etc/apt/apt.conf.d/99-snapshot ]; then
+                echo "[APT Helper] TIP: An APT Snapshot is active. If this persists, the snapshot date might be invalid or the repository might be down."
+            fi
+            exit 1
+        fi
         apt-get install -y --no-install-recommends $pkgs
     else
         echo "[APT Helper] No packages matched filter ($filter, $target_tag)"
