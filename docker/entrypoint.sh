@@ -27,7 +27,7 @@ done
 # [1] Clean Workspace (Volume Linking)
 # =============================================================================
 # Named Volume 사용 시 호스트에 빈 폴더가 생기는 것을 방지하기 위해
-# /opt/dockervol에 마운트된 볼륨을 /workspace로 심볼릭 링크합니다.
+# DOCKER_VOL_MOUNT_ROOT에 마운트된 볼륨을 /workspace로 심볼릭 링크합니다.
 setup_link() {
     local src=$1
     local dest=$2
@@ -45,13 +45,18 @@ setup_link() {
 
 # 워크스페이스 루트로 이동하여 링크 생성
 cd /workspace
-setup_link /opt/dockervol/ros/build build
-setup_link /opt/dockervol/ros/install install
-setup_link /opt/dockervol/ros/log log
-setup_link /opt/dockervol/dev/build build
-setup_link /opt/dockervol/dev/install install
-setup_link /opt/dockervol/dev/log log
-setup_link /opt/dockervol/prod/log log
+
+# 환경 변수 기반 동적 볼륨 대응 (SSOT: DOCKER_VOL_MOUNT_ROOT)
+PREFIX=${DOCKER_VOL_PREFIX:-dev}
+MOUNT_ROOT=${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}
+MOUNT_TARGET="$MOUNT_ROOT/$PREFIX"
+
+if [ -d "$MOUNT_TARGET" ]; then
+    log_info "Linking volumes from $MOUNT_TARGET"
+    for subdir in build install log; do
+        setup_link "$MOUNT_TARGET/$subdir" "$subdir"
+    done
+fi
 
 # =============================================================================
 # [2] GPU 설정 — gpu_setup.sh에 위임 (SSOT)
@@ -104,10 +109,12 @@ if [ "$IS_DEV" = true ]; then
         export GDK_BACKEND="wayland,x11"
         log_ok "Exported Wayland GUI variables"
 
-        if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
-            log_warn "WAYLAND_DISPLAY is set but XDG_RUNTIME_DIR is empty. Attempting to set default..."
-            export XDG_RUNTIME_DIR="/tmp/runtime-root"
-            mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+        # Ensure XDG_RUNTIME_DIR exists with correct permissions (SSOT: /tmp/runtime-root)
+        XDG_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
+        export XDG_RUNTIME_DIR="$XDG_DIR"
+        if [ ! -d "$XDG_DIR" ]; then
+            mkdir -p "$XDG_DIR" && chmod 700 "$XDG_DIR"
+            log_ok "XDG_RUNTIME_DIR created: $XDG_DIR"
         fi
     else
         log_warn "No DISPLAY or WAYLAND_DISPLAY set — GUI apps will not work."
@@ -196,10 +203,11 @@ fi
 # [10] 의존성 자동 동기화 (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
-    TARGET_DIR="src/thirdparty"
-    if [ "$PWD" == "/workspace" ]; then
+    # 기본값으로 src/thirdparty를 유지하되 의존성 파일이 있는 경우만 동작
+    TARGET_DIR="${SYNC_TARGET_DIR:-src/thirdparty}"
+    if [ "$PWD" == "/workspace" ] && [ -f "dependencies/dependencies.repos" ]; then
         if [ ! -d "$TARGET_DIR" ] || [ -z "$(ls -A $TARGET_DIR 2>/dev/null)" ]; then
-            log_info "Thirdparty directory is empty. Running sync_deps.sh..."
+            log_info "Dependency directory ($TARGET_DIR) is empty. Running sync_deps.sh..."
             bash /docker_dev/scripts/sync_deps.sh
         fi
     fi

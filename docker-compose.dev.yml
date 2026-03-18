@@ -5,76 +5,72 @@
 include:
   - path: docker-compose.common.yml
 
-# ── 개발 환경 전용 앵커 ────────────────────────────────────────────────────
-x-gpu-devices: &gpu-devices
-  devices:
-    - /dev/dri:/dev/dri
-
+# ── 개발 환경 전용 볼륨 앵커 (Flat List) ──────────────────────────────────────
 x-dev-volumes: &dev-volumes
-  - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw
-  - ${GIT_CONFIG_PATH:-${HOME}/.gitconfig}:/root/.gitconfig:ro
-  - ${SSH_PATH:-${HOME}/.ssh}:/root/.ssh:ro
-  - ${DOCKER_DEV_CACHE_DIR:-${WORKSPACE_PATH}/.docker_cache}:/cache:rw
-  - ${DEV_BUILD_VOL:-dev_build_data}:/opt/dockervol/dev/build
-  - ${DEV_INSTALL_VOL:-dev_install_data}:/opt/dockervol/dev/install
-  - ${APP_LOG_VOL:-dev_log_data}:/opt/dockervol/dev/log
+  - ${WORKSPACE_PATH:-.}:/workspace:rw
+  - ${GIT_CONFIG_PATH:-${HOST_HOME:-${HOME}}/.gitconfig}:/root/.gitconfig:ro
+  - ${SSH_PATH:-${HOST_HOME:-${HOME}}/.ssh}:/root/.ssh:ro
+  - ${HOST_CACHE_DIR:-${WORKSPACE_PATH:-.}/.docker_cache}:/cache:rw
+  - ${DEV_BUILD_VOL:-dev_build_data}:${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}/dev/build
+  - ${DEV_INSTALL_VOL:-dev_install_data}:${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}/dev/install
+  - ${DEV_LOG_VOL:-dev_log_data}:${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}/dev/log
 
 x-ros-volumes: &ros-volumes
-  - ${WORKSPACE_PATH:?WORKSPACE_PATH를 .env에 설정하세요}:/workspace:rw
-  - ${GIT_CONFIG_PATH:-${HOME}/.gitconfig}:/root/.gitconfig:ro
-  - ${SSH_PATH:-${HOME}/.ssh}:/root/.ssh:ro
-  - ${DOCKER_DEV_CACHE_DIR:-${WORKSPACE_PATH}/.docker_cache}:/cache:rw
-  - ${ROS_BUILD_VOL:-ros_build_data}:/opt/dockervol/ros/build
-  - ${ROS_INSTALL_VOL:-ros_install_data}:/opt/dockervol/ros/install
-  - ${APP_LOG_VOL:-ros_log_data}:/opt/dockervol/ros/log
+  - ${WORKSPACE_PATH:-.}:/workspace:rw
+  - ${GIT_CONFIG_PATH:-${HOST_HOME:-${HOME}}/.gitconfig}:/root/.gitconfig:ro
+  - ${SSH_PATH:-${HOST_HOME:-${HOME}}/.ssh}:/root/.ssh:ro
+  - ${HOST_CACHE_DIR:-${WORKSPACE_PATH:-.}/.docker_cache}:/cache:rw
+  - ${ROS_BUILD_VOL:-ros_build_data}:${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}/ros/build
+  - ${ROS_INSTALL_VOL:-ros_install_data}:${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}/ros/install
+  - ${ROS_LOG_VOL:-ros_log_data}:${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}/ros/log
 
 # ── 개발 환경 서비스 공유 설정 앵커 ──────────────────────────────────────────
 x-dev-shared: &dev-shared
   build: { target: dev }
   volumes: *dev-volumes
+  environment:
+    DOCKER_VOL_PREFIX: dev
   command: ${APP_COMMAND:-bash}
 
 x-ros-dev-shared: &ros-dev-shared
   build: { target: ros }
   volumes: *ros-volumes
+  environment:
+    DOCKER_VOL_PREFIX: ros
   command: ${ROS_LAUNCH_COMMAND:-bash}
 
 services:
   # ── 순수 C++/Python 서비스 ──────────────────────────────────────────────
-  basic:
-    extends: base-dev
+  basic-cpu:
+    extends: { file: docker-compose.common.yml, service: base-dev }
     <<: *dev-shared
-    container_name: ${COMPOSE_PROJECT_NAME}_basic
+    profiles: ["basic-cpu"]
 
   basic-igpu:
-    extends: basic
-    profiles: ["igpu"]
-    <<: *gpu-devices
-    container_name: ${COMPOSE_PROJECT_NAME}_basic_igpu
-
-  nvidia:
-    extends: base-nvidia
+    extends: { file: docker-compose.common.yml, service: base-igpu }
     <<: *dev-shared
-    profiles: ["nvidia"]
-    container_name: ${COMPOSE_PROJECT_NAME}_nvidia
+    profiles: ["basic-igpu"]
+
+  basic-nvidia:
+    extends: { file: docker-compose.common.yml, service: base-nvidia }
+    <<: *dev-shared
+    profiles: ["basic-nvidia"]
 
   # ── ROS 서비스 (기본) ───────────────────────────────────────────────────
-  ros-basic:
-    extends: base-ros
+  ros-cpu:
+    extends: { file: docker-compose.common.yml, service: base-ros }
     <<: *ros-dev-shared
-    container_name: ${COMPOSE_PROJECT_NAME}_ros_basic
+    profiles: ["ros-cpu"]
 
   ros-igpu:
-    extends: ros-basic
+    extends: { file: docker-compose.common.yml, service: base-ros-igpu }
+    <<: *ros-dev-shared
     profiles: ["ros-igpu"]
-    <<: *gpu-devices
-    container_name: ${COMPOSE_PROJECT_NAME}_ros_igpu
 
   ros-nvidia:
-    extends: base-ros-nvidia
+    extends: { file: docker-compose.common.yml, service: base-ros-nvidia }
     <<: *ros-dev-shared
     profiles: ["ros-nvidia"]
-    container_name: ${COMPOSE_PROJECT_NAME}_ros_nvidia
 
 volumes:
   ros_build_data:

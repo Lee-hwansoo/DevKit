@@ -39,4 +39,4 @@ CMakeFiles/
 *.tar.gz
 
 # Documentation
-*.md
+# *.md (README.md 접근을 위해 주석 처리)

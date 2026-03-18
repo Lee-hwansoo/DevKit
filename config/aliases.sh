@@ -14,7 +14,7 @@ if [ -d /opt/ros ]; then
     # CMAKE_CXX_STANDARD은 .env → docker-compose → ENV로 주입됨
     alias cb='colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}'
     alias cbp='colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} --packages-select'
-    
+
     # 릴리즈용 (최적화)
     alias cbr='colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}'
     alias cbrp='colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} --packages-select'
@@ -38,7 +38,7 @@ if [ -d /opt/ros ]; then
     alias rr='ros2 run'
     alias rl='ros2 launch'
     alias ri='ros2 interface show'
-    
+
     # ROS 1 (noetic 감지 시)
     if [ "${ROS_DISTRO}" = "noetic" ]; then
         alias rt='rostopic list'

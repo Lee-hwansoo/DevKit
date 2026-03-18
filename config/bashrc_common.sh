@@ -8,7 +8,6 @@ export CCACHE_DIR=/cache/ccache
 
 # uv (Python)
 export UV_CACHE_DIR=/cache/uv
-export UV_TOOL_DIR=/cache/uv/tools
 export UV_PYTHON=${UV_PYTHON:-3.11}
 export UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
 
@@ -26,6 +25,11 @@ fi
 # uv (.venv) 자동 활성화
 if [ -f "/workspace/install/.venv/bin/activate" ]; then
     source "/workspace/install/.venv/bin/activate"
+fi
+
+# 환영 메시지 (MOTD)
+if [ -f /docker_dev/scripts/welcome.sh ]; then
+    bash /docker_dev/scripts/welcome.sh
 fi
 
 # 프롬프트

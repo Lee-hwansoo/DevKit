@@ -6,13 +6,18 @@
 # ── 공통 환경변수 (런타임) ──────────────────────────────────────────────
 # ⚠ 주의: 이 경로들은 docker/entrypoint.sh 내부 경로와 동기화되어야 합니다.
 x-common-env: &common-env
+  COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myproject}
   LANG: ${LANG:-C.UTF-8}
   TZ: ${TZ:-UTC}
   DISPLAY: ${DISPLAY:-:0}
+  DISPLAY_TYPE: ${DISPLAY_TYPE:-X11}
   WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
+  XDG_RUNTIME_DIR: /tmp/runtime-root
   UV_PYTHON: ${UV_PYTHON:-3.10}
   GPU_MODE: ${GPU_MODE:-auto}
+  DOCKER_VOL_MOUNT_ROOT: ${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}
   ROS_DISTRO: ${ROS_DISTRO:-humble}
+  SYNC_TARGET_DIR: ${SYNC_TARGET_DIR:-src/thirdparty}
   ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
   RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
   ROS_MASTER_URI: ${ROS_MASTER_URI:-http://localhost:11311}
@@ -22,20 +27,18 @@ x-common-env: &common-env
 
 x-nvidia-env: &nvidia-env
   <<: *common-env
-  GPU_MODE: ${GPU_MODE:-nvidia}
-  NVIDIA_VISIBLE_DEVICES: all
-  NVIDIA_DRIVER_CAPABILITIES: all
+  GPU_MODE: nvidia
+  NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+  NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-all}
   LIBGL_ALWAYS_SOFTWARE: "0"
-  __NV_PRIME_RENDER_OFFLOAD: "1"
-  __GLX_VENDOR_LIBRARY_NAME: nvidia
 
 x-nvidia-deploy: &nvidia-deploy
   resources:
     reservations:
       devices:
         - driver: nvidia
-          count: all
-          capabilities: [gpu, compute, video, utility, graphics, display]
+          count: ${NVIDIA_GPU_COUNT:-all}
+          capabilities: ["${NVIDIA_DRIVER_CAPABILITIES:-all}"]
 
 # ── GPU 장치 마운트 (Intel/AMD) ──────────────────────────────────────────
 # (앵커는 각 파일에서 로컬로 정의해야 호환됩니다)
@@ -71,6 +74,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       args:
+        DEBIAN_FRONTEND: ${DEBIAN_FRONTEND:-noninteractive}
         LANG: ${LANG:-C.UTF-8}
         APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
         UV_VERSION: ${UV_VERSION:-0.10.10}
@@ -82,7 +86,7 @@ services:
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${HOST_XAUTHORITY:-${HOME}/.Xauthority}:/root/.Xauthority:ro
-      - ${HOST_XDG_RUNTIME_DIR:-/tmp}:/tmp/runtime-root:rw
+      - ${HOST_XDG_RUNTIME_DIR:-/tmp/.docker_x11}:/tmp/runtime-root:rw
 
   # 순수 개발 전용 템플릿
   base-dev:
@@ -90,6 +94,13 @@ services:
     extends: base-common
     environment:
       <<: *common-env
+
+  # iGPU 가속 템플릿 (Intel/AMD)
+  base-igpu:
+    profiles: [abstract]
+    extends: base-dev
+    devices:
+      - /dev/dri:/dev/dri
 
   # NVIDIA 가속 템플릿
   base-nvidia:
@@ -107,6 +118,13 @@ services:
     environment:
       <<: *common-env
     healthcheck: *ros-healthcheck
+
+  # ROS + iGPU 가속 템플릿
+  base-ros-igpu:
+    profiles: [abstract]
+    extends: base-ros
+    devices:
+      - /dev/dri:/dev/dri
 
   # ROS + NVIDIA 병합 템플릿
   base-ros-nvidia:

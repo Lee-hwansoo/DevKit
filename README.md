@@ -10,10 +10,10 @@
 
 ## 💡 핵심 가치 (Why this Template?)
 
-*   **Zero-Pollution (격리)**: 호스트 PC에는 Docker만 설치하세요. 모든 라이브러리와 의존성은 컨테이너가 관리하여 시스템 충돌을 방지합니다.
-*   **Hardware Agnostic (범용성)**: NVIDIA, Intel, AMD GPU를 자동 감지합니다. **X11은 물론 최신 Wayland 환경**에서도 하드웨어 가속을 즉시 제공합니다.
-*   **Production Ready (운영)**: 개발 환경 아티팩트를 그대로 운영 이미지로 빌드하는 **Bake & Switch** 전략과 **의존성 자동 검증(Sanity Check)** 기능을 내장하고 있습니다.
-*   **Unified Workspace (표준)**: 모든 프로젝트가 동일한 디렉토리 구조(`src`, `build`, `install`)를 따라 팀 협업과 유지보수가 비약적으로 쉬워집니다.
+- **Zero-Pollution (격리)**: 호스트 PC에는 Docker만 설치하세요. 모든 라이브러리와 의존성은 컨테이너가 관리하여 시스템 충돌을 방지합니다.
+- **Hardware Agnostic (범용성)**: NVIDIA, Intel, AMD GPU를 자동 감지합니다. **X11은 물론 최신 Wayland 환경**에서도 하드웨어 가속을 즉시 제공합니다.
+- **Production Ready (운영)**: 개발 환경 아티팩트를 그대로 운영 이미지로 빌드하는 **Bake & Switch** 전략과 **의존성 자동 검증(Sanity Check)** 기능을 내장하고 있습니다.
+- **Unified Workspace (표준)**: 모든 프로젝트가 동일한 디렉토리 구조(`src`, `build`, `install`)를 따라 팀 협업과 유지보수가 비약적으로 쉬워집니다.
 
 ## 🌟 주요 기능 (Features)
 
@@ -34,7 +34,7 @@
 - **`src/`**: 모든 소스 코드 및 빌드 설정 (CMakeLists.txt, pyproject.toml 등)
 - **`build/`**: 컴파일러와 빌드 시스템이 사용하는 임시 빌드 공간
 - **`install/`**: 최종 실행 파일, 라이브러리, Python 가상환경(`.venv`)이 모이는 **배포 아티팩트** 폴더
-    - *Note: Python 가상환경을 `install/` 내부에 두어 배포 시 소스 없이도 독립적인 실행이 가능하도록 설계되었습니다. IDE 호환성을 위해 프로젝트 루트에 `.venv` 심볼릭 링크가 생성됩니다.*
+  - *Note: Python 가상환경을 `install/` 내부에 두어 배포 시 소스 없이도 독립적인 실행이 가능하도록 설계되었습니다. IDE 호환성을 위해 프로젝트 루트에 `.venv` 심볼릭 링크가 생성됩니다.*
 
 ---
 
@@ -66,7 +66,8 @@ nano .env
 
 ```ini
 COMPOSE_PROJECT_NAME=my_new_project         # 도커 리소스 고유 식별자 (필수 변경)
-WORKSPACE_PATH=/path/to/my_new_project      # 현재 프로젝트의 절대 경로 (필수 변경)
+
+# WORKSPACE_PATH=/path/to/my_new_project    # 프로젝트 절대 경로 (선택 사항, 기본값: 현재 경로)
 
 # ROS 2 (기본)
 BASE_IMAGE=ubuntu:22.04
@@ -123,6 +124,20 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 | **`cb`** | **ROS 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
 | **`sync_deps`** | 의존성 동기화 | `.repos` 기반 소스 다운로드 및 `src/thirdparty` 병합 |
 
+### 💡 유용한 약어 (Common Aliases)
+
+| 구분 | 약어 | 설명 | 기능 |
+| :--- | :--- | :--- | :--- |
+| **ROS** | `rt`, `rn`, `rs` | Topic, Node, Service | `ros2 topic/node/service list` |
+| | `rl`, `rr` | Launch, Run | `ros2 launch/run` |
+| | `s` | Workspace Source | `source install/setup.bash` |
+| **Python** | `activate` | venv 활성화 | `source install/.venv/bin/activate` |
+| | `uvs`, `uvp` | uv sync / pip | `uv sync`, `uv pip install` |
+| **GPU/HW** | `gpu_status` | GPU 상태 상세 | 현재 렌더러 및 가속 상태 확인 |
+| | `use_nvidia` | NVIDIA 강제 | `gpu_setup.sh nvidia` (즉시 전환) |
+| | `use_cpu` | 소프트웨어 렌더링 | `glxinfo` 진단 포함 |
+| **Nav** | `cw`, `cs` | 디렉토리 이동 | `/workspace`, `/workspace/src` 이동 |
+
 ---
 
 ## 🧹 유지관리 및 정리 명령어
@@ -139,6 +154,7 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 | **`make clean-cache`** | 컴파일 캐시 명시적 삭제 | 호스트 측 `.docker_cache`(ccache, uv) 폴더를 강제로 삭제 |
 | **`make clean-builder`** | 도커 빌드 캐시 정리 | Docker BuildKit 내부 캐시를 비워 호스트 디스크 용량 확보 |
 | **`make clean-all`** | 시스템 전체 초기화 | 모든 도커 볼륨 및 호스트 캐시를 삭제하여 초기화 |
+| **`make scale-basic N=2`** | 서비스 수평 확장 | (고급) `basic` 서비스를 N개로 확장 (예: `docker compose up --scale basic=2`) |
 
 ---
 
@@ -147,12 +163,13 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 배포 환경은 **Bake & Switch** 전략을 통해 소스 코드 없이 동작합니다.
 
 ### 1. 배포 이미지의 특징 (`Dockerfile.prod`)
+
 - **소스 코드 제외**: 빌드 단계(Builder)에서 생성된 `install/` 아티팩트만 최종 런타임 이미지로 복제합니다.
 - **자동 의존성 검증 (Sanity Check)**: 빌드 과정 중 `ldd`를 통해 필요한 공유 라이브러리가 모두 포함되었는지 검사하여 런타임 안정성을 보장합니다.
 - **결정성 극대화**: APT 스냅샷과 `uv sync --frozen`을 통해 환경의 완벽한 일관성을 유지합니다.
-- **보안 강화**: 최소 권한 원칙에 따라 `privileged` 모드를 제거하고 필요한 장치만 마운트합니다.
 
 ### 2. 배포 서비스 제어 명령어 (자동 GPU 감지)
+
 | 환경 구분 | 실행 명령어 | 특징 |
 | :--- | :--- | :--- |
 | **ROS 배포** | **`make ros-prod`** | 최적화된 ROS 아티팩트 기반 서비스 시작 |
@@ -163,14 +180,17 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 ## 📦 외부 의존성 관리 전략 (SSOT Determinism)
 
 ### 1. System Layer (APT)
+
 - **방법:** `dependencies/apt.txt`에 기입. 런타임 패키지는 뒤에 `# runtime` 주석 추가.
 - **효과:** BuildKit 캐시 마운트로 인해 패키지 추가 시 전체 레이어를 다시 받지 않고 즉시 설치됩니다.
 
 ### 2. Language Layer (C++/Python)
+
 - **C++:** `FetchDependencies.cmake`를 활용한 빌드 타임 의존성 해결.
 - **Python:** `uv.lock`과 `Dockerfile.prod` 내 가상환경 구축으로 결정성 있는 관리.
 
 ### 3. Workspace Layer (vcstool)
+
 - **방법:** `dependencies/dependencies.repos`에 명시. 브랜치 대신 **태그나 커밋 해시** 사용을 권장합니다.
 - **오버레이:** `dependencies/overlay/`의 파일이 `/workspace/src/thirdparty` 위로 안전하게 병합됩니다.
 

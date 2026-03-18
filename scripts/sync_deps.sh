@@ -14,20 +14,21 @@ log_info()  { echo -e "\033[0;36m${LOG_PREFIX} [INFO] $1\033[0m"; }
 log_ok()    { echo -e "\033[0;32m${LOG_PREFIX} [OK]   $1\033[0m"; }
 log_warn()  { echo -e "\033[0;33m${LOG_PREFIX} [WARN] $1\033[0m"; }
 
-# 1. 작업 공간 감지 및 대상 디렉토리 설정 (절대 경로 기반 정규화)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-# 컨테이너 내 작업 디렉토리 표준화 (/workspace)
-if [ -d "/workspace" ]; then
-    WORKSPACE_ROOT="/workspace"
+# 1. 작업 공간 및 프로젝트 루트 감지 (Hierarchical Detection)
+# 컨테이너 내 볼륨(/workspace) 우선, 그 외에는 스크립트 위치 기준 상위 탐색
+if [ -d "/workspace/dependencies" ]; then
+    PROJECT_ROOT="/workspace"
 else
-    WORKSPACE_ROOT="$PROJECT_ROOT"
+    # 스크립트(scripts/sync_deps.sh)로부터 상위 폴더를 루트로 간주
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
 
-TARGET_DIR="$WORKSPACE_ROOT/src/thirdparty"
-REPOS_FILE="$PROJECT_ROOT/dependencies/dependencies.repos"
-OVERLAY_DIR="$PROJECT_ROOT/dependencies/overlay"
+# 2. 주요 경로 설정 (SSOT)
+# SYNC_TARGET_DIR이 환경변수로 주입되었으면 이를 사용하고, 없으면 src/thirdparty를 기본값으로 사용
+REPOS_FILE="${PROJECT_ROOT}/dependencies/dependencies.repos"
+OVERLAY_DIR="${PROJECT_ROOT}/dependencies/overlay"
+TARGET_DIR="${PROJECT_ROOT}/${SYNC_TARGET_DIR:-src/thirdparty}"
 
 mkdir -p "$TARGET_DIR"
 
@@ -37,7 +38,7 @@ if ! command -v vcs &>/dev/null; then
 elif [ -f "$REPOS_FILE" ]; then
     log_info "Running vcs import to $TARGET_DIR ..."
     vcs import "$TARGET_DIR" < "$REPOS_FILE" || log_warn "vcs import completed with some warnings."
-    
+
     # 신규 추가된 저장소 확인 후 업데이트
     log_info "Performing vcs pull to update existing repositories..."
     vcs pull "$TARGET_DIR" || log_warn "vcs pull completed with some warnings."

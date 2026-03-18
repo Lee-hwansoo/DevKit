@@ -36,8 +36,10 @@ HOST_WAYLAND_DISPLAY="${WAYLAND_DISPLAY}"
 # sudo 대응: sudo로 실행 시 SUDO_USER의 실제 홈 디렉토리를 참조하여 X11 인증 파일 경로를 정확히 찾습니다.
 if [ -n "${SUDO_USER}" ]; then
     ORIGINAL_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
+    HOST_HOME="${ORIGINAL_HOME}"
     HOST_XAUTHORITY="${XAUTHORITY:-${ORIGINAL_HOME}/.Xauthority}"
 else
+    HOST_HOME="${HOME}"
     HOST_XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 fi
 
@@ -51,7 +53,15 @@ if [ -n "$WAYLAND_DISPLAY" ]; then
     fi
 fi
 
-# 4. 결과 출력 (Makefile 등에서 활용 가능한 KEY=VALUE 형식)
+# 4. 캐시 및 경로 설정 (SSOT)
+# DOCKER_DEV_CACHE_DIR이 설정되어 있으면 사용, 없으면 워크스페이스 내 .docker_cache 사용
+if [ -z "${DOCKER_DEV_CACHE_DIR}" ]; then
+    HOST_CACHE_DIR="${WORKSPACE_PATH:-$(pwd)}/.docker_cache"
+else
+    HOST_CACHE_DIR="${DOCKER_DEV_CACHE_DIR}"
+fi
+
+# 5. 결과 출력 (Makefile 등에서 활용 가능한 KEY=VALUE 형식)
 echo "HAS_NVIDIA=${HAS_NVIDIA}"
 echo "HAS_TOOLKIT=${HAS_TOOLKIT}"
 echo "HAS_DRI=${HAS_DRI}"
@@ -60,3 +70,5 @@ echo "DISPLAY_TYPE=${DISPLAY_TYPE}"
 echo "HOST_XDG_RUNTIME_DIR=${HOST_XDG_RUNTIME_DIR}"
 echo "HOST_WAYLAND_DISPLAY=${HOST_WAYLAND_DISPLAY}"
 echo "HOST_XAUTHORITY=${HOST_XAUTHORITY}"
+echo "HOST_HOME=${HOST_HOME}"
+echo "HOST_CACHE_DIR=${HOST_CACHE_DIR}"

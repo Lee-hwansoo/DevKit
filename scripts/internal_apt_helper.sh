@@ -59,33 +59,61 @@ setup_ros_repo() {
 install_packages() {
     local filter=$1  # "all" (dev/builder) or "runtime" (production)
     local distro=$2
+    local dep_dir=${3:-"/opt/dependencies"} # Default dependency directory
+
     local apt_file="/tmp/apt.txt"
     local ros_file="/tmp/apt_ros.txt"
 
-    local pkgs=""
+    # Fallback to centralized dependency directory if /tmp files don't exist
+    [ ! -f "$apt_file" ] && [ -f "${dep_dir}/apt.txt" ] && apt_file="${dep_dir}/apt.txt"
+    [ ! -f "$ros_file" ] && [ -f "${dep_dir}/apt_ros.txt" ] && ros_file="${dep_dir}/apt_ros.txt"
+
+    # Detect target ROS version tag
+    local target_tag="ros2"
+    [ "$distro" == "noetic" ] && target_tag="ros1"
+    local other_tag="ros1"
+    [ "$target_tag" == "ros1" ] && other_tag="ros2"
+
     local grep_pattern='^[^#]+'
     [ "$filter" == "runtime" ] && grep_pattern='^[^#]+ # runtime'
 
+    local pkgs=""
+
+    # helper for filtering
+    filter_pkg_list() {
+        local file=$1
+        local pattern=$2
+        if [ -f "$file" ]; then
+            # 1. Get lines matching basic pattern (e.g. # runtime)
+            # 2. Exclude lines explicitly tagged for the "other" version (e.g. # runtime,ros1)
+            # 3. Handle variables (${ROS_DISTRO}) and clean up comments
+            grep -E "$pattern" "$file" | \
+            grep -v -E " #.*,${other_tag}| # ${other_tag}" | \
+            sed "s/\${ROS_DISTRO}/$distro/g" | \
+            sed 's/ #.*//' | xargs || true
+        fi
+    }
+
     # Extract packages from apt.txt
     if [ -f "$apt_file" ]; then
-        pkgs=$(grep -E "$grep_pattern" "$apt_file" | sed 's/ # runtime.*//' | xargs || true)
+        pkgs=$(filter_pkg_list "$apt_file" "$grep_pattern")
     fi
 
-    # Extract packages from apt_ros.txt and handle ${ROS_DISTRO} variable
+    # Extract packages from apt_ros.txt
     if [ -f "$ros_file" ]; then
         local ros_pkgs
-        ros_pkgs=$(grep -E "$grep_pattern" "$ros_file" | sed 's/ # runtime.*//' | sed "s/\${ROS_DISTRO}/$distro/g" | xargs || true)
+        ros_pkgs=$(filter_pkg_list "$ros_file" "$grep_pattern")
         pkgs="$pkgs $ros_pkgs"
     fi
 
     pkgs=$(echo "$pkgs" | xargs) # Clean whitespace
 
     if [ -n "$pkgs" ]; then
-        echo "[APT Helper] Installing ($filter) packages: $pkgs"
+        echo "[APT Helper] Installing ($filter) packages for $distro ($target_tag): $pkgs"
         apt-get update
         apt-get install -y --no-install-recommends $pkgs
     else
-        echo "[APT Helper] No packages matched filter: $filter"
+        echo "[APT Helper] No packages matched filter ($filter, $target_tag)"
     fi
 }
 
@@ -100,7 +128,7 @@ case "$COMMAND" in
         setup_ros_repo "$2"
         ;;
     "install-packages")
-        install_packages "$2" "$3"
+        install_packages "$2" "$3" "$4"
         ;;
     *)
         echo "Usage: $0 {init-apt|configure-snapshot|setup-ros-repo|install-packages} [args...]"

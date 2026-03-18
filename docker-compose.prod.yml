@@ -6,66 +6,61 @@ include:
   - path: docker-compose.common.yml
 
 # ── 운영 환경 전용 앵커 ────────────────────────────────────────────────────
-x-gpu-devices: &gpu-devices
-  devices:
-    - /dev/dri:/dev/dri
-
 x-prod-svc: &prod-svc
   restart: always
+  environment:
+    DOCKER_VOL_PREFIX: prod
 
-# 배포 환경 전용 볼륨 (로그 등 영구 데이터)
 x-prod-volumes: &prod-volumes
-  - ${APP_LOG_VOL:-prod_log_data}:/opt/dockervol/prod/log
+  - ${PROD_LOG_VOL:-prod_log_data}:${DOCKER_VOL_MOUNT_ROOT:-/opt/dockervol}/prod/log
 
-# ── 배포 환경 서비스 공유 설정 앵커 ──────────────────────────────────────────
+# ── 배포 환경 서비스 공유 설정 (Image Naming SSOT) ──────────────────────────
 x-ros-prod-shared: &ros-prod-shared
   <<: *prod-svc
   image: ${COMPOSE_PROJECT_NAME}/ros-runtime:${IMAGE_TAG:-latest}
-  build:
-    target: ros-runtime
+  build: { target: ros-runtime }
   volumes: *prod-volumes
   command: ${ROS_LAUNCH_COMMAND:?ROS_LAUNCH_COMMAND를 .env에 설정하세요}
 
 x-dev-prod-shared: &dev-prod-shared
   <<: *prod-svc
   image: ${COMPOSE_PROJECT_NAME}/dev-runtime:${IMAGE_TAG:-latest}
-  build:
-    target: dev-runtime
+  build: { target: dev-runtime }
   volumes: *prod-volumes
   command: ${APP_COMMAND:?APP_COMMAND를 .env에 설정하세요}
 
 services:
   # ── [ROS] 배포 서비스 (CPU/iGPU/NVIDIA) ─────────────────────────────────
-  ros-prod:
-    extends: base-ros
+  ros-cpu:
+    extends: { file: docker-compose.common.yml, service: base-ros }
     <<: *ros-prod-shared
-    profiles: ["ros"]
+    profiles: ["ros-cpu"]
 
-  ros-prod-igpu:
-    extends: ros-prod
+  ros-igpu:
+    extends: { file: docker-compose.common.yml, service: base-ros-igpu }
+    <<: *ros-prod-shared
     profiles: ["ros-igpu"]
-    <<: *gpu-devices
 
-  ros-prod-nv:
-    extends: base-ros-nvidia
+  ros-nvidia:
+    extends: { file: docker-compose.common.yml, service: base-ros-nvidia }
     <<: *ros-prod-shared
-    profiles: ["ros-nv"]
+    profiles: ["ros-nvidia"]
 
-  # ── [Dev] 배포 서비스 (CPU/iGPU/NVIDIA) ──────────────────────────────────
-  dev-prod:
-    extends: base-dev
+  # ── [Basic] 배포 서비스 (CPU/iGPU/NVIDIA) ──────────────────────────────────
+  basic-cpu:
+    extends: { file: docker-compose.common.yml, service: base-dev }
     <<: *dev-prod-shared
-    profiles: ["dev"]
+    profiles: ["basic-cpu"]
 
-  dev-prod-igpu:
-    extends: dev-prod
-    profiles: ["dev-igpu"]
-    <<: *gpu-devices
-
-  dev-prod-nv:
-    extends: base-nvidia
+  basic-igpu:
+    extends: { file: docker-compose.common.yml, service: base-igpu }
     <<: *dev-prod-shared
-    profiles: ["dev-nv"]
+    profiles: ["basic-igpu"]
+
+  basic-nvidia:
+    extends: { file: docker-compose.common.yml, service: base-nvidia }
+    <<: *dev-prod-shared
+    profiles: ["basic-nvidia"]
 
 volumes:
   prod_log_data:

@@ -29,7 +29,13 @@ has_nvidia() {
 }
 
 # 디스플레이 서버 정밀 감지
+# 디스플레이 서버 정밀 감지 (Host에서 주입한 DISPLAY_TYPE 신뢰)
 detect_display_server() {
+    if [ -n "${DISPLAY_TYPE:-}" ]; then
+        echo "${DISPLAY_TYPE}"
+        return
+    fi
+
     if [ -n "$WAYLAND_DISPLAY" ]; then
         if [ "$XDG_SESSION_TYPE" = "x11" ] || [ -n "$DISPLAY" ]; then
             echo "XWayland"
@@ -87,6 +93,12 @@ EOF
 }
 
 setup_nvidia() {
+    # 명시적 호출이 아닌 경우, 이미 설정되어 있다면 불필요한 재설정 방지
+    if [ "${__GLX_VENDOR_LIBRARY_NAME:-}" = "nvidia" ] && [ "${__NV_PRIME_RENDER_OFFLOAD:-}" = "1" ]; then
+        log_info "NVIDIA environment already active. Skipping redundant setup."
+        return
+    fi
+
     reset_gpu_env
     export LIBGL_ALWAYS_SOFTWARE=0
     export __NV_PRIME_RENDER_OFFLOAD=1
@@ -97,9 +109,9 @@ setup_nvidia() {
 
     # Wayland/XWayland 전용 NVIDIA 설정
     if [[ "$ds" == *"Wayland"* ]]; then
-        export QT_QPA_PLATFORM="wayland;xcb"
-        export GDK_BACKEND="wayland,x11"
-        export GBM_BACKEND="nvidia-drm"
+        [ -z "${QT_QPA_PLATFORM:-}" ] && export QT_QPA_PLATFORM="wayland;xcb"
+        [ -z "${GDK_BACKEND:-}" ] && export GDK_BACKEND="wayland,x11"
+        [ -z "${GBM_BACKEND:-}" ] && export GBM_BACKEND="nvidia-drm"
         export __GL_GSYNC_ALLOWED=0
         export __GL_VRR_ALLOWED=0
         log_ok "NVIDIA Wayland optimizations applied"
@@ -110,6 +122,7 @@ setup_nvidia() {
 }
 
 setup_intel() {
+    if [ "${MESA_LOADER_DRIVER_OVERRIDE:-}" = "iris" ]; then return; fi
     reset_gpu_env
     export LIBGL_ALWAYS_SOFTWARE=0
     export MESA_LOADER_DRIVER_OVERRIDE=iris
@@ -118,6 +131,7 @@ setup_intel() {
 }
 
 setup_amd() {
+    if [ "${MESA_LOADER_DRIVER_OVERRIDE:-}" = "radeonsi" ]; then return; fi
     reset_gpu_env
     export LIBGL_ALWAYS_SOFTWARE=0
     export MESA_LOADER_DRIVER_OVERRIDE=radeonsi
@@ -126,6 +140,7 @@ setup_amd() {
 }
 
 setup_software() {
+    if [ "${LIBGL_ALWAYS_SOFTWARE:-0}" = "1" ] && [ "${GALLIUM_DRIVER:-}" = "llvmpipe" ]; then return; fi
     reset_gpu_env
     export LIBGL_ALWAYS_SOFTWARE=1
     export GALLIUM_DRIVER="llvmpipe"
