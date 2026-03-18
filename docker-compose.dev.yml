@@ -2,7 +2,6 @@
 # ros2_docker_template/docker-compose.dev.yml
 # 개발(Dev) 환경 설정 — GUI 연동 및 소스 코드 바인드 마운트
 # =============================================================================
-
 include:
   - path: docker-compose.common.yml
 
@@ -43,9 +42,7 @@ x-ros-dev-shared: &ros-dev-shared
 services:
   # ── 순수 C++/Python 서비스 ──────────────────────────────────────────────
   basic:
-    extends:
-      file: docker-compose.common.yml
-      service: base-dev
+    extends: base-dev
     <<: *dev-shared
     container_name: ${COMPOSE_PROJECT_NAME}_basic
 
@@ -56,18 +53,14 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME}_basic_igpu
 
   nvidia:
-    extends:
-      file: docker-compose.common.yml
-      service: base-nvidia
+    extends: base-nvidia
     <<: *dev-shared
     profiles: ["nvidia"]
     container_name: ${COMPOSE_PROJECT_NAME}_nvidia
 
   # ── ROS 서비스 (기본) ───────────────────────────────────────────────────
   ros-basic:
-    extends:
-      file: docker-compose.common.yml
-      service: base-ros
+    extends: base-ros
     <<: *ros-dev-shared
     container_name: ${COMPOSE_PROJECT_NAME}_ros_basic
 
@@ -78,9 +71,7 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME}_ros_igpu
 
   ros-nvidia:
-    extends:
-      file: docker-compose.common.yml
-      service: base-ros-nvidia
+    extends: base-ros-nvidia
     <<: *ros-dev-shared
     profiles: ["ros-nvidia"]
     container_name: ${COMPOSE_PROJECT_NAME}_ros_nvidia

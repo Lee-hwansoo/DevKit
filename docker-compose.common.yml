@@ -21,12 +21,21 @@ x-common-env: &common-env
   CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
 
 x-nvidia-env: &nvidia-env
+  <<: *common-env
   GPU_MODE: ${GPU_MODE:-nvidia}
   NVIDIA_VISIBLE_DEVICES: all
   NVIDIA_DRIVER_CAPABILITIES: all
   LIBGL_ALWAYS_SOFTWARE: "0"
   __NV_PRIME_RENDER_OFFLOAD: "1"
   __GLX_VENDOR_LIBRARY_NAME: nvidia
+
+x-nvidia-deploy: &nvidia-deploy
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities: [gpu, compute, video, utility, graphics, display]
 
 # ── GPU 장치 마운트 (Intel/AMD) ──────────────────────────────────────────
 # (앵커는 각 파일에서 로컬로 정의해야 호환됩니다)
@@ -36,7 +45,7 @@ x-ros-healthcheck: &ros-healthcheck
   test:
     [
       "CMD-SHELL",
-      "source /opt/ros/$${ROS_DISTRO:-humble}/setup.bash 2>/dev/null && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
+      ". /opt/ros/$${ROS_DISTRO:-humble}/setup.bash 2>/dev/null && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
     ]
   interval: 30s
   timeout: 10s
@@ -47,6 +56,7 @@ x-ros-healthcheck: &ros-healthcheck
 services:
   # 기본 서비스 템플릿
   base-common:
+    profiles: [abstract]
     restart: unless-stopped
     tty: true
     stdin_open: true
@@ -76,25 +86,23 @@ services:
 
   # 순수 개발 전용 템플릿
   base-dev:
+    profiles: [abstract]
     extends: base-common
     environment:
       <<: *common-env
 
   # NVIDIA 가속 템플릿
   base-nvidia:
+    profiles: [abstract]
     extends: base-common
     environment:
-      <<: [*common-env, *nvidia-env]
+      <<: *nvidia-env
     deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, compute, video, utility, graphics, display]
+      <<: *nvidia-deploy
 
   # ROS 전용 템플릿
   base-ros:
+    profiles: [abstract]
     extends: base-common
     environment:
       <<: *common-env
@@ -102,6 +110,9 @@ services:
 
   # ROS + NVIDIA 병합 템플릿
   base-ros-nvidia:
+    profiles: [abstract]
     extends: base-ros
     environment:
       <<: *nvidia-env
+    deploy:
+      <<: *nvidia-deploy

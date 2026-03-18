@@ -233,26 +233,26 @@ dev-term: check xauth
 ros-prod: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 ROS 배포 서비스를 시작합니다..."; \
-		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_PROD) up -d --profile ros-nv; \
+		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_PROD) --profile ros-nv up -d; \
 	elif [ "$(HAS_DRI)" = "true" ]; then \
 		echo "  iGPU(Intel/AMD) 가속 모드로 ROS 배포 서비스를 시작합니다..."; \
-		GPU_MODE=igpu $(COMPOSE) $(COMPOSE_PROD) up -d --profile ros-igpu; \
+		GPU_MODE=igpu $(COMPOSE) $(COMPOSE_PROD) --profile ros-igpu up -d; \
 	else \
 		echo "  기본 모드로 ROS 배포 서비스를 시작합니다..."; \
-		GPU_MODE=cpu $(COMPOSE) $(COMPOSE_PROD) up -d --profile ros; \
+		GPU_MODE=cpu $(COMPOSE) $(COMPOSE_PROD) --profile ros up -d; \
 	fi
 	@$(MAKE) logs
 
 dev-prod: check xauth
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then \
 		echo "  NVIDIA 모드로 순수 배포 서비스를 시작합니다..."; \
-		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_PROD) up -d --profile dev-nv; \
+		GPU_MODE=nvidia $(COMPOSE) $(COMPOSE_PROD) --profile dev-nv up -d; \
 	elif [ "$(HAS_DRI)" = "true" ]; then \
 		echo "  iGPU(Intel/AMD) 가속 모드로 순수 배포 서비스를 시작합니다..."; \
-		GPU_MODE=igpu $(COMPOSE) $(COMPOSE_PROD) up -d --profile dev-igpu; \
+		GPU_MODE=igpu $(COMPOSE) $(COMPOSE_PROD) --profile dev-igpu up -d; \
 	else \
 		echo "  기본 모드로 순수 배포 서비스를 시작합니다..."; \
-		GPU_MODE=cpu $(COMPOSE) $(COMPOSE_PROD) up -d --profile dev; \
+		GPU_MODE=cpu $(COMPOSE) $(COMPOSE_PROD) --profile dev up -d; \
 	fi
 	@$(MAKE) logs
 

@@ -2,7 +2,6 @@
 # ros2_docker_template/docker-compose.prod.yml
 # 운영(Production) 환경 배포를 위한 컴포즈 파일
 # =============================================================================
-
 include:
   - path: docker-compose.common.yml
 
@@ -38,9 +37,7 @@ x-dev-prod-shared: &dev-prod-shared
 services:
   # ── [ROS] 배포 서비스 (CPU/iGPU/NVIDIA) ─────────────────────────────────
   ros-prod:
-    extends:
-      file: docker-compose.common.yml
-      service: base-ros
+    extends: base-ros
     <<: *ros-prod-shared
     profiles: ["ros"]
 
@@ -50,17 +47,13 @@ services:
     <<: *gpu-devices
 
   ros-prod-nv:
-    extends:
-      file: docker-compose.common.yml
-      service: base-ros-nvidia
+    extends: base-ros-nvidia
     <<: *ros-prod-shared
     profiles: ["ros-nv"]
 
   # ── [Dev] 배포 서비스 (CPU/iGPU/NVIDIA) ──────────────────────────────────
   dev-prod:
-    extends:
-      file: docker-compose.common.yml
-      service: base-dev
+    extends: base-dev
     <<: *dev-prod-shared
     profiles: ["dev"]
 
@@ -70,9 +63,7 @@ services:
     <<: *gpu-devices
 
   dev-prod-nv:
-    extends:
-      file: docker-compose.common.yml
-      service: base-nvidia
+    extends: base-nvidia
     <<: *dev-prod-shared
     profiles: ["dev-nv"]
 
