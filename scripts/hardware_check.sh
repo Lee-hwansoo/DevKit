@@ -15,7 +15,6 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
-echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║          ROS2 Docker Dev — Hardware Diagnostics              ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"

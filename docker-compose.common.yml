@@ -57,6 +57,7 @@ x-ros-healthcheck: &ros-healthcheck
 services:
   # 기본 서비스 템플릿
   base-common:
+    platform: linux/${TARGETARCH:-amd64}
     profiles: [abstract]
     restart: unless-stopped
     tty: true

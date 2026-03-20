@@ -98,7 +98,7 @@ chmod 600 ~/.ssh/id_rsa  # 또는 id_ed25519
 ### 4. 개발 환경 시작 및 상태 확인
 
 ```bash
-make status         # 현재 프로젝트 설정 및 GPU/아키텍처/툴킷 자동 감지 상태 확인
+make status         # 현재 프로젝트 설정 및 GPU/아키텍처/툴킷 자동 감지
 make build-ros      # ROS 이미지 빌드 (Multi-Arch 자동 대응)
 make ros            # ROS 컨테이너 시작 및 진입 (GPU 자동 감지)
 # 또는
@@ -111,10 +111,10 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 
 시스템이 최적의 모드를 자동으로 선택합니다.
 
-| 환경 구분 | 실행 명령어 (GPU 자동 감지) | 셸 진입 (기존 창) | 새 창 띄우기 (GUI) |
-| :--- | :--- | :--- | :--- |
-| **ROS 환경** | **`make ros`** | **`make ros-shell`** | **`make ros-term`** |
-| **순수 개발** | **`make dev`** | **`make dev-shell`** | **`make dev-term`** |
+| 환경 구분 | 실행 명령어 (GPU 자동 감지) | 재시작 | 셸 진입 (기본 창) | 새 창 띄우기 (GUI) |
+| :--- | :--- | :--- | :--- | :--- |
+| **ROS 환경** | **`make ros`** | **`make ros-restart`** | **`make ros-shell`** | **`make ros-term`** |
+| **순수 개발** | **`make dev`** | **`make dev-restart`** | **`make dev-shell`** | **`make dev-term`** |
 
 > **Tip:** `make status`를 통해 현재 시스템이 NVIDIA GPU와 Container Toolkit을 올바르게 인식하고 있는지, 그리고 현재 아키텍처(AMD64/ARM64)가 무엇인지 확인할 수 있습니다.
 
@@ -126,6 +126,7 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 
 | 명령어 | 설명 | 특징 |
 | :--- | :--- | :--- |
+| **`h` / `help`** | **단축키 가이드** | 전체 Alias 및 유틸리티 사용법 일람 출력 |
 | **`hw_check`** | 하드웨어 상태 진단 | GPU 가속 여부 및 **XWayland/Wayland 상태**, 렌더러 진단 |
 | **`mbuild`** | **일반 C++ 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
 | **`mkenv`** | **Python 가상환경 생성** | `install/.venv` 경로 및 **디렉토리 자동 생성**, 루트 심볼릭 링크 생성 |
@@ -155,14 +156,17 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 
 | 명령어 | 설명 | 특징 |
 | :--- | :--- | :--- |
+| **`make stats`** | **리소스 모니터링** | 서버 전체 컨테이너의 CPU/Memory 및 **모든 GPU(NVIDIA/Intel/AMD)** 상태 확인 |
+| **`make top`** | **상세 모니터링** | CPU 코어별 점유율 및 **GPU 프로세스(NVIDIA/Intel/AMD)** 상세 상태 확인 |
 | **`make status`** | 프로젝트 상태 요약 | 컨테이너 실행 여부, **진단 엔진 결과** 등 출력 |
 | **`make check-host`** | 호스트 환경 사전 점검 | GPU 드라이버 및 X11 권한 상태를 확인하여 빌드 전 에러 차단 |
 | **`make logs`** | 실시간 로그 스트리밍 | 현재 실행 중인 컨테이너의 출력을 실시간으로 확인 (종료 시 Ctrl+C) |
 | **`make down`** | 서비스 중지 | 현재 프로젝트와 관련된 모든 컨테이너를 안전하게 중지 및 제거 |
 | **`make clean`** | 빌드 결과물 삭제 | **`/workspace` 내의 build, install, log** 볼륨 및 임시 볼륨 삭제 |
 | **`make clean-cache`** | 컴파일 캐시 명시적 삭제 | 호스트 측 `.docker_cache`(ccache, uv, apt) 폴더를 강제로 삭제 |
-| **`make clean-builder`** | 도커 빌드 캐시 정리 | Docker BuildKit 내부 캐시를 비워 호스트 디스크 용량 확보 |
-| **`make clean-all`** | 시스템 전체 초기화 | 모든 도커 볼륨 및 호스트 캐시를 삭제하여 초기화 |
+| **`make clean-all`** | **프로젝트 초기화** | 프로젝트와 관련된 **모든 이미지, 볼륨, 호스트 캐시**를 삭제 |
+| **`make docker-clean`** | **도커 시스템 정리** | 시스템 전체의 빌드 캐시 및 미사용 이미지를 삭제 (글로벌 초기화) |
+| **`make env-check`** | **환경 변수 체크** | `.env` 설정 누락 여부를 `.env.example` 기준으로 자동 검사 |
 | **`make scale-basic N=2`** | 서비스 수평 확장 | (고급) `basic` 서비스를 N개로 확장 (예: `docker compose up --scale basic=2`) |
 
 ---
@@ -195,6 +199,8 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 | :--- | :--- | :--- |
 | **ROS 배포** | **`make ros-prod`** | 최적화된 ROS 아티팩트 기반 서비스 시작 |
 | **순수 배포** | **`make dev-prod`** | 가벼운 C++/Python 아티팩트 전용 서비스 시작 |
+| **이미지 추출** | **`make save-ros`** / **`save-dev`** | 배포용 이미지를 압축 파일(`.tar.gz`)로 추출 |
+| **이미지 복원** | **`make load-ros`** / **`load-dev`** | 압축 파일에서 이미지를 도커 시스템으로 복원 |
 
 ### 3. 오프라인 배포 가이드 (Offline Deployment)
 
@@ -204,12 +210,15 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 # 1. 배포용 이미지 빌드 (Bake)
 make build-ros-prod  # 또는 make build-dev-prod
 
-# 2. 이미지 추출 및 타겟 서버로 전송
-docker save my_project/ros-runtime:latest | gzip > release.tar.gz
+# 2. 이미지 추출 (Makefile 기반 자동화)
+make save-ros        # 추출 완료 후 프로젝트 루트에 {project}-ros-{distro}.tar.gz 생성
 
-# 3. 타겟 서버에서 로드 및 실행
-docker load < release.tar.gz
-docker compose -f docker-compose.prod.yml up -d
+# 3. 타겟 서버로 전송 (필수 파일: .tar.gz, .env, docker-compose.prod.yml, Makefile)
+# .tar.gz 파일을 타겟 서버의 프로젝트 루트 디렉토리에 위치시켜야 합니다.
+
+# 4. 타겟 서버에서 복원 및 실행
+make load-ros        # 루트의 아카이브 파일을 자동으로 찾아 이미지 로드
+make ros-prod        # 서비스 시작 (또는 docker compose -f docker-compose.prod.yml up -d)
 ```
 
 ---
