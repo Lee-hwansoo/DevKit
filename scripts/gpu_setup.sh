@@ -80,8 +80,9 @@ reset_gpu_env() {
 # GPU Setup Functions
 # =============================================================================
 write_gpu_env() {
-    # root 사용자를 기본으로 하여 환경변수 기록
-    cat > /root/.gpu_env.sh << EOF
+    # 사용자 환경에 맞는 경로에 환경변수 기록
+    local env_file="${HOME}/.gpu_env.sh"
+    cat > "$env_file" << EOF
 # __GPU_ENV_START
 export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
 $([ -n "${GALLIUM_DRIVER:-}" ] && echo "export GALLIUM_DRIVER=${GALLIUM_DRIVER}")

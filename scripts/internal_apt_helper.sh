@@ -119,7 +119,8 @@ install_packages() {
             fi
             exit 1
         fi
-        apt-get install -y --no-install-recommends $pkgs
+        read -r -a pkg_array <<< "$pkgs"
+        apt-get install -y --no-install-recommends "${pkg_array[@]}"
     else
         echo "[APT Helper] No packages matched filter ($filter, $target_tag)"
     fi

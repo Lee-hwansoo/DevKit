@@ -92,7 +92,9 @@ services:
   # iGPU 가속 템플릿 (Intel/AMD)
   base-igpu:
     profiles: [abstract]
-    extends: base-dev
+    extends: base-common
+    environment:
+      <<: *common-env
     devices:
       - /dev/dri:/dev/dri
 
@@ -116,15 +118,19 @@ services:
   # ROS + iGPU 가속 템플릿
   base-ros-igpu:
     profiles: [abstract]
-    extends: base-ros
+    extends: base-common
+    environment:
+      <<: *common-env
+    healthcheck: *ros-healthcheck
     devices:
       - /dev/dri:/dev/dri
 
   # ROS + NVIDIA 병합 템플릿
   base-ros-nvidia:
     profiles: [abstract]
-    extends: base-ros
+    extends: base-common
     environment:
       <<: *nvidia-env
+    healthcheck: *ros-healthcheck
     deploy:
       <<: *nvidia-deploy

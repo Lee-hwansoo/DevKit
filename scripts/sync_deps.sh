@@ -32,7 +32,7 @@ TARGET_DIR="${PROJECT_ROOT}/${SYNC_TARGET_DIR:-src/thirdparty}"
 
 mkdir -p "$TARGET_DIR"
 
-# 2. vcs 도구 확인 및 실행
+# 3. vcs 도구 확인 및 실행
 if ! command -v vcs &>/dev/null; then
     log_warn "vcstool (vcs) not found. Skipping repository import."
 elif [ -f "$REPOS_FILE" ]; then

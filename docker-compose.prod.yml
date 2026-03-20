@@ -28,6 +28,11 @@ x-dev-prod-shared: &dev-prod-shared
     target: dev-runtime
   volumes: *prod-volumes
   command: ${APP_COMMAND:?APP_COMMAND를 .env에 설정하세요}
+  healthcheck:
+    test: ["CMD-SHELL", "echo 'alive' || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
 
 services:
   # ── [ROS] 배포 서비스 (CPU/iGPU/NVIDIA) ─────────────────────────────────

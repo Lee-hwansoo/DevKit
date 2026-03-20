@@ -21,12 +21,12 @@ if [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1; then
 fi
 
 # 2. 아키텍처 감지
-HOST_ARCH=$(uname -m)
-case "${HOST_ARCH}" in
-    x86_64)  ARCH="amd64" ;;
-    aarch64) ARCH="arm64" ;;
-    armv8*)  ARCH="arm64" ;;
-    *)       ARCH="unknown" ;;
+RAW_ARCH=$(uname -m)
+case "${RAW_ARCH}" in
+    x86_64)  HOST_ARCH="amd64" ;;
+    aarch64) HOST_ARCH="arm64" ;;
+    armv8*)  HOST_ARCH="arm64" ;;
+    *)       HOST_ARCH="unknown" ;;
 esac
 
 # 3. 디스플레이 서버 감지
@@ -65,7 +65,7 @@ fi
 echo "HAS_NVIDIA=${HAS_NVIDIA}"
 echo "HAS_TOOLKIT=${HAS_TOOLKIT}"
 echo "HAS_DRI=${HAS_DRI}"
-echo "HOST_ARCH=${ARCH}"
+echo "HOST_ARCH=${HOST_ARCH}"
 echo "DISPLAY_TYPE=${DISPLAY_TYPE}"
 echo "HOST_XDG_RUNTIME_DIR=${HOST_XDG_RUNTIME_DIR}"
 echo "HOST_WAYLAND_DISPLAY=${HOST_WAYLAND_DISPLAY}"

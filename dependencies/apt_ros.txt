@@ -22,7 +22,7 @@ ros-${ROS_DISTRO}-rviz2 # runtime,ros2
 ros-${ROS_DISTRO}-rqt # runtime
 ros-${ROS_DISTRO}-tf # runtime,ros1
 ros-${ROS_DISTRO}-tf2-ros # runtime,ros2
-ros-${ROS_DISTRO}-gazebo-ros-pkgs # runtime
+ros-${ROS_DISTRO}-gazebo-ros-pkgs
 ros-${ROS_DISTRO}-rmw-cyclonedds-cpp # runtime,ros2
 python3-catkin-tools # ros1
 

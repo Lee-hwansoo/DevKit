@@ -91,8 +91,6 @@ alias la='ls -A'
 alias ccache-stat='ccache -s'
 alias ccache-clear='ccache -C'
 alias sync_deps='bash /docker_dev/scripts/sync_deps.sh'
-alias ccache-stat='ccache -s'
-alias ccache-clear='ccache -C'
 
 # =============================================================================
 # Hardware Diagnostics

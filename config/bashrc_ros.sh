@@ -22,9 +22,6 @@ if [ "${ROS_DISTRO}" = "noetic" ]; then
     # Docker Compose가 주입한 환경변수를 우선 사용하고, 없을 경우 기본값 적용
     export ROS_MASTER_URI=${ROS_MASTER_URI:-http://localhost:11311}
     export ROS_HOSTNAME=${ROS_HOSTNAME:-localhost}
-    if [ -n "$ROS_IP" ]; then
-        export ROS_IP=$ROS_IP
-    fi
 else
     # ROS 2 (humble) 전용
     export RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}

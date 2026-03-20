@@ -45,8 +45,7 @@ FROM base AS runtime-common
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    locales tzdata libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils \
-    && locale-gen ${LANG} && update-locale LANG=${LANG}
+    libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils
 
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY scripts/gpu_setup.sh /opt/scripts/gpu_setup.sh
@@ -75,10 +74,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     intel-gpu-tools intel-opencl-icd || true
 
 # D2Coding 폰트 (한국어 환경)
-RUN wget -q https://github.com/naver/d2codingfont/releases/download/VER1.3.2/D2Coding-Ver1.3.2-20180524.zip -O /tmp/d2coding.zip \
-    && unzip -q /tmp/d2coding.zip -d /usr/share/fonts/truetype/d2coding \
-    && rm /tmp/d2coding.zip \
-    && fc-cache -f || true
+# 의존성 폴더에 폰트가 있으면 복사, 없으면 다운로드 (실패 허용)
+RUN if [ -f /opt/dependencies/D2Coding.zip ]; then \
+        unzip -q /opt/dependencies/D2Coding.zip -d /usr/share/fonts/truetype/d2coding; \
+    else \
+        curl -sfL https://github.com/naver/d2codingfont/releases/download/VER1.3.2/D2Coding-Ver1.3.2-20180524.zip -o /tmp/d2coding.zip && \
+        unzip -q /tmp/d2coding.zip -d /usr/share/fonts/truetype/d2coding && rm -f /tmp/d2coding.zip; \
+    fi; \
+    fc-cache -f || true
 
 # ── Stage 5: python-runtime ────────────────────────────────────────────────
 FROM gui-tools AS python-runtime
@@ -144,17 +147,15 @@ ENV COLCON_HOME=/workspace
 RUN mkdir -p /workspace/src && \
     cat /docker_dev/config/bashrc_ros.sh >> /root/.bashrc && \
     ln -sf /docker_dev/config/colcon.meta /workspace/colcon.meta
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh install-packages all ${ROS_DISTRO} && \
-    SYNC_TARGET_DIR=/tmp/staging /docker_dev/scripts/sync_deps.sh --rosdep && \
+RUN SYNC_TARGET_DIR=/tmp/staging /docker_dev/scripts/sync_deps.sh --rosdep && \
     rm -rf /tmp/staging
 WORKDIR /workspace
 
 # ── Stage 8: Production Builds (Bake) ───────────────────────────────────────
 FROM python-runtime AS builder-dev
+ARG ROS_DISTRO
 WORKDIR /workspace
-COPY src/ src/
+COPY s[r]c/ src/
 COPY pyproject.toml* uv.lock* ./
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -169,7 +170,7 @@ RUN mkdir -p build && cd build && \
 
 FROM ros-base AS builder-ros
 WORKDIR /workspace
-COPY src/ src/
+COPY s[r]c/ src/
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh install-packages all ${ROS_DISTRO} && \

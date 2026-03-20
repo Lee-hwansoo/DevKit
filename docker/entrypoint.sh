@@ -21,7 +21,7 @@ for var in ROS_IP WAYLAND_DISPLAY HOST_WAYLAND_DISPLAY; do
 done
 
 # 워크스페이스 루트로 이동
-cd /workspace
+[ -d "/workspace" ] && cd /workspace
 
 # =============================================================================
 # [1] GPU 설정 — gpu_setup.sh에 위임
@@ -98,7 +98,7 @@ fi
 # [5] Git safe.directory 설정 (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ] && command -v git &>/dev/null; then
-    git config --global --add safe.directory '*' 2>/dev/null || true
+    git config --global --add safe.directory /workspace 2>/dev/null || true
     log_ok "Git safe.directory configured"
 fi
 

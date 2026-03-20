@@ -6,9 +6,11 @@
 # 환경 변수 로드
 -include .env
 
-# 진단 엔진 연동 (자동 감지)
-DETECTOR := bash scripts/env_detector.sh
-$(foreach line,$(shell $(DETECTOR)),$(eval $(line)))
+# 진단 엔진 연동 (자동 감지 - 필요한 타겟에서만 실행)
+NEEDS_DETECTOR := $(filter ros dev build% rebuild% scale% status clean%,$(MAKECMDGOALS))
+ifneq ($(NEEDS_DETECTOR),)
+$(foreach line,$(shell bash scripts/env_detector.sh),$(eval $(line)))
+endif
 
 # TARGETARCH 자동 매칭
 TARGETARCH ?= $(HOST_ARCH)
@@ -61,7 +63,7 @@ define VALIDATE_ROS_ENV
 endef
 
 define VALIDATE_COMPOSE_NAME
-	@if echo "$(COMPOSE_PROJECT_NAME)" | grep -q '[A-Z[:space:]]'; then \
+	@if echo "$(COMPOSE_PROJECT_NAME)" | grep -q '[^a-z0-9_-]'; then \
 		echo "  [오류] COMPOSE_PROJECT_NAME은 소문자와 대시(-)/언더스코어(_)만 포함해야 합니다."; \
 		exit 1; \
 	fi
@@ -98,7 +100,7 @@ endef
 # 인프라 핵심 변수 export
 export HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_ARCH TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR
 
-.PHONY: help setup check xauth status \
+.PHONY: help setup check check-host xauth status \
         build-ros build-dev rebuild-ros rebuild-dev \
         ros dev ros-shell dev-shell ros-term dev-term \
 		build-ros-prod build-dev-prod rebuild-ros-prod rebuild-dev-prod \

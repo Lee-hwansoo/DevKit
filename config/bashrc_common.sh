@@ -8,7 +8,7 @@ export CCACHE_DIR=/cache/ccache
 
 # uv (Python)
 export UV_CACHE_DIR=/cache/uv
-export UV_PYTHON=${UV_PYTHON:-3.11}
+export UV_PYTHON=${UV_PYTHON:-3.10}
 export UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
 
 # C++ 표준

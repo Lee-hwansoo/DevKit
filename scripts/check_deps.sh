@@ -8,9 +8,7 @@ MISSING_COUNT=0
 echo "[Sanity Check] Scanning for missing dependencies in $TARGET_DIR..."
 
 # 실행 파일 및 공유 라이브러리(.so) 찾기
-FILES=$(find "$TARGET_DIR" -type f -executable -o -name "*.so*" | grep -v "\.py")
-
-for file in $FILES; do
+find "$TARGET_DIR" -type f \( -executable -o -name "*.so*" \) ! -name "*.py" -print0 | while IFS= read -r -d '' file; do
     # ELF 파일인지 확인 (바이너리 파일만 ldd 실행)
     if file "$file" | grep -qE 'ELF|shared object'; then
         MISSING=$(ldd "$file" 2>/dev/null | grep "not found")
