@@ -218,7 +218,7 @@ setup_auto() {
 # =============================================================================
 # Status
 # =============================================================================
-gpu_status() {
+__gpu_status_impl() {
     log_info "=== GPU Status ==="
     log_info "GPU_MODE env: ${GPU_MODE:-not set}"
 
@@ -271,7 +271,7 @@ case "${1:-auto}" in
     nvidia)             setup_nvidia ;;
     igpu)               setup_auto ;;
     cpu|software)       setup_software ;;
-    status)             gpu_status ;;
+    status)             __gpu_status_impl ;;
     auto|"")            setup_auto ;;
     *)
         echo "Usage: source gpu_setup.sh {auto|intel|amd|nvidia|igpu|cpu|status}"

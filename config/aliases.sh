@@ -71,7 +71,7 @@ alias uvp='uv pip install'
 alias uvl='uv pip list'
 
 # 프로젝트별 가상환경 생성 (install 하위에 생성하여 배포 아티팩트화 + IDE 호환을 위한 루트 심볼릭 링크)
-alias mkenv='uv venv --python ${UV_PYTHON:-3.11} /workspace/install/.venv && ln -sf /workspace/install/.venv /workspace/.venv && echo "Created .venv in /workspace/install and linked to /workspace/.venv. Run: activate"'
+alias mkenv='mkdir -p /workspace/install && uv venv --python ${UV_PYTHON:-3.10} /workspace/install/.venv && ln -sf /workspace/install/.venv /workspace/.venv && echo "Created .venv in /workspace/install and linked to /workspace/.venv. Run: activate"'
 alias activate='source /workspace/install/.venv/bin/activate'
 
 # Python 버전 확인
@@ -84,7 +84,8 @@ alias uvpython='uv python list'
 # 일반 C++ 프로젝트 표준 빌드 (src -> build -> install)
 alias mbuild='mkdir -p /workspace/build && cd /workspace/build && cmake ../src -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} && make -j$(nproc) install && cd /workspace'
 
-alias k='killall -9'
+alias k='killall'
+alias k9='killall -9'
 alias g='git'
 alias ll='ls -alF'
 alias la='ls -A'
@@ -97,12 +98,11 @@ alias sync_deps='bash /docker_dev/scripts/sync_deps.sh'
 # =============================================================================
 alias hw_check='bash /docker_dev/scripts/hardware_check.sh'
 alias gpu_check='glxinfo 2>&1 | grep -E "OpenGL (vendor|renderer|version)" || echo "Error: glxinfo failed (no display?)"'
-alias gpu_info='source /docker_dev/scripts/gpu_setup.sh && gpu_status'
-alias gpu_auto='source /docker_dev/scripts/gpu_setup.sh auto'
-alias use_intel='source /docker_dev/scripts/gpu_setup.sh intel'
-alias use_amd='source /docker_dev/scripts/gpu_setup.sh amd'
-alias use_nvidia='source /docker_dev/scripts/gpu_setup.sh nvidia'
-alias use_cpu='source /docker_dev/scripts/gpu_setup.sh cpu'
+alias vulkan_check='vulkaninfo --summary 2>/dev/null | head -20 || echo "Vulkan not available"'
 alias gpu_status='source /docker_dev/scripts/gpu_setup.sh status'
 alias gpu_test='timeout 5 glxgears -info 2>&1 | head -10 || echo "GPU test failed (no display?)"'
-alias vulkan_check='vulkaninfo --summary 2>/dev/null | head -20 || echo "Vulkan not available"'
+alias gpu_setup='source /docker_dev/scripts/gpu_setup.sh auto && __gpu_status_impl'
+alias use_intel='source /docker_dev/scripts/gpu_setup.sh intel && __gpu_status_impl'
+alias use_amd='source /docker_dev/scripts/gpu_setup.sh amd && __gpu_status_impl'
+alias use_nvidia='source /docker_dev/scripts/gpu_setup.sh nvidia && __gpu_status_impl'
+alias use_cpu='source /docker_dev/scripts/gpu_setup.sh cpu && __gpu_status_impl'

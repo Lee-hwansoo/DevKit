@@ -128,7 +128,7 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 | :--- | :--- | :--- |
 | **`hw_check`** | 하드웨어 상태 진단 | GPU 가속 여부 및 **XWayland/Wayland 상태**, 렌더러 진단 |
 | **`mbuild`** | **일반 C++ 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
-| **`mkenv`** | **Python 가상환경 생성** | `install/.venv` 경로에 생성 및 **루트 심볼릭 링크 자동 생성** |
+| **`mkenv`** | **Python 가상환경 생성** | `install/.venv` 경로 및 **디렉토리 자동 생성**, 루트 심볼릭 링크 생성 |
 | **`cb`** | **ROS 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
 | **`sync_deps`** | 의존성 동기화 | `.repos` 기반 소스 다운로드 및 `src/thirdparty` 병합 |
 
@@ -136,13 +136,15 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 
 | 구분 | 약어 | 설명 | 기능 |
 | :--- | :--- | :--- | :--- |
-| **ROS 빌드**| `cb` / `cbr` | Colcon 빌드 | `RelWithDebInfo` / `Release` 프로필로 빌드 |
+| **ROS 빌드** | `cb` / `cbr` | Colcon 빌드 | `RelWithDebInfo` / `Release` 프로필로 빌드 |
 | | `cbp`, `cbt` | 특정 패키지 / 테스트 | `--packages-select`, `colcon test` |
 | | `s` | 워크스페이스 소싱 | `source install/setup.bash` |
 | **Python** | `activate` | venv 활성화 | `source install/.venv/bin/activate` |
 | | `uvs`, `uvr` | uv 명령어 | `uv sync`, `uv run` |
 | **GPU/HW** | `gpu_status` | GPU 상태 요약 | 현재 렌더러 및 가속 상태 확인 |
-| | `vulkan_check`| Vulkan API 확인 | `vulkaninfo` 요약 출력 |
+| | `gpu_setup` | GPU 자동 감지/설정 | 하드웨어 재검색 및 환경 변수 초기화 |
+| | `vulkan_check` | Vulkan API 확인 | `vulkaninfo` 요약 출력 |
+| **Utils** | `k` / `k9` | 프로세스 종료 | 일반 종료(`killall`) / 강제 종료(`-9`) |
 | **Nav** | `cw`, `cs` | 디렉토리 이동 | `/workspace`, `/workspace/src` 이동 |
 
 ---

@@ -80,6 +80,17 @@ define EXEC_CONTAINER
 	fi
 endef
 
+# $1: FILTER, $2: COMMAND, $3: MSG (오류 시 표시용)
+define EXEC_DETACHED
+	@CONTAINER=$$(docker ps --filter "name=$1" --format "{{.Names}}" | head -n 1); \
+	if [ -n "$$CONTAINER" ]; then \
+		docker exec -d $$CONTAINER $2; \
+	else \
+		echo "  [오류] 실행 중인 $3 컨테이너가 없습니다."; \
+		exit 1; \
+	fi
+endef
+
 # $1: COMPOSE_FILES, $2: SERVICE_PREFIX, $3: MSG
 define SCALE_SERVICE
 	@$(DETECT_MODE) \
@@ -260,13 +271,13 @@ ros-shell: check
 	$(call EXEC_CONTAINER,$(ROS_FILTER),bash,ROS)
 
 ros-term: check xauth
-	$(call EXEC_CONTAINER,$(ROS_FILTER),terminator,ROS)
+	$(call EXEC_DETACHED,$(ROS_FILTER),terminator,ROS)
 
 dev-shell: check
 	$(call EXEC_CONTAINER,$(DEV_FILTER),bash,개발)
 
 dev-term: check xauth
-	$(call EXEC_CONTAINER,$(DEV_FILTER),terminator,개발)
+	$(call EXEC_DETACHED,$(DEV_FILTER),terminator,개발)
 
 # 수평 확장 (Scaling)
 scale-basic: check
