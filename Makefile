@@ -112,6 +112,7 @@ define SCALE_SERVICE
 	TARGET_SVC=$2-$$CHOSEN_MODE; \
 	echo -e "  $(INFO) [$3] 서비스를 $(N)개로 확장합니다 (Service: $$TARGET_SVC)..."; \
 	$(COMPOSE) $1 --profile $$TARGET_SVC up -d --scale $$TARGET_SVC=$(N) $$TARGET_SVC
+	@echo -e "  $(OK) 서비스 확장이 완료되었습니다."
 endef
 
 # $1: COMPOSE_FILES, $2: SERVICE_PREFIX, $3: MSG, $4: EXTRA_ARGS, $5: HINT_MSG
@@ -333,25 +334,32 @@ IMAGE_SUFFIX := $(if $(filter humble,$(ROS_DISTRO)),humble,$(if $(filter noetic,
 SAVE_NAME_ROS := $(COMPOSE_PROJECT_NAME)-ros-$(IMAGE_SUFFIX).tar.gz
 SAVE_NAME_DEV := $(COMPOSE_PROJECT_NAME)-dev-$(IMAGE_SUFFIX).tar.gz
 
+# $1: TARGET_ENV (ros-runtime 또는 dev-runtime), $2: SAVE_FILE_NAME, $3: MSG
+define SAVE_IMAGE
+	@echo -e "  $(INFO) $3 배포용 이미지를 추출합니다: $2..."
+	@docker save $(COMPOSE_PROJECT_NAME)/$1:latest | gzip > $2
+	@echo -e "  $(OK) 이미지 추출이 완료 되었습니다: $$(du -h $2) (Path: ./$2)"
+endef
+
+# $1: SAVE_FILE_NAME, $2: MSG
+define LOAD_IMAGE
+	@if [ ! -f $1 ]; then echo -e "  $(ERROR) 파일이 없습니다: $1"; exit 1; fi
+	@echo -e "  $(INFO) $2 이미지를 복원합니다..."
+	@docker load < $1
+	@echo -e "  $(OK) $2 이미지 복원이 완료되었습니다."
+endef
+
 save-ros:
-	@echo -e "  $(INFO) ROS 배포용 이미지를 추출합니다: $(SAVE_NAME_ROS)..."
-	@docker save $(COMPOSE_PROJECT_NAME)/ros-runtime:latest | gzip > $(SAVE_NAME_ROS)
-	@echo -e "  $(OK) 완료: $$(du -h $(SAVE_NAME_ROS)) (Path: ./${SAVE_NAME_ROS})"
+	$(call SAVE_IMAGE,ros-runtime,$(SAVE_NAME_ROS),ROS)
 
 save-dev:
-	@echo -e "  $(INFO) 순수 개발 배포용 이미지를 추출합니다: $(SAVE_NAME_DEV)..."
-	@docker save $(COMPOSE_PROJECT_NAME)/dev-runtime:latest | gzip > $(SAVE_NAME_DEV)
-	@echo -e "  $(OK) 완료: $$(du -h $(SAVE_NAME_DEV)) (Path: ./${SAVE_NAME_DEV})"
+	$(call SAVE_IMAGE,dev-runtime,$(SAVE_NAME_DEV),순수 개발)
 
 load-ros:
-	@if [ ! -f $(SAVE_NAME_ROS) ]; then echo -e "  $(ERROR) 파일이 없습니다: $(SAVE_NAME_ROS)"; exit 1; fi
-	@echo -e "  $(INFO) ROS 이미지를 복원합니다..."
-	@docker load < $(SAVE_NAME_ROS)
+	$(call LOAD_IMAGE,$(SAVE_NAME_ROS),ROS)
 
 load-dev:
-	@if [ ! -f $(SAVE_NAME_DEV) ]; then echo -e "  $(ERROR) 파일이 없습니다: $(SAVE_NAME_DEV)"; exit 1; fi
-	@echo -e "  $(INFO) 순수 개발 이미지를 복원합니다..."
-	@docker load < $(SAVE_NAME_DEV)
+	$(call LOAD_IMAGE,$(SAVE_NAME_DEV),순수 개발)
 
 # =============================================================================
 # 유지보수
@@ -445,22 +453,48 @@ logs:
 		$(COMPOSE) $(COMPOSE_PROD) logs -f --tail 100; \
 	fi
 
-down:
-	$(COMPOSE) $(COMPOSE_DEV) --profile "*" down --remove-orphans
+# $1: EXTRA_ARGS (볼륨 삭제 시 -v 등)
+define TEARDOWN_SERVICES
+	$(COMPOSE) $(COMPOSE_DEV) --profile "*" down $1 --remove-orphans
 	@if [ -f docker-compose.prod.yml ]; then \
-		$(COMPOSE) $(COMPOSE_PROD) --profile "*" down --remove-orphans 2>/dev/null || true; \
+		$(COMPOSE) $(COMPOSE_PROD) --profile "*" down $1 --remove-orphans 2>/dev/null || true; \
 	fi
+endef
+
+# $1: MOUNT_DIR (절대 경로), $2: 삭제할 타겟(들)
+define SUDO_FREE_RM
+	echo -e "  $(INFO) 무권한 삭제(Sudo-Free) 수행: $2"; \
+	docker run --rm -v "$1:/mnt" alpine sh -c "cd /mnt && rm -rf $2" 2>/dev/null || true; \
+	if [ "$(SKIP_ALPINE_RM)" != "1" ]; then \
+		echo -e "  $(INFO) 임시 생성된 무권한 삭제용 alpine 이미지를 정리합니다..."; \
+		docker rmi alpine:latest 2>/dev/null || true; \
+	fi
+endef
+
+down:
+	$(call TEARDOWN_SERVICES)
+	@echo -e "  $(OK) 모든 컨테이너가 성공적으로 중지 및 제거되었습니다."
 
 clean:
-	$(COMPOSE) $(COMPOSE_DEV) --profile "*" down -v --remove-orphans
-	@if [ -f docker-compose.prod.yml ]; then \
-		$(COMPOSE) $(COMPOSE_PROD) --profile "*" down -v --remove-orphans 2>/dev/null || true; \
-	fi
+	$(call TEARDOWN_SERVICES,-v)
 	@echo -e "  $(INFO) $(COMPOSE_PROJECT_NAME) 관련 모든 네임드 볼륨을 삭제합니다..."
 	@VOLUMES=$$(docker volume ls -q --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)"); \
 	if [ -n "$$VOLUMES" ]; then \
 		docker volume rm $$VOLUMES 2>/dev/null || true; \
 	fi
+	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
+		echo -e "  $(WARN) CI/FORCE 모드: 호스트 폴더 삭제 프롬프트를 묻지 않고 강제로 삭제합니다."; ans="y"; \
+	else \
+		echo -e "  $(WARN) 호스트의 build, install, log 폴더 및 .venv 링크를 삭제하시겠습니까?"; \
+		echo -n "  (주의: .env에서 바인드 마운트로 설정하여 사용 중이었다면 실제 데이터가 완전히 유실됩니다!) [Y/N]: "; \
+		read ans || true; \
+	fi; \
+	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
+		$(call SUDO_FREE_RM,$(WORKSPACE_PATH),build install log .venv); \
+	else \
+		echo -e "  $(INFO) 호스트 폴더 삭제를 안전하게 건너뜁니다."; \
+	fi
+	@echo -e "  $(OK) 프로젝트 기본 정리(clean) 작업이 완료되었습니다."
 
 clean-cache:
 	@CACHE_DIR=$(HOST_CACHE_DIR); \
@@ -469,14 +503,23 @@ clean-cache:
 		exit 1; \
 	fi; \
 	if [ -d "$$CACHE_DIR" ]; then \
-		echo -e "  $(WARN) 호스트 측 도커 캐시 폴더($$CACHE_DIR)를 정말 삭제하시겠습니까? [y/N]"; \
-		read ans && if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) 삭제를 취소합니다."; exit 1; fi; \
-		echo -e "  $(INFO) 호스트 측 도커 캐시 폴더($$CACHE_DIR)를 삭제합니다..."; \
-		sudo rm -rf "$$CACHE_DIR"; \
+		if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
+			ans="y"; \
+		else \
+			echo -e "  $(WARN) 호스트 측 도커 캐시 폴더($$CACHE_DIR)를 정말 삭제하시겠습니까? [Y/N]"; \
+			read ans || true; \
+		fi; \
+		if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) 삭제를 취소합니다."; exit 1; fi; \
+		$(call SUDO_FREE_RM,$$(dirname "$$CACHE_DIR"),$$(basename "$$CACHE_DIR")); \
 	fi
+	@echo -e "  $(OK) 도커 로컬 캐시 정리(clean-cache) 작업이 완료되었습니다."
 
 # 프로젝트 관련 모든 리소스(이미지 포함) 초기화
-clean-all: clean clean-cache
+clean-all:
+	@$(MAKE) clean SKIP_ALPINE_RM=1
+	@$(MAKE) clean-cache SKIP_ALPINE_RM=1
+	@echo -e "  $(INFO) 임시 생성된 무권한 삭제용 alpine 이미지를 정리합니다..."
+	@docker rmi alpine:latest 2>/dev/null || true
 	@echo -e "  $(INFO) $(COMPOSE_PROJECT_NAME) 프로젝트 관련 모든 이미지를 정리합니다..."
 	@IMAGES=$$(docker images -q --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)"); \
 	if [ -n "$$IMAGES" ]; then \
@@ -485,11 +528,17 @@ clean-all: clean clean-cache
 	else \
 		echo -e "  $(INFO) 삭제할 프로젝트 관련 이미지가 없습니다."; \
 	fi
+	@echo -e "  $(OK) 프로젝트 전체 초기화(clean-all) 작업이 완료되었습니다."
 
 # 도커 시스템 전역 정리 (주의: 모든 프로젝트의 빌드 캐시에 영향을 줌)
 docker-clean:
-	@echo -e "  $(WARN) 도커 시스템 전역을 정리하시겠습니까? (빌드 캐시 및 미사용 이미지 삭제) [y/N]"
-	@read ans && if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) 작업을 취소합니다."; exit 1; fi
+	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
+		ans="y"; \
+	else \
+		echo -e "  $(WARN) 도커 시스템 전역을 정리하시겠습니까? (빌드 캐시 및 미사용 이미지 삭제) [Y/N]"; \
+		read ans || true; \
+	fi; \
+	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) 작업을 취소합니다."; exit 1; fi
 	@echo -e "  $(INFO) 도커 빌드 캐시(BuildKit)를 정리합니다..."
 	@docker builder prune -a -f
 	@echo -e "  $(INFO) 미사용 이미지를 정리합니다..."

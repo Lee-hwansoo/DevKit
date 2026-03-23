@@ -28,8 +28,15 @@ _log_base() {
 
     local prefix="${LOG_PREFIX:+${CYAN}${LOG_PREFIX}${NC} }"
 
-    # Process multi-line messages
-    while IFS= read -r line; do
+    # 로그 파일 디렉토리가 없으면 최초 1회만 생성 (디스크 I/O 최적화)
+    if [ -n "${LOG_FILE}" ]; then
+        local log_dir
+        log_dir=$(dirname "${LOG_FILE}")
+        [ ! -d "$log_dir" ] && mkdir -p "$log_dir"
+    fi
+
+    # Process multi-line messages (마지막 줄바꿈 누락 방지)
+    while IFS= read -r line || [ -n "$line" ]; do
         # Only add prefix to the line if it's not empty, otherwise just print the prefix
         if [ -z "$line" ]; then
             local full_msg="${time_str}${prefix}${color}[${type}]${NC}"
@@ -37,13 +44,15 @@ _log_base() {
             local full_msg="${time_str}${prefix}${color}[${type}]${NC} ${symbol:+${symbol} }$line"
         fi
 
-        echo -e "$full_msg"
+        # ERROR/WARN은 표준 에러(stderr, >&2)로 출력하여 셸 파이프 처리 호환성 확보
+        if [ "$type" = "ERROR" ] || [ "$type" = "WARN" ]; then
+            echo -e "$full_msg" >&2
+        else
+            echo -e "$full_msg"
+        fi
 
         # 파일 로깅 (색상 제거 후 기록)
         if [ -n "${LOG_FILE}" ]; then
-            local log_dir
-            log_dir=$(dirname "${LOG_FILE}")
-            [ ! -d "$log_dir" ] && mkdir -p "$log_dir"
             echo -e "$full_msg" | sed 's/\x1b\[[0-9;]*m//g' >> "${LOG_FILE}"
         fi
     done <<< "$msg"
