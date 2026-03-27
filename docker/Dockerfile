@@ -130,7 +130,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 FROM ros-base AS ros
 ENV COLCON_HOME=/workspace
 RUN mkdir -p /workspace/src && \
-RUN mkdir -p /workspace/src && \
     ln -sf /docker_dev/config/colcon.meta /workspace/colcon.meta
 RUN SYNC_TARGET_DIR=/tmp/staging /docker_dev/scripts/sync_deps.sh --rosdep && \
     rm -rf /tmp/staging
