@@ -14,6 +14,9 @@ ARG LANG=C.UTF-8
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TARGETARCH=amd64
 
+# ── Stage 0: uv (Binary extraction) ─────────────────────────────────────────
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-binaries
+
 # ── Stage 1: base (Shared OS Context) ───────────────────────────────────────
 FROM ${BASE_IMAGE} AS base
 ARG LANG
@@ -81,7 +84,7 @@ ARG UV_PYTHON
 ARG CMAKE_CXX_STANDARD
 
 # uv 설치 및 파이썬 세팅
-COPY --from=ghcr.io/astral-sh/uv:${UV_VERSION} /uv /uvx /usr/local/bin/
+COPY --from=uv-binaries /uv /uvx /usr/local/bin/
 RUN uv python install ${UV_PYTHON}
 
 ENV PATH="/usr/lib/ccache:/workspace/install/.venv/bin:$PATH" \
