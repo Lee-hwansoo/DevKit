@@ -23,6 +23,9 @@ x-common-env: &common-env
   ROS_HOSTNAME: ${ROS_HOSTNAME:-localhost}
   ROS_IP: ${ROS_IP:-}
   CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
+  UV_SYNC_FLAGS: ${UV_SYNC_FLAGS:-}
+  CMAKE_EXTRA_ARGS: ${CMAKE_EXTRA_ARGS:-}
+  COLCON_EXTRA_FLAGS: ${COLCON_EXTRA_FLAGS:-}
 
 x-nvidia-env: &nvidia-env
   <<: *common-env
@@ -82,6 +85,9 @@ services:
         BASE_IMAGE: ${BASE_IMAGE:-ubuntu:22.04}
         ROS_DISTRO: ${ROS_DISTRO:-humble}
         TARGETARCH: ${TARGETARCH:-amd64}
+        UV_SYNC_FLAGS: ${UV_SYNC_FLAGS:-}
+        CMAKE_EXTRA_ARGS: ${CMAKE_EXTRA_ARGS:-}
+        COLCON_EXTRA_FLAGS: ${COLCON_EXTRA_FLAGS:-}
 
   # 순수 개발 전용 템플릿
   base-dev:

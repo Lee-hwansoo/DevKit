@@ -242,24 +242,54 @@ make ros-prod        # 서비스 시작 (또는 docker compose -f docker-compose
 
 ## 📦 외부 의존성 관리 전략 (SSOT Determinism)
 
-### 1. System Layer (APT)
+Dev-Template은 시스템 패키지, Python, C++, ROS 각각의 생태계에 가장 적합한 모범 사례를 조합하여 의존성을 관리합니다.
 
-- **방법:** `dependencies/apt.txt` (일반) 또는 `dependencies/apt_ros.txt` (ROS 전용)에 패키지 기입. 배포 런타임에도 필요한 패키지는 뒤에 `# runtime` 주석 추가.
-- **효과:** BuildKit 캐시 마운트(`/cache/apt`)로 인해 패키지 추가 시 전체 레이어를 다시 받지 않고 즉시 설치됩니다.
+### 1. Python Layer (`uv` + `pyproject.toml`)
 
-### 2. Language Layer (C++/Python)
+Python 의존성은 초고속 패키지 매니저 `uv`를 통해 완전히 결정론적으로 관리됩니다.
 
-- **C++:** `FetchDependencies.cmake`를 활용한 빌드 타임 의존성 해결.
-- **Python:** 초고속 패키지 매니저 `uv` 기반 결정성 있는 가상환경 구축. (호스트 캐시 `/cache/uv` 활용)
-  - **`pyproject.toml` + `uv.lock`** (권장): 프로젝트 의존성을 결정적으로 관리. `uv sync --frozen`으로 재현 가능한 환경 구축.
-  - **`dependencies/requirements.txt`** (호환): uv 미사용 프로젝트를 위한 레거시 호환. 기반/인프라 패키지 명시용.
-  - **병합 사용**: 두 파일이 모두 존재하면 `requirements.txt` → `uv.lock` 순서로 순차 설치됩니다.
+- **외부 패키지 및 Git 연동**: 외부 소스를 가져올 때는 `pyproject.toml`의 `[tool.uv.sources]`를 사용하여 특정 브랜치나 커밋을 고정하는 방식이 가장 강력하게 권장됩니다. (별도의 클론 과정 불필요)
+- **하드웨어 가속(GPU/CPU) 분리**: 무거운 딥러닝 라이브러리(예: PyTorch)는 아래 예시처럼 `optional-dependencies`로 분리하세요.
 
-### 3. Workspace Layer (vcstool)
+  ```toml
+  # pyproject.toml 구조 예시
+  [project.optional-dependencies]
+  cpu = ["torch==2.9.1"]
+  gpu = ["torch==2.9.1"]
 
-- **방법:** `dependencies/dependencies.repos`에 소스 기반 의존성 명시.
-- **자동 동기화:** 컨테이너 시작 시(`entrypoint.sh`), `src/thirdparty` 디렉토리가 비어 있다면 `sync_deps.sh`가 자동으로 실행되어 외부 소스를 다운로드합니다.
-- **오버레이:** `dependencies/overlay/`의 파일이 다운로드된 `/workspace/src/thirdparty` 소스 위로 안전하게 병합(덮어쓰기)됩니다.
+  [tool.uv.sources]
+  torch = [
+      { index = "pytorch-cpu", extra = "cpu" },
+      { index = "pytorch-cu128", extra = "gpu" },
+  ]
+  ```
+
+  이후 `.env` 파일의 `UV_SYNC_FLAGS="--extra gpu"`를 설정하면, 템플릿이 도커 빌드 시 알아서 해당 환경에 맞는 패키지만 최적화하여 설치합니다.
+
+### 2. C++ & ROS Layer (`CMake` + `dependencies.repos`)
+
+C++ 및 ROS 환경에서는 성격에 따라 두 가지 도구를 조합하여 의존성을 조작할 수 있습니다.
+
+- **`FetchDependencies.cmake` (빌드 타임 링킹)**: 프로젝트의 `CMakeLists.txt` 빌드 시점에 특정 라이브러리를 GitHub 등에서 즉시 다운로드하여 정적/동적 링킹할 때 사용합니다. 사용자는 직접 이 파일을 열어 `nlohmann_json`, `spdlog` 등 프로젝트에 필요한 C++ 의존성을 자유롭게 추가하고 조작할 수 있습니다.
+- **`dependencies.repos` (소스 레벨 동기화)**: 외부 라이브러리 소스를 직접 가져와 내 프로젝트와 동시에 뜯어고치며 개발(Editable)해야 할 때 유용합니다.
+  - **자동 동기화**: `dependencies/dependencies.repos`에 명시하면 컨테이너 시작 시(`make dev` 또는 `make ros`) `src/thirdparty` 폴더에 자동으로 클론됩니다.
+  - **오버레이**: `dependencies/overlay/` 디렉토리에 위치한 파일들은 동기화가 끝난 후 타겟 소스 위로 안전하게 병합(덮어쓰기)됩니다.
+
+### 3. 빌드 속도 및 의존성 최적화 (`config/colcon.meta`)
+
+거대한 외부 C++/ROS 라이브러리(Eigen3, GTSAM, Librealsense2 등)를 소스째 빌드하면, 데모나 테스트 컴파일 때문에 빌드 시간이 매우 오래 걸리거나 런타임 충돌(Eigen ODR Violation)이 발생할 수 있습니다.
+
+- 템플릿에 내장된 `config/colcon.meta` 파일은 `colcon build` 실행 시 특정 라이브러리에만 커스텀 CMake 옵션을 자동으로 주입합니다.
+- **주요 예시**: 내장된 설정은 불필요한 테스트(`BUILD_TESTING=OFF`) 컴파일을 원천 차단하여 빌드 시간을 단축하고, 시스템 라이브러리 강제 사용(`GTSAM_USE_SYSTEM_EIGEN=ON`)을 통해 메모리 충돌을 예방합니다.
+- **커스터마이징 (ROS)**: 이 파일에 해당 패키지의 이름과 CMake 옵션 배열을 주입하여 전체 워크스페이스 빌드를 지휘(Orchestration)하세요.
+- **커스터마이징 (C++)**: `colcon`이 없는 순수 C++ 빌드에서는 `.env`의 `CMAKE_EXTRA_ARGS` 변수를 활용합니다.
+  - 소수 옵션: `CMAKE_EXTRA_ARGS="-DBUILD_TESTING=OFF -DGTSAM_USE_SYSTEM_EIGEN=ON"` 형태로 직접 주입합니다.
+  - 다수 옵션: 별도의 설정 파일(예: `config/cmake_cache.cmake`)에 `set(BUILD_TESTING OFF CACHE BOOL "" FORCE)` 형태로 적은 뒤, `.env`에 `CMAKE_EXTRA_ARGS="-C /workspace/config/cmake_cache.cmake"`라고 적어서 파일째로 한 번에 주입하는 방식을 권장합니다.
+
+### 4. System Layer (APT 패키지)
+
+- **방법**: 프로젝트에 필요한 OS 리눅스 패키지는 `dependencies/apt.txt` (일반) 또는 `dependencies/apt_ros.txt` (ROS 전용)에 기입합니다.
+- 배포 런타임 이미지 에도 포함되어야 하는 패키지는 줄 끝에 `# runtime` 주석을 달면 자동 필터링됩니다. 빌드 시 BuildKit 캐시를 활용하여 초고속으로 설치됩니다.
 
 ---
 

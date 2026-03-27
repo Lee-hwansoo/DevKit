@@ -13,6 +13,9 @@ ARG CMAKE_CXX_STANDARD=17
 ARG LANG=C.UTF-8
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TARGETARCH=amd64
+ARG UV_SYNC_FLAGS=""
+ARG CMAKE_EXTRA_ARGS=""
+ARG COLCON_EXTRA_FLAGS=""
 
 # ── Stage 0: uv (Binary extraction) ─────────────────────────────────────────
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-binaries
@@ -140,6 +143,7 @@ WORKDIR /workspace
 
 # ── Stage 8a: 공유 Python 의존성 레이어 ──────────────────────────────────────
 FROM dev-core AS python-deps
+ARG UV_SYNC_FLAGS
 WORKDIR /workspace
 COPY pyproject.toml* uv.lock* ./
 ENV UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
@@ -149,25 +153,30 @@ RUN --mount=type=cache,target=/cache/uv,sharing=locked \
         uv pip install -r /opt/dependencies/requirements.txt; \
     fi && \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then \
-        uv sync --frozen --no-install-project; \
+        uv sync --frozen --no-install-project ${UV_SYNC_FLAGS}; \
     fi
 
 # ── Stage 8b: C++/Python 빌드 (builder-dev) ──────────────────────────────────
 FROM python-deps AS builder-dev
 ARG ROS_DISTRO
+ARG UV_SYNC_FLAGS
+ARG CMAKE_EXTRA_ARGS
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh install-packages all
 COPY s[r]c/ src/
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
-    if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen; fi
+    if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
     mkdir -p build && cd build && \
-    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} && \
+    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} ${CMAKE_EXTRA_ARGS} && \
     make -j$(nproc) && make install DESTDIR=/workspace/install
 
 # ── Stage 8c: ROS 빌드 (builder-ros) ─────────────────────────────────────────
 FROM ros-base AS builder-ros
+ARG UV_SYNC_FLAGS
+ARG CMAKE_EXTRA_ARGS
+ARG COLCON_EXTRA_FLAGS
 WORKDIR /workspace
 COPY --from=python-deps /workspace/install/.venv /workspace/install/.venv
 COPY pyproject.toml* uv.lock* ./
@@ -180,10 +189,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ln -s /opt/dependencies /workspace/dependencies && \
     SYNC_TARGET_DIR=src/thirdparty /docker_dev/scripts/sync_deps.sh --rosdep
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
-    if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen; fi
+    if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
     . /opt/ros/${ROS_DISTRO}/setup.sh && \
-    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} --install-base /workspace/install
+    colcon build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} ${CMAKE_EXTRA_ARGS} --install-base /workspace/install
 
 # ── Stage 9: Final Runtime Images (Switch) ──────────────────────────────────
 FROM runtime-common AS dev-runtime
