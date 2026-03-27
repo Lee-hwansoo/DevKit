@@ -33,7 +33,7 @@
 
 본 템플릿은 빌드 속도와 캐시 효율을 극대화하기 위해 세분화된 빌드 파이프라인을 사용합니다.
 
-- `Base OS` ➔ `Tools/GUI (캐시 최적화)` ➔ `Python (uv)` ➔ `Dev (개발 환경)` ➔ `Builder (Bake)` ➔ `Runtime (초경량 배포)`
+- `Base OS` ➔ `dev-base-tools (유틸/빌드/GUI 통합)` ➔ `dev-core (Python 및 핵심 설정)` ➔ `dev (개발 환경)` ➔ `builder (Bake)` ➔ `runtime (초경량 배포)`
 
 ---
 
