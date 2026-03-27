@@ -1,10 +1,12 @@
 #!/bin/bash
 # scripts/welcome.sh - Container Welcome Message (MOTD)
 
-# 로깅 유틸리티 로드
-SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+# ANSI Color Codes
+CYAN='\033[0;36m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "                              ${GREEN}Welcome${NC}"
