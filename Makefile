@@ -1,5 +1,5 @@
 # =============================================================================
-# ros2_docker_template/Makefile
+# Dev-Template/Makefile
 # 원 커맨드 워크플로우 (KISS 기반 명령어 통합)
 # =============================================================================
 
@@ -498,9 +498,12 @@ clean:
 
 clean-cache:
 	@CACHE_DIR=$(HOST_CACHE_DIR); \
-	if [ -z "$$CACHE_DIR" ] || [ "$$CACHE_DIR" = "/" ] || ! (echo "$$CACHE_DIR" | grep -q "$(COMPOSE_PROJECT_NAME)" || echo "$$CACHE_DIR" | grep -q "$(WORKSPACE_PATH)"); then \
+	if [ -z "$$CACHE_DIR" ] || [ "$$CACHE_DIR" = "/" ]; then \
 		echo -e "  $(ERROR) 캐시 경로($$CACHE_DIR)가 유효하지 않거나 안전하지 않습니다."; \
 		exit 1; \
+	fi; \
+	if ! (echo "$$CACHE_DIR" | grep -q "$(COMPOSE_PROJECT_NAME)" || echo "$$CACHE_DIR" | grep -q "$(WORKSPACE_PATH)"); then \
+		echo -e "  $(WARN) 이 캐시 경로($$CACHE_DIR)는 공유 캐시입니다. 다른 프로젝트에 영향을 줄 수 있습니다."; \
 	fi; \
 	if [ -d "$$CACHE_DIR" ]; then \
 		if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \

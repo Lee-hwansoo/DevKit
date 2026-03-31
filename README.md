@@ -124,7 +124,27 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 
 ## 🛠 컨테이너 내부 개발 워크플로우
 
-어떤 프로젝트든 동일한 UX를 제공합니다.
+어떤 프로젝트든 접속 후 동일한 단축키(Alias)로 일관된 UX를 경험할 수 있습니다.
+
+### 🏁 첫 접속 시 초기화 및 빌드 시나리오 (First Setup & Build)
+
+새 프로젝트를 시작하거나 템플릿을 처음 복사한 뒤 컨테이너 쉘에 들어왔다면, 아래 순서대로 1회 초기화를 진행하세요. (개발 환경은 On-Demand 방식이므로 수동 세팅이 필요합니다.)
+
+```bash
+# 1. 🐍 Python 가상환경 생성 및 의존성 다운로드
+mkenv             # /workspace/install/.venv 생성 및 루트 링킹
+uvs               # (권장) pyproject.toml 기반 의존성 초고속 설치 (uv sync)
+# uvp -r dependencies/requirements.txt  # (대안) requirements.txt 사용자용
+
+# 2. 📦 ROS 및 C++ 서드파티 의존성 다운로드
+sync_deps         # dependencies.repos 클론 및 rosdep 의존성 자동 설치
+
+# 3. 🔨 소스 코드 빌드 시작
+cb                # ROS: colcon build 수행 (RelWithDebInfo 기본)
+# mbuild          # 순수 C++: cmake & make 수행
+```
+
+### 📋 통합 명령어 사전
 
 | 명령어 | 설명 | 특징 |
 | :--- | :--- | :--- |
@@ -242,12 +262,18 @@ make ros-prod        # 서비스 시작 (또는 docker compose -f docker-compose
 
 ## 📦 외부 의존성 관리 전략 (SSOT Determinism)
 
-Dev-Template은 시스템 패키지, Python, C++, ROS 각각의 생태계에 가장 적합한 모범 사례를 조합하여 의존성을 관리합니다.
+이 템플릿의 의존성 관리에는 아키텍처를 관통하는 명확한 **대원칙**이 있습니다:
+
+- **개발 환경 (Dev)**: 시스템 패키지(APT)를 제외한 Python 의존성이나 ROS 패키지는 **자동으로 설치되지 않습니다**. 유연한 개발을 위해 소스 코드 디렉토리(`src/`)를 실시간 마운트한 뒤, 내부 쉘에서 단축키(`mkenv`, `sync_deps`)를 통해 **On-Demand(수동)로 한 번 설치해 주어야 합니다.**
+- **운영 배포 환경 (Prod)**: 사용자의 어떠한 수동 조작도 없이, Dockerfile 빌드 과정 중에 Python 패키지와 ROS/C++ 의존성이 **이미지 내부에 100% 완벽하게 설치(Bake-in)** 되어 영구적으로 구워집니다.
+
+이러한 분리 원칙 아래, 각 생태계별로 아래와 같은 체계적인 의존성 관리법을 제공합니다.
 
 ### 1. Python Layer (`uv` + `pyproject.toml`)
 
 Python 의존성은 초고속 패키지 매니저 `uv`를 통해 완전히 결정론적으로 관리됩니다.
 
+- **다중 패키지 명세 지원 및 충돌 방지**: 템플릿의 파이썬 생태계는 초고속 `uv`를 코어 엔진으로 사용합니다. `pyproject.toml`을 통한 완벽한 버전 관리(`uv sync`)가 최우선 권장 방식이며, 기존의 직관적인 `requirements.txt` 방식(`uv pip`)도 지원합니다. 단, 의존성 충돌을 원천 차단하기 위해 두 파일이 동시 존재할 경우 `pyproject.toml`만 단독 실행(Mutual Exclusion)되도록 설계되었습니다.
 - **외부 패키지 및 Git 연동**: 외부 소스를 가져올 때는 `pyproject.toml`의 `[tool.uv.sources]`를 사용하여 특정 브랜치나 커밋을 고정하는 방식이 가장 강력하게 권장됩니다. (별도의 클론 과정 불필요)
 - **하드웨어 가속(GPU/CPU) 분리**: 무거운 딥러닝 라이브러리(예: PyTorch)는 아래 예시처럼 `optional-dependencies`로 분리하세요.
 

@@ -258,13 +258,33 @@ __gpu_status_impl() {
 }
 
 # =============================================================================
+# iGPU Setup (DRI only — NVIDIA excluded)
+# =============================================================================
+setup_igpu() {
+    # DRI 장치를 기반으로 Intel/AMD를 자동 판별 (NVIDIA 제외)
+    if has_intel_dri; then
+        setup_intel
+    elif has_amd_dri; then
+        setup_amd
+    elif has_any_dri; then
+        reset_gpu_env
+        export LIBGL_ALWAYS_SOFTWARE=0
+        write_gpu_env
+        log_ok "Generic DRI GPU configured"
+    else
+        setup_software
+        log_warn "igpu mode requested but no DRI device found. Falling back to software."
+    fi
+}
+
+# =============================================================================
 # Main Entry
 # =============================================================================
 case "${1:-auto}" in
     intel)              setup_intel ;;
     amd)                setup_amd ;;
     nvidia)             setup_nvidia ;;
-    igpu)               setup_auto ;;
+    igpu)               setup_igpu ;;
     cpu|software)       setup_software ;;
     status)             __gpu_status_impl ;;
     auto|"")            setup_auto ;;

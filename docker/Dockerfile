@@ -1,5 +1,5 @@
 # =============================================================================
-# ros2_docker_template/docker/Dockerfile
+# Dev-Template/docker/Dockerfile
 # 멀티스테이지 기반 통합 Dockerfile (Dev & Prod)
 # =============================================================================
 
@@ -54,8 +54,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils
 
+# Note: entrypoint.sh는 dev-core에서도 별도 COPY됨 (상속 트리가 다르므로 중복 필수)
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY scripts/gpu_setup.sh /opt/scripts/gpu_setup.sh
+COPY scripts/utils_logging.sh /opt/scripts/utils_logging.sh
 RUN chmod +x /entrypoint.sh /opt/scripts/gpu_setup.sh
 
 # ── Stage 2: dev-base-tools (Utilities, Compilers & GUI) ──────────────────────
@@ -68,8 +70,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # build-tools
     build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev \
     # gui-tools
-    clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils \
-    intel-gpu-tools intel-opencl-icd || true
+    clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils
+
+# 아키텍처 의존 패키지 (ARM64에서 미설치 가능)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd || true
 
 # D2Coding 폰트
 RUN if [ -f /opt/dependencies/D2Coding.zip ]; then \
@@ -130,7 +136,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh install-packages all ${ROS_DISTRO} && \
-    rosdep init || true && \
+    (rosdep init || true) && \
     rosdep update --rosdistro ${ROS_DISTRO}
 
 FROM ros-base AS ros
@@ -149,11 +155,10 @@ COPY pyproject.toml* uv.lock* ./
 ENV UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     uv venv ${UV_PROJECT_ENVIRONMENT} && \
-    if [ -f /opt/dependencies/requirements.txt ]; then \
-        uv pip install -r /opt/dependencies/requirements.txt; \
-    fi && \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then \
         uv sync --frozen --no-install-project ${UV_SYNC_FLAGS}; \
+    elif [ -f /opt/dependencies/requirements.txt ]; then \
+        uv pip install -r /opt/dependencies/requirements.txt; \
     fi
 
 # ── Stage 8b: C++/Python 빌드 (builder-dev) ──────────────────────────────────
@@ -169,8 +174,8 @@ RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
     mkdir -p build && cd build && \
-    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} ${CMAKE_EXTRA_ARGS} && \
-    make -j$(nproc) && make install DESTDIR=/workspace/install
+    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} ${CMAKE_EXTRA_ARGS} && \
+    make -j$(nproc) && make install
 
 # ── Stage 8c: ROS 빌드 (builder-ros) ─────────────────────────────────────────
 FROM ros-base AS builder-ros

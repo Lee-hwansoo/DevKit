@@ -95,6 +95,14 @@ if [ ! -f "${HOST_XAUTHORITY}" ]; then
     HOST_XAUTHORITY="${HOST_CACHE_DIR}/dummy_xauthority"
 fi
 
+# 경로 값 공백 검증 (Makefile eval 호환성)
+for _path_var in HOST_HOME HOST_CACHE_DIR HOST_X11_DIR HOST_SSH_DIR HOST_GITCONFIG HOST_XAUTHORITY; do
+    _val=$(eval echo '$'"$_path_var")
+    if echo "$_val" | grep -q ' '; then
+        echo "# WARNING: $_path_var contains spaces ('$_val'). This may cause Makefile eval issues." >&2
+    fi
+done
+
 # 5. 결과 출력 (Makefile 등에서 활용 가능한 KEY=VALUE 형식)
 echo "HAS_NVIDIA=${HAS_NVIDIA}"
 echo "HAS_TOOLKIT=${HAS_TOOLKIT}"

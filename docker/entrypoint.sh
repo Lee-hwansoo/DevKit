@@ -6,7 +6,16 @@ set -e
 
 # 로깅 유틸리티 로드
 SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/opt/scripts/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+
+# Fallback: 로깅 함수가 미정의일 경우 no-op 정의 (Prod 안전장치)
+if ! declare -f log_info > /dev/null 2>&1; then
+    log_info()  { echo "[INFO] $1"; }
+    log_ok()    { echo "[OK] $1";   }
+    log_warn()  { echo "[WARN] $1" >&2; }
+    log_error() { echo "[ERROR] $1" >&2; }
+fi
 LOG_PREFIX="[Entrypoint]"
 
 # =============================================================================

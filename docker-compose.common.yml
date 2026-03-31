@@ -1,5 +1,5 @@
 # =============================================================================
-# ros2_docker_template/docker-compose.common.yml
+# Dev-Template/docker-compose.common.yml
 # 공통 서비스 템플릿 및 설정 (SSOT: Single Source of Truth)
 # =============================================================================
 
@@ -40,7 +40,7 @@ x-nvidia-deploy: &nvidia-deploy
       devices:
         - driver: nvidia
           count: ${NVIDIA_GPU_COUNT:-all}
-          capabilities: ["${NVIDIA_DRIVER_CAPABILITIES:-all}"]
+          capabilities: [gpu]
 
 # ── GPU 장치 마운트 (Intel/AMD) ──────────────────────────────────────────
 # (앵커는 각 파일에서 로컬로 정의해야 호환됩니다)
