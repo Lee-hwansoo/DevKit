@@ -1,21 +1,23 @@
 #!/bin/bash
+# =============================================================================
 # config/aliases.sh
-# ROS2 + C++ + Python(uv) + 진단 통합 alias 모음
-# ~/.bashrc에서 source /docker_dev/config/aliases.sh 로 로드됨
+# Comprehensive alias collection for ROS2, C++, Python (uv), and Diagnostics
 #
-# ROS2 관련 alias는 ros2 명령이 존재하는 경우에만 정의됨
-# → dev 타겟(ROS2 없음)에서 source 시 오류 없이 통과
+# Loaded via ~/.bashrc using: source /docker_dev/config/aliases.sh
+# Note: ROS-specific aliases are only defined if the ros2 command is available,
+# ensuring compatibility with non-ROS dev targets.
+# =============================================================================
 
 # =============================================================================
-# ROS (ROS1 & ROS2 공용)
+# ROS (ROS1 & ROS2 Common)
 # =============================================================================
 if [ -d /opt/ros ]; then
-    # ── Build (Colcon 통일) ──────────────────────────────────────────────────
-    # CMAKE_CXX_STANDARD은 .env → docker-compose → ENV로 주입됨
+    # --- Build (Unified Colcon) ----------------------------------------------
+    # CMAKE_CXX_STANDARD is injected via .env -> docker-compose -> ENV
     alias cb='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}'
     alias cbp='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} --packages-select'
 
-    # 릴리즈용 (최적화)
+    # Release mode (Optimized)
     alias cbr='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}'
     alias cbrp='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} --packages-select'
     alias cbt='colcon test'
@@ -23,12 +25,12 @@ if [ -d /opt/ros ]; then
     alias s='source /workspace/install/setup.bash'
     alias sb='source ~/.bashrc'
 
-    # ── Navigation ─────────────────────────────────────────────────────────
+    # --- Navigation ----------------------------------------------------------
     alias cw='cd /workspace'
     alias cs='cd /workspace/src'
 
-    # ── ROS Commands ───────────────────────────────────────────────────────
-    # ROS 2 (기본)
+    # --- ROS Commands --------------------------------------------------------
+    # ROS 2 (Default)
     alias rt='ros2 topic list'
     alias rte='ros2 topic echo'
     alias rth='ros2 topic hz'
@@ -39,7 +41,7 @@ if [ -d /opt/ros ]; then
     alias rl='ros2 launch'
     alias ri='ros2 interface show'
 
-    # ROS 1 (noetic 감지 시)
+    # ROS 1 (Fallback if Noetic is detected)
     if [ "${ROS_DISTRO}" = "noetic" ]; then
         alias rt='rostopic list'
         alias rte='rostopic echo'
@@ -54,12 +56,12 @@ if [ -d /opt/ros ]; then
 
     alias rqt='rqt'
 
-    # ── Gazebo / Simulation ────────────────────────────────────────────────
+    # --- Gazebo / Simulation -------------------------------------------------
     alias gz='gazebo'
-    alias gzs='ros2 launch gazebo_ros gazebo.launch.py' # ROS 2 기준
+    alias gzs='ros2 launch gazebo_ros gazebo.launch.py' # ROS 2 standard
 fi
 
-# Navigation (공통)
+# Navigation (Common)
 alias cc='cd /docker_dev/config'
 
 # =============================================================================
@@ -70,18 +72,18 @@ alias uvr='uv run'
 alias uvp='uv pip install'
 alias uvl='uv pip list'
 
-# 프로젝트별 가상환경 생성 (install 하위에 생성하여 배포 아티팩트화 + IDE 호환을 위한 루트 심볼릭 링크)
+# Project-specific venv creation (located in /workspace/install for artifact separation + root symlink for IDE compatibility)
 alias mkenv='mkdir -p /workspace/install && uv venv --python ${UV_PYTHON:-3.10} /workspace/install/.venv && ln -sf /workspace/install/.venv /workspace/.venv && echo "Created .venv in /workspace/install and linked to /workspace/.venv. Run: activate"'
 alias activate='source /workspace/install/.venv/bin/activate'
 
-# Python 버전 확인
+# Python environment verification
 alias pyv='python3 --version && uv --version'
 alias uvpython='uv python list'
 
 # =============================================================================
 # Utils & Build
 # =============================================================================
-# 일반 C++ 프로젝트 표준 빌드 (src -> build -> install)
+# Standard C++ build workflow (src -> build -> install)
 alias mbuild='mkdir -p /workspace/build && cd /workspace/build && cmake ../src -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} && make -j$(nproc) install && cd /workspace'
 
 alias k='killall'

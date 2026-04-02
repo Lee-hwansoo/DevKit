@@ -1,15 +1,23 @@
 #!/bin/bash
+# =============================================================================
 # docker/entrypoint.sh
-# 컨테이너 시작 시 실행 — 빌드 타임에 결정할 수 없는 런타임 환경 설정
+# Runtime initialization and environment configuration engine
+#
+# Responsibilities:
+#   - Dynamic GPU acceleration setup and vendor-specific overrides
+#   - X11/Wayland display protocol verification and permissions
+#   - Cache directory orchestration and permission management
+#   - Automatic ROS and Python virtual environment sourcing
+# =============================================================================
 
 set -e
 
-# 로깅 유틸리티 로드
+# Load logging utility
 SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/opt/scripts/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
-# Fallback: 로깅 함수가 미정의일 경우 no-op 정의 (Prod 안전장치)
+# Fallback: Define logging stubs if utility functions are unavailable (Safety net for production)
 if ! declare -f log_info > /dev/null 2>&1; then
     log_info()  { echo "[INFO] $1"; }
     log_ok()    { echo "[OK] $1";   }
@@ -19,24 +27,22 @@ fi
 LOG_PREFIX="[Entrypoint]"
 
 # =============================================================================
-# [0] Clean up empty environment variables
-# =============================================================================
-# Docker Compose V2 with ${VAR:-} injects "" if VAR is not set.
-# We unset these so they don't interfere with logic or ROS nodes.
+# Clean up orphaned environment variables injected by Docker Compose V2
+# Prevents empty strings from interfering with logic or ROS node discovery
 for var in ROS_IP WAYLAND_DISPLAY HOST_WAYLAND_DISPLAY; do
     if [ -n "${!var+x}" ] && [ -z "${!var}" ]; then
         unset "$var"
     fi
 done
 
-# 워크스페이스 루트로 이동
+# Move to workspace root
 [ -d "/workspace" ] && cd /workspace
 
 # =============================================================================
-# [1] GPU 설정 — gpu_setup.sh에 위임
+# [1] GPU Hardware Acceleration Setup
 # =============================================================================
-# GPU_MODE는 .env → docker-compose environment → 여기서 읽힘
-# 값: auto (기본) | nvidia | intel | amd | cpu
+# Delegates to gpu_setup.sh which handles NVIDIA/Intel/AMD vendor-specific logic
+# Values: auto (default) | nvidia | intel | amd | cpu
 log_info "GPU mode: ${GPU_MODE:-auto}"
 
 if [ -f "/docker_dev/scripts/gpu_setup.sh" ]; then
@@ -47,7 +53,7 @@ else
     log_warn "gpu_setup.sh not found. Skipping GPU configuration."
 fi
 
-# root로 실행되므로 DEV_HOME=/root
+# Since it runs as root, DEV_HOME=/root
 DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")
 
 # =============================================================================
@@ -56,15 +62,13 @@ DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")
 # if /docker_dev exists, it's a dev environment
 if [ -d "/docker_dev" ]; then
     IS_DEV=true
-    log_info "Environment: Development"
+    log_info "Environment: Development (Source mounting active)"
 else
     IS_DEV=false
     log_info "Environment: Production"
 fi
 
-# =============================================================================
-# [3] Display / X11 / Wayland 체크 (Dev Only)
-# =============================================================================
+# [3] Display Protocol & GUI Integration (Development Only)
 if [ "$IS_DEV" = true ]; then
     if [ -n "${DISPLAY:-}" ]; then
         DISPLAY_NUM="${DISPLAY#:}"
@@ -96,7 +100,7 @@ if [ "$IS_DEV" = true ]; then
 fi
 
 # =============================================================================
-# [4] 캐시 및 기타 설정 (Dev Only)
+# [4] Cache and Other Settings (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     mkdir -p /cache/ccache /cache/uv /cache/apt
@@ -104,7 +108,7 @@ if [ "$IS_DEV" = true ]; then
 fi
 
 # =============================================================================
-# [5] Git safe.directory 설정 (Dev Only)
+# [5] Git safe.directory Setup (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ] && command -v git &>/dev/null; then
     git config --global --add safe.directory /workspace 2>/dev/null || true
@@ -112,7 +116,7 @@ if [ "$IS_DEV" = true ] && command -v git &>/dev/null; then
 fi
 
 # =============================================================================
-# [6] SSH 키 권한 확인 (Dev Only)
+# [6] Check SSH Key Permissions (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ] && [ -d "${DEV_HOME}/.ssh" ]; then
     BAD_PERMS=$(find "${DEV_HOME}/.ssh" -name "id_*" ! -perm 600 2>/dev/null | head -1)
@@ -125,7 +129,7 @@ if [ "$IS_DEV" = true ] && [ -d "${DEV_HOME}/.ssh" ]; then
 fi
 
 # =============================================================================
-# [7] 워크스페이스 상태 안내 (Dev Only)
+# [7] Workspace Status Guide (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     if [ ! -f /workspace/install/setup.bash ] && [ ! -d /workspace/install/.venv ]; then
@@ -138,9 +142,7 @@ if [ "$IS_DEV" = true ]; then
     fi
 fi
 
-# =============================================================================
-# [8] SocketCAN (선택적)
-# =============================================================================
+# [8] SocketCAN Interface Detection
 if ip link show can0 >/dev/null 2>&1; then
     log_ok "SocketCAN can0 available"
 elif ip link show 2>/dev/null | grep -q ": can"; then
@@ -148,9 +150,9 @@ elif ip link show 2>/dev/null | grep -q ": can"; then
 fi
 
 # =============================================================================
-# [9] 환경 소스 (ROS 및 Python venv)
+# [9] Environment Sourcing (ROS and Python venv)
 # =============================================================================
-# ROS 환경 소스
+# ROS environment source
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
 if [ -f "$ROS_SETUP" ]; then
     source "$ROS_SETUP"
@@ -164,7 +166,7 @@ else
     log_info "ROS2 not installed or not in /opt/ros, skipping ROS2 setup"
 fi
 
-# Python 가상환경 자동 활성화
+# Auto-activate Python virtual environment
 if [ -f "/workspace/install/.venv/bin/activate" ]; then
     if [ "$IS_DEV" = true ]; then
         ln -sf /workspace/install/.venv /workspace/.venv
@@ -173,11 +175,9 @@ if [ -f "/workspace/install/.venv/bin/activate" ]; then
     log_ok "Python virtualenv activated (/workspace/install/.venv)"
 fi
 
-# =============================================================================
-# [10] 의존성 자동 동기화 (Dev Only)
-# =============================================================================
+# [10] Automated Dependency Synchronization (On-Demand Development Only)
 if [ "$IS_DEV" = true ]; then
-    # 기본값으로 src/thirdparty를 유지하되 의존성 파일이 있는 경우만 동작
+    # Keep src/thirdparty as default, but run only if dependencies file exists
     TARGET_DIR="${SYNC_TARGET_DIR:-src/thirdparty}"
     if [ "$PWD" == "/workspace" ] && [ -f "dependencies/dependencies.repos" ]; then
         if [ ! -d "$TARGET_DIR" ] || [ -z "$(ls -A $TARGET_DIR 2>/dev/null)" ]; then

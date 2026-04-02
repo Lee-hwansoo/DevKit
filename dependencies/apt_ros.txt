@@ -1,11 +1,12 @@
 # =============================================================================
-# ROS Core & Desktop Tools (Single Source of Truth)
-# =============================================================================
-# [필터링 태그 시스템 가이드]
-# - # runtime      : 배포용(Production) 이미지에도 포함할 패키지
-# - # ros1         : ROS 1 (Noetic 등) 환경에만 설치할 패키지
-# - # ros2         : ROS 2 (Humble 등) 환경에만 설치할 패키지
-# - (주석 없음)     : 모든 개발 환경에 설치되나, 배포용 이미지에서는 제외됨
+# dependencies/apt_ros.txt
+# Core ROS and Desktop utilities (Single Source of Truth)
+#
+# Filtering Tag System Guide:
+#   - # runtime : Packages to include in the production (runtime) image
+#   - # ros1    : Packages for ROS 1 (Noetic) environments only
+#   - # ros2    : Packages for ROS 2 (Humble) environments only
+#   - (No tag)  : Installed in all dev environments, excluded from production
 # =============================================================================
 
 ros-${ROS_DISTRO}-ros-base # runtime
@@ -16,7 +17,7 @@ python3-rosdep # runtime
 python3-argcomplete # runtime
 python3-vcstool # runtime
 
-# GUI/Desktop 관련 (경량화를 원할 경우 아래 항목들을 주석 처리하세요)
+# Desktop & GUI utilities (Comment out for headless/lightweight environments)
 ros-${ROS_DISTRO}-rviz # runtime,ros1
 ros-${ROS_DISTRO}-rviz2 # runtime,ros2
 ros-${ROS_DISTRO}-rqt # runtime
@@ -27,7 +28,7 @@ ros-${ROS_DISTRO}-rmw-cyclonedds-cpp # runtime,ros2
 python3-catkin-tools # ros1
 
 # =============================================================================
-# Project-Specific Extensions (User Defined)
+# Project-specific ROS Dependencies (User Defined)
 # =============================================================================
-# 아래에 프로젝트 특화 패키지를 추가하세요.
-# 예: ros-${ROS_DISTRO}-pcl-ros # runtime
+# Add extra project-specific packages here.
+# Example: ros-${ROS_DISTRO}-pcl-ros # runtime

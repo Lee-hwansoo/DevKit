@@ -1,18 +1,19 @@
 # =============================================================================
 # Dev-Template/docker-compose.prod.yml
-# 운영(Production) 환경 배포를 위한 컴포즈 파일
+# Compose file for Production Environment Deployment
 # =============================================================================
 include:
   - path: docker-compose.common.yml
 
-# ── 운영 환경 전용 앵커 ────────────────────────────────────────────────────
+# ── Production Runtime Configuration Anchors ─────────────────────────────────
+# Optimized for performance and stability in deployment environments
 x-prod-svc: &prod-svc
   restart: always
 
 x-prod-volumes: &prod-volumes
   - ${PROD_LOG_VOL:-prod_log_data}:/workspace/log
 
-# ── 배포 환경 서비스 공유 설정 (Image Naming SSOT) ──────────────────────────
+# ── Production Runtime Service Shared Configuration (Switch Strategy) ─────────
 x-ros-prod-shared: &ros-prod-shared
   <<: *prod-svc
   image: ${COMPOSE_PROJECT_NAME}/ros-runtime:${IMAGE_TAG:-latest}
@@ -35,7 +36,7 @@ x-dev-prod-shared: &dev-prod-shared
     retries: 3
 
 services:
-  # ── [ROS] 배포 서비스 (CPU/iGPU/NVIDIA) ─────────────────────────────────
+  # [ROS] Production-Grade Runtime Services (CPU/iGPU/NVIDIA)
   ros-cpu:
     extends: { file: docker-compose.common.yml, service: base-ros }
     <<: *ros-prod-shared
@@ -51,7 +52,7 @@ services:
     <<: *ros-prod-shared
     profiles: ["ros-nvidia"]
 
-  # ── [Basic] 배포 서비스 (CPU/iGPU/NVIDIA) ──────────────────────────────────
+  # [Pure Dev] Production-Grade Runtime Services (CPU/iGPU/NVIDIA)
   basic-cpu:
     extends: { file: docker-compose.common.yml, service: base-dev }
     <<: *dev-prod-shared

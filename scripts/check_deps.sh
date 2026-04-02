@@ -1,11 +1,16 @@
 #!/bin/bash
+# =============================================================================
 # scripts/check_deps.sh
-# 빌드 아티팩트의 런타임 공유 라이브러리 의존성 누락 여부 검사
+# Verifies build artifacts for missing runtime shared library dependencies
+#
+# Scans the target directory for ELF files and shared objects, using ldd to
+# identify missing dependencies.
+# =============================================================================
 
 TARGET_DIR=${1:-/workspace/install}
 MISSING_COUNT=0
 
-# 로깅 유틸리티 로드
+# Load logging utility
 SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
@@ -13,9 +18,9 @@ LOG_PREFIX="[Sanity Check]"
 
 log_info "Scanning for missing dependencies in $TARGET_DIR..."
 
-# 실행 파일 및 공유 라이브러리(.so) 찾기 - 프로세스 치환을 사용하여 MISSING_COUNT 값 보존
+# Find executable files and shared libraries (.so) - use process substitution to preserve MISSING_COUNT
 while IFS= read -r -d '' file; do
-    # ELF 파일인지 확인 (바이너리 파일만 ldd 실행)
+    # Check if it's an ELF file (only run ldd on binary files)
     if file "$file" | grep -qE 'ELF|shared object'; then
         MISSING=$(ldd "$file" 2>/dev/null | grep "not found")
         if [ -n "$MISSING" ]; then

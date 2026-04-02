@@ -1,11 +1,12 @@
 # =============================================================================
-# Git Attributes — LF 강제, 바이너리 처리
+# .gitattributes
+# Universal git attributes
 # =============================================================================
 
-# 기본: 모든 텍스트 파일 LF
+# Default: All files
 * text=auto eol=lf
 
-# 명시적 텍스트 파일
+# Explicit text files
 *.sh      text eol=lf
 *.bash    text eol=lf
 *.py      text eol=lf
@@ -25,7 +26,7 @@ Makefile  text eol=lf
 Dockerfile text eol=lf
 .env*     text eol=lf
 
-# 바이너리 파일
+# Binary files
 *.png   binary
 *.jpg   binary
 *.jpeg  binary

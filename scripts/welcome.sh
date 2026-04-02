@@ -1,5 +1,11 @@
 #!/bin/bash
-# scripts/welcome.sh - Container Welcome Message (MOTD)
+# =============================================================================
+# scripts/welcome.sh
+# Container Welcome Message (MOTD) and quick-start guide
+#
+# Displays project metadata (ROS version, GPU mode) and a summarized list
+# of core helper commands and shortcuts for a better onboarding experience.
+# =============================================================================
 
 # ANSI Color Codes
 CYAN='\033[0;36m'

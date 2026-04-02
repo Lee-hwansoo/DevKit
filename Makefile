@@ -1,11 +1,11 @@
 # =============================================================================
 # Dev-Template/Makefile
-# 원 커맨드 워크플로우 (KISS 기반 명령어 통합)
+# Unified Workflow Orchestration (KISS-based Command Integration)
 # =============================================================================
 
 SHELL := /bin/bash
 
-# 색상 및 로깅 정의
+# Colors and Logging Definitions
 BLUE   := \033[0;34m
 GREEN  := \033[0;32m
 RED    := \033[0;31m
@@ -17,17 +17,17 @@ OK     := $(GREEN)[OK]$(NC)
 WARN   := $(YELLOW)[WARN]$(NC)
 ERROR  := $(RED)[ERROR]$(NC)
 
-# 환경 변수 로드
+# Load Environment Variables
 -include .env
 
-# 진단 엔진 연동 (자동 감지 - 필요한 타겟에서만 실행)
-# help, setup, env-check와 같은 로컬 도구 외에 모든 도커 관련 타겟에 적용
+# Environment Detection Engine (Auto-detection — triggered by relevant targets)
+# Applied to Docker-related operations to ensure hardware and display compatibility
 NEEDS_DETECTOR := $(filter-out help setup env-check%,$(MAKECMDGOALS))
 ifneq ($(NEEDS_DETECTOR),)
 $(foreach line,$(shell bash scripts/env_detector.sh),$(eval $(line)))
 endif
 
-# TARGETARCH 자동 매칭
+# Auto-match TARGETARCH
 TARGETARCH ?= $(HOST_ARCH)
 WORKSPACE_PATH ?= $(CURDIR)
 export
@@ -36,8 +36,8 @@ COMPOSE := docker compose
 COMPOSE_DEV := -f docker-compose.dev.yml
 COMPOSE_PROD := -f docker-compose.prod.yml
 
-# 매크로 (Deduplication & SSOT)
-# GPU 모드 감지 로직 통합
+# Macros (Deduplication & SSOT)
+# Integrated GPU Mode Detection Logic
 DETECT_MODE := \
 	CHOSEN_MODE=$(GPU_MODE); \
 	if [ -z "$$CHOSEN_MODE" ] || [ "$$CHOSEN_MODE" = "auto" ]; then \
@@ -53,14 +53,14 @@ define RUN_SERVICE
 	@$(DETECT_MODE) \
 	PROF=$$CHOSEN_MODE; \
 	TARGET_SVC=$2-$$CHOSEN_MODE; \
-	echo -e "  $(INFO) [$$CHOSEN_MODE] $3 환경을 시작합니다 (Service: $$TARGET_SVC)..."; \
+	echo -e "  $(INFO) [$$CHOSEN_MODE] Starting $3 environment (Service: $$TARGET_SVC)..."; \
 	$(COMPOSE) $1 --profile $$TARGET_SVC up -d $$TARGET_SVC
 endef
 
 # $1: ENV_VAR_NAME
 define CHECK_ENV
 	@if [ -z "$($1)" ]; then \
-		echo -e "  $(ERROR) $1 변수가 .env에 설정되어 있지 않습니다. 배포를 위해 반드시 필요합니다."; \
+		echo -e "  $(ERROR) Variable $1 is not set in .env. It is strictly required for production."; \
 		exit 1; \
 	fi
 endef
@@ -68,40 +68,40 @@ endef
 define VALIDATE_ROS_ENV
 	@if [ -n "$(ROS_DOMAIN_ID)" ]; then \
 		if ! [ "$(ROS_DOMAIN_ID)" -eq "$(ROS_DOMAIN_ID)" ] 2>/dev/null || [ "$(ROS_DOMAIN_ID)" -lt 0 ] || [ "$(ROS_DOMAIN_ID)" -gt 101 ]; then \
-			echo -e "  $(ERROR) ROS_DOMAIN_ID는 0에서 101 사이의 숫자여야 합니다 (현재: $(ROS_DOMAIN_ID))"; \
+			echo -e "  $(ERROR) ROS_DOMAIN_ID must be a number between 0 and 101 (Current: $(ROS_DOMAIN_ID))"; \
 			exit 1; \
 		fi \
 	fi
 	@if [ -n "$(RMW_IMPLEMENTATION)" ] && [ "$(RMW_IMPLEMENTATION)" != "rmw_cyclonedds_cpp" ] && [ "$(RMW_IMPLEMENTATION)" != "rmw_fastrtps_cpp" ]; then \
-		echo -e "  $(WARN) 비표준 RMW_IMPLEMENTATION이 감지되었습니다: $(RMW_IMPLEMENTATION)"; \
+		echo -e "  $(WARN) Non-standard RMW_IMPLEMENTATION detected: $(RMW_IMPLEMENTATION)"; \
 	fi
 endef
 
 define VALIDATE_COMPOSE_NAME
 	@if echo "$(COMPOSE_PROJECT_NAME)" | grep -q '[^a-z0-9_-]'; then \
-		echo -e "  $(ERROR) COMPOSE_PROJECT_NAME은 소문자와 대시(-)/언더스코어(_)만 포함해야 합니다."; \
+		echo -e "  $(ERROR) COMPOSE_PROJECT_NAME must contain only lowercase letters, dashes (-), or underscores (_)."; \
 		exit 1; \
 	fi
 endef
 
-# $1: FILTER, $2: COMMAND, $3: MSG (오류 시 표시용)
+# $1: FILTER, $2: COMMAND, $3: MSG (For error display)
 define EXEC_CONTAINER
 	@CONTAINER=$$(docker ps --filter "name=$1" --format "{{.Names}}" | head -n 1); \
 	if [ -n "$$CONTAINER" ]; then \
 		docker exec -it $$CONTAINER $2 || [ $$? -eq 130 ]; \
 	else \
-		echo -e "  $(ERROR) 실행 중인 $3 컨테이너가 없습니다."; \
+		echo -e "  $(ERROR) No running container found for $3."; \
 		exit 1; \
 	fi
 endef
 
-# $1: FILTER, $2: COMMAND, $3: MSG (오류 시 표시용)
+# $1: FILTER, $2: COMMAND, $3: MSG (For error display)
 define EXEC_DETACHED
 	@CONTAINER=$$(docker ps --filter "name=$1" --format "{{.Names}}" | head -n 1); \
 	if [ -n "$$CONTAINER" ]; then \
 		docker exec -d $$CONTAINER $2; \
 	else \
-		echo "  [오류] 실행 중인 $3 컨테이너가 없습니다."; \
+		echo "  [ERROR] No running container found for $3."; \
 		exit 1; \
 	fi
 endef
@@ -110,21 +110,21 @@ endef
 define SCALE_SERVICE
 	@$(DETECT_MODE) \
 	TARGET_SVC=$2-$$CHOSEN_MODE; \
-	echo -e "  $(INFO) [$3] 서비스를 $(N)개로 확장합니다 (Service: $$TARGET_SVC)..."; \
+	echo -e "  $(INFO) Scaling [$3] service to $(N) instances (Service: $$TARGET_SVC)..."; \
 	$(COMPOSE) $1 --profile $$TARGET_SVC up -d --scale $$TARGET_SVC=$(N) $$TARGET_SVC
-	@echo -e "  $(OK) 서비스 확장이 완료되었습니다."
+	@echo -e "  $(OK) Service scaling complete."
 endef
 
 # $1: COMPOSE_FILES, $2: SERVICE_PREFIX, $3: MSG, $4: EXTRA_ARGS, $5: HINT_MSG
 define BUILD_SERVICE
 	@$(DETECT_MODE) \
 	TARGET_SVC=$2-$$CHOSEN_MODE; \
-	echo -e "  $(INFO) [$3] 이미지를 빌드합니다 (Service: $$TARGET_SVC)..."; \
+	echo -e "  $(INFO) Building image for [$3] (Service: $$TARGET_SVC)..."; \
 	$(COMPOSE) $1 build $4 $$TARGET_SVC
 	@echo -e "\n  $(INFO) [Hint] $5"
 endef
 
-# 인프라 핵심 변수 export
+# Core Infrastructure Variables Export
 export HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_ARCH TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_SSH_DIR
 
 .PHONY: help setup check check-host xauth status \
@@ -144,89 +144,89 @@ help:
 	@echo "            All-in-One Docker Dev Environment Template                "
 	@echo "======================================================================"
 	@echo ""
-	@echo "  [ 초기 설정 & 상태 (Setup & Status) ]"
-	@echo "    make setup          : .env 초기화 및 기본 환경 구성 (최초 1회 실행)"
-	@echo "    make status         : 현재 프로젝트 설정, GPU 가속, 디스플레이 상태 확인"
+	@echo "  [ Initial Setup & Status Check ]"
+	@echo "    make setup          : Initialize .env and configure host prerequisites"
+	@echo "    make status         : Diagnose project settings, GPU acceleration, and display state"
 	@echo ""
-	@echo "  [ 개발 환경 (ROS) ]"
-	@echo "    make ros            : ROS 개발 컨테이너 실행 (CPU/iGPU/NVIDIA 자동 감지)"
-	@echo "    make ros-restart    : ROS 서비스 안전하게 재시작"
-	@echo "    make ros-shell      : 실행 중인 ROS 컨테이너 셸 진입"
-	@echo "    make ros-term       : 새 창(Terminator)으로 ROS 셸 실행"
-	@echo "    make build-ros      : ROS용 도커 이미지 빌드"
-	@echo "    make rebuild-ros    : 캐시 없이 ROS 이미지 전체 재빌드"
-	@echo "    make build-ros-prod : 배포용 ROS 이미지 빌드"
-	@echo "    make rebuild-ros-prod : 캐시 없이 배포용 ROS 이미지 빌드"
+	@echo "  [ Development Environment (ROS) ]"
+	@echo "    make ros            : Run ROS dev container (CPU/iGPU/NVIDIA auto-detected)"
+	@echo "    make ros-restart    : Safely restart ROS service"
+	@echo "    make ros-shell      : Enter shell of the running ROS container"
+	@echo "    make ros-term       : Execute ROS shell in a new Terminator window"
+	@echo "    make build-ros      : Build Docker image for ROS"
+	@echo "    make rebuild-ros    : Rebuild ROS image completely without cache"
+	@echo "    make build-ros-prod : Build production image for ROS"
+	@echo "    make rebuild-ros-prod : Rebuild production ROS image without cache"
 	@echo ""
-	@echo "  [ 개발 환경 (Pure Dev) ]"
-	@echo "    make dev            : 순수 개발 컨테이너 실행 (CPU/iGPU/NVIDIA 자동 감지)"
-	@echo "    make dev-restart    : 순수 개발 서비스 안전하게 재시작"
-	@echo "    make dev-shell      : 실행 중인 순수 개발 컨테이너 셸 진입"
-	@echo "    make dev-term       : 새 창(Terminator)으로 순수 개발 셸 실행"
-	@echo "    make build-dev      : 순수 개발용 도커 이미지 빌드"
-	@echo "    make rebuild-dev    : 캐시 없이 순수 개발용 도커 이미지 처음부터 다시 빌드"
-	@echo "    make build-dev-prod : 배포용 순수 개발 이미지 빌드"
-	@echo "    make rebuild-dev-prod : 캐시 없이 배포용 순수 개발 이미지 빌드"
+	@echo "  [ Development Environment (Pure Dev) ]"
+	@echo "    make dev            : Run pure dev container (CPU/iGPU/NVIDIA auto-detected)"
+	@echo "    make dev-restart    : Safely restart pure dev service"
+	@echo "    make dev-shell      : Enter shell of the running pure dev container"
+	@echo "    make dev-term       : Execute pure dev shell in a new Terminator window"
+	@echo "    make build-dev      : Build Docker image for pure dev"
+	@echo "    make rebuild-dev    : Rebuild pure dev Docker image from scratch without cache"
+	@echo "    make build-dev-prod : Build production image for pure dev"
+	@echo "    make rebuild-dev-prod : Rebuild production pure dev image without cache"
 	@echo ""
-	@echo "  [ 배포 환경 (Production) ] - Bake & Switch 전략 기반 런타임"
-	@echo "    make ros-prod       : 배포용 ROS 서비스 실행"
-	@echo "    make save-ros       : 배포용 ROS 이미지를 압축파일로 추출"
-	@echo "    make load-ros       : 압축파일에서 ROS 이미지 복원"
-	@echo "    make dev-prod       : 배포용 순수 개발 서비스 실행"
-	@echo "    make save-dev       : 배포용 ROS 이미지를 압축파일로 추출"
-	@echo "    make load-dev       : 압축파일에서 ROS 이미지 복원"
+	@echo "  [ Production Deployment ] — Bake & Switch Strategy"
+	@echo "    make ros-prod       : Run the ROS production service"
+	@echo "    make save-ros       : Extract the ROS production image to a compressed file"
+	@echo "    make load-ros       : Restore the ROS image from the compressed file"
+	@echo "    make dev-prod       : Run the pure dev production service"
+	@echo "    make save-dev       : Extract the pure dev production image to a compressed file"
+	@echo "    make load-dev       : Restore the pure dev image from the compressed file"
 	@echo ""
-	@echo "  [ 유지보수 & 도구 (Maintenance) ]"
-	@echo "    make stats          : 시스템 전체 가용 자원(CPU/Mem/GPU) 실시간 모니터링"
-	@echo "    make top            : 프로젝트 컨테이너 기반 상세 모니터링 (CPU 코어/GPU 프로세스)"
-	@echo "    make logs           : 현재 실행 중인 컨테이너의 실시간 로그 스트리밍 (계속 감시, Ctrl+C로 종료)"
-	@echo "    make down           : 실행 중인 모든 컨테이너 중지 및 제거"
-	@echo "    make clean          : 빌드 결과물(build, install, log) 도커 볼륨 삭제"
-	@echo "    make clean-cache    : 호스트 측 .docker_cache (ccache, uv, apt) 완전 삭제"
-	@echo "    make clean-all      : 프로젝트 관련 모든 도커 리소스(이미지/볼륨/캐시) 완전 초기화"
-	@echo "    make docker-clean   : 도커 시스템 전역 정리 (시스템 전체 빌드 캐시 및 미사용 이미지 삭제)"
-	@echo "    make env-check      : .env 설정 누락 여부 확인 (.env.example 기준)"
+	@echo "  [ Maintenance & Tools ]"
+	@echo "    make stats          : Monitor system overall resources (CPU/Mem/GPU) in real time"
+	@echo "    make top            : Detailed monitoring based on project containers (CPU Cores / GPU Processes)"
+	@echo "    make logs           : Stream real-time logs of running containers (Ctrl+C to stop)"
+	@echo "    make down           : Stop and remove all running containers safely"
+	@echo "    make clean          : Delete Docker volumes for build outputs (build, install, log)"
+	@echo "    make clean-cache    : Completely wipe .docker_cache (ccache, uv, apt) on the host"
+	@echo "    make clean-all      : Completely reset all Docker resources (images/volumes/cache) for the project"
+	@echo "    make docker-clean   : Global Docker system cleanup (wipe overall build caches and dangling images)"
+	@echo "    make env-check      : Automatically check for missing settings in .env compared to .env.example"
 	@echo ""
-	@echo "  [ 수평 확장 (Scaling) ]"
-	@echo "    make scale-basic N=2: 순수 개발 서비스를 N개로 확장"
-	@echo "    make scale-ros N=2  : ROS 개발 서비스를 N개로 확장"
+	@echo "  [ Scaling ]"
+	@echo "    make scale-basic N=2: Scale pure dev services to N instances"
+	@echo "    make scale-ros N=2  : Scale ROS dev services to N instances"
 	@echo "======================================================================"
 
 # =============================================================================
-# 초기 설정 및 상태 확인
+# Initial Setup and Status Check
 # =============================================================================
 setup:
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
-		echo -e "  $(OK) .env 파일이 생성되었습니다. 설정을 수정하세요."; \
+		echo -e "  $(OK) Created .env file. Please edit settings to your needs."; \
 	else \
-		echo -e "  $(INFO) .env 파일이 이미 존재합니다."; \
+		echo -e "  $(INFO) .env file already exists."; \
 	fi
 	@$(MAKE) xauth
 
 status: check
-	@echo "  [프로젝트 상태 정보]"
+	@echo "  [Project Configuration Summary]"
 	@echo "  ---------------------------------------------------"
-	@echo "  프로젝트 이름: $(COMPOSE_PROJECT_NAME)"
-	@echo "  ROS 버전:      $(ROS_DISTRO)"
-	@echo "  아키텍처:      $(HOST_ARCH) (Target: $(TARGETARCH))"
-	@echo "  디스플레이:    $(DISPLAY) ($(DISPLAY_TYPE))"
-	@echo "  GPU 모드(설정): $(GPU_MODE)"
+	@echo "  Project Name:      $(COMPOSE_PROJECT_NAME)"
+	@echo "  ROS Version:       $(ROS_DISTRO)"
+	@echo "  Architecture:      $(HOST_ARCH) (Target: $(TARGETARCH))"
+	@echo "  Display:           $(DISPLAY) ($(DISPLAY_TYPE))"
+	@echo "  GPU Mode (Set):    $(GPU_MODE)"
 	@echo "  ---------------------------------------------------"
-	@echo "  [실행 중인 컨테이너]"
+	@echo "  [Running Containers]"
 	@docker ps --filter "name=$(COMPOSE_PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
 	@echo "  ---------------------------------------------------"
-	@echo "  [생성된 도커 볼륨]"
+	@echo "  [Created Docker Volumes]"
 	@docker volume ls --filter "name=$(COMPOSE_PROJECT_NAME)" --format "table {{.Name}}\t{{.Driver}}"
 	@echo "  ---------------------------------------------------"
 	@if [ "$(HAS_NVIDIA)" = "true" ]; then \
-		echo "  [NVIDIA GPU 상세]"; \
+		echo "  [NVIDIA GPU Details]"; \
 		nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader,nounits | sed 's/^/  /'; \
 	fi
 
 check-host:
 	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "false" ]; then \
-		echo -e "  $(WARN) NVIDIA GPU가 감지되었으나 NVIDIA Container Toolkit이 없습니다."; \
+		echo -e "  $(WARN) NVIDIA GPU detected but NVIDIA Container Toolkit is not installed."; \
 	fi
 
 xauth:
@@ -241,57 +241,57 @@ xauth:
 	fi
 
 check: check-host
-	@if [ ! -f .env ]; then echo -e "  $(ERROR) .env가 없습니다. make setup 실행 필요"; exit 1; fi
-	@if [ ! -d "$(WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) WORKSPACE_PATH($(WORKSPACE_PATH))가 존재하지 않는 디렉토리입니다."; exit 1; fi
+	@if [ ! -f .env ]; then echo -e "  $(ERROR) .env not found. Please run 'make setup' first."; exit 1; fi
+	@if [ ! -d "$(WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) WORKSPACE_PATH ($(WORKSPACE_PATH)) does not exist."; exit 1; fi
 	$(call VALIDATE_COMPOSE_NAME)
 	$(call VALIDATE_ROS_ENV)
 
-# 빌드 (Build)
+# Build
 # =============================================================================
 build-ros: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,Build ROS,,"빌드가 완료되었습니다! 'make ros'를 실행하여 컨테이너를 시작하세요.")
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,ROS Development,,"Build finished! Please run 'make ros' to start the container.")
 
 build-dev: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Build 순수 개발,,"빌드가 완료되었습니다! 'make dev'를 실행하여 컨테이너를 시작하세요.")
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Pure Development,,"Build finished! Please run 'make dev' to start the container.")
 
 rebuild-ros: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,Rebuild 캐시 없이 ROS,--no-cache,"빌드가 완료되었습니다! 'make ros'를 실행하여 컨테이너를 시작하세요.")
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,Rebuild ROS without cache,--no-cache,"Build finished! Please run 'make ros' to start the container.")
 
 rebuild-dev: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Rebuild 캐시 없이 순수 개발,--no-cache,"빌드가 완료되었습니다! 'make dev'를 실행하여 컨테이너를 시작하세요.")
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Rebuild Pure Dev without cache,--no-cache,"Build finished! Please run 'make dev' to start the container.")
 
 build-ros-prod: check
-	@echo -e "  $(INFO) [Notice] 최상의 빌드 품질을 위해 'make clean'을 먼저 수행하는 것이 권장됩니다 (현재 빌드 시작...)"
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Bake 배포용 ROS,,"배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make ros-prod'로 실행하세요.")
+	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Bake Production ROS,,"Production image baked! Extract with 'make save-ros' or run with 'make ros-prod'.")
 
 build-dev-prod: check
-	@echo -e "  $(INFO) [Notice] 최상의 빌드 품질을 위해 'make clean'을 먼저 수행하는 것이 권장됩니다 (현재 빌드 시작...)"
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Bake 배포용 순수 개발,,"배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make dev-prod'로 실행하세요.")
+	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Bake Production Pure Dev,,"Production image baked! Extract with 'make save-dev' or run with 'make dev-prod'.")
 
 rebuild-ros-prod: check
-	@echo -e "  $(INFO) [Notice] 최상의 빌드 품질을 위해 'make clean'을 먼저 수행하는 것이 권장됩니다 (현재 빌드 시작...)"
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Rebuild 캐시 없이 배포용 ROS,--no-cache,"배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make ros-prod'로 실행하세요.")
+	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Rebuild Production ROS without cache,--no-cache,"Production image baked! Extract with 'make save-ros' or run with 'make ros-prod'.")
 
 rebuild-dev-prod: check
-	@echo -e "  $(INFO) [Notice] 최상의 빌드 품질을 위해 'make clean'을 먼저 수행하는 것이 권장됩니다 (현재 빌드 시작...)"
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Rebuild 캐시 없이 배포용 순수 개발,--no-cache,"배포용 이미지가 빌드되었습니다! 'docker save'로 추출하거나 'make dev-prod'로 실행하세요.")
+	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Rebuild Production Pure Dev without cache,--no-cache,"Production image baked! Extract with 'make save-dev' or run with 'make dev-prod'.")
 
 # =============================================================================
-# 실행 및 셸 진입 (Dev) - 자동 GPU 감지
+# Execution and Shell Access (Dev) - Auto GPU Detection
 # =============================================================================
 ros: check xauth
-	$(call RUN_SERVICE,$(COMPOSE_DEV),ros,ROS 개발)
-	@echo -e "\n  $(INFO) [Hint] 컨테이너가 시작되었습니다! 컨테이너 접속을 위해 'make ros-shell' 또는 'make ros-term'을 사용하세요."
+	$(call RUN_SERVICE,$(COMPOSE_DEV),ros,ROS Development)
+	@echo -e "\n  $(INFO) [Hint] Container started! Use 'make ros-shell' or 'make ros-term' to attach to the container."
 
 dev: check xauth
-	$(call RUN_SERVICE,$(COMPOSE_DEV),basic,순수 개발)
-	@echo -e "\n  $(INFO) [Hint] 컨테이너가 시작되었습니다! 컨테이너 접속을 위해 'make dev-shell' 또는 'make dev-term'을 사용하세요."
+	$(call RUN_SERVICE,$(COMPOSE_DEV),basic,Pure Development)
+	@echo -e "\n  $(INFO) [Hint] Container started! Use 'make dev-shell' or 'make dev-term' to attach to the container."
 
-# 서비스 개별 재시작
+# Restart Services Individually
 ros-restart: down ros
 dev-restart: down dev
 
-# 필터 정의
+# Filter Definitions
 ROS_FILTER := ^$(COMPOSE_PROJECT_NAME)[-_]ros-(cpu|igpu|nvidia)
 DEV_FILTER := ^$(COMPOSE_PROJECT_NAME)[-_]basic-(cpu|igpu|nvidia)
 
@@ -302,80 +302,80 @@ ros-term: check xauth
 	$(call EXEC_DETACHED,$(ROS_FILTER),terminator,ROS)
 
 dev-shell: check
-	$(call EXEC_CONTAINER,$(DEV_FILTER),bash,개발)
+	$(call EXEC_CONTAINER,$(DEV_FILTER),bash,Development)
 
 dev-term: check xauth
-	$(call EXEC_DETACHED,$(DEV_FILTER),terminator,개발)
+	$(call EXEC_DETACHED,$(DEV_FILTER),terminator,Development)
 
-# 수평 확장 (Scaling)
+# Scaling
 scale-basic: check
-	@if [ -z "$(N)" ]; then echo -e "  $(ERROR) 확장할 개수 N을 지정하세요. (예: make scale-basic N=2)"; exit 1; fi
-	$(call SCALE_SERVICE,$(COMPOSE_DEV),basic,개발)
+	@if [ -z "$(N)" ]; then echo -e "  $(ERROR) Please specify N, the number of instances to scale. (e.g., make scale-basic N=2)"; exit 1; fi
+	$(call SCALE_SERVICE,$(COMPOSE_DEV),basic,Development)
 
 scale-ros: check
-	@if [ -z "$(N)" ]; then echo -e "  $(ERROR) 확장할 개수 N을 지정하세요. (예: make scale-ros N=2)"; exit 1; fi
+	@if [ -z "$(N)" ]; then echo -e "  $(ERROR) Please specify N, the number of instances to scale. (e.g., make scale-ros N=2)"; exit 1; fi
 	$(call SCALE_SERVICE,$(COMPOSE_DEV),ros,ROS)
 
 # =============================================================================
-# 배포 실행 (Prod) - 자동 GPU 감지
+# Production Execution (Prod) - Auto GPU Detection
 # =============================================================================
 ros-prod: check xauth
 	$(call CHECK_ENV,ROS_LAUNCH_COMMAND)
-	$(call RUN_SERVICE,$(COMPOSE_PROD),ros,ROS 배포)
+	$(call RUN_SERVICE,$(COMPOSE_PROD),ros,ROS Production)
 	@$(MAKE) logs
 
 dev-prod: check xauth
 	$(call CHECK_ENV,APP_COMMAND)
-	$(call RUN_SERVICE,$(COMPOSE_PROD),basic,순수 배포)
+	$(call RUN_SERVICE,$(COMPOSE_PROD),basic,Pure Development Production)
 	@$(MAKE) logs
 
-# 이미지 추출 및 복원 전략
+# Image Extraction and Restoration Strategy
 IMAGE_SUFFIX := $(if $(filter humble,$(ROS_DISTRO)),humble,$(if $(filter noetic,$(ROS_DISTRO)),noetic,latest))
 SAVE_NAME_ROS := $(COMPOSE_PROJECT_NAME)-ros-$(IMAGE_SUFFIX).tar.gz
 SAVE_NAME_DEV := $(COMPOSE_PROJECT_NAME)-dev-$(IMAGE_SUFFIX).tar.gz
 
-# $1: TARGET_ENV (ros-runtime 또는 dev-runtime), $2: SAVE_FILE_NAME, $3: MSG
+# $1: TARGET_ENV (ros-runtime or dev-runtime), $2: SAVE_FILE_NAME, $3: MSG
 define SAVE_IMAGE
-	@echo -e "  $(INFO) $3 배포용 이미지를 추출합니다: $2..."
+	@echo -e "  $(INFO) Extracting production image for $3: $2..."
 	@docker save $(COMPOSE_PROJECT_NAME)/$1:latest | gzip > $2
-	@echo -e "  $(OK) 이미지 추출이 완료 되었습니다: $$(du -h $2) (Path: ./$2)"
+	@echo -e "  $(OK) Image extraction completed: $$(du -h $2) (Path: ./$2)"
 endef
 
 # $1: SAVE_FILE_NAME, $2: MSG
 define LOAD_IMAGE
-	@if [ ! -f $1 ]; then echo -e "  $(ERROR) 파일이 없습니다: $1"; exit 1; fi
-	@echo -e "  $(INFO) $2 이미지를 복원합니다..."
+	@if [ ! -f $1 ]; then echo -e "  $(ERROR) File not found: $1"; exit 1; fi
+	@echo -e "  $(INFO) Restoring $2 image..."
 	@docker load < $1
-	@echo -e "  $(OK) $2 이미지 복원이 완료되었습니다."
+	@echo -e "  $(OK) $2 image restored successfully."
 endef
 
 save-ros:
 	$(call SAVE_IMAGE,ros-runtime,$(SAVE_NAME_ROS),ROS)
 
 save-dev:
-	$(call SAVE_IMAGE,dev-runtime,$(SAVE_NAME_DEV),순수 개발)
+	$(call SAVE_IMAGE,dev-runtime,$(SAVE_NAME_DEV),Pure Development)
 
 load-ros:
 	$(call LOAD_IMAGE,$(SAVE_NAME_ROS),ROS)
 
 load-dev:
-	$(call LOAD_IMAGE,$(SAVE_NAME_DEV),순수 개발)
+	$(call LOAD_IMAGE,$(SAVE_NAME_DEV),Pure Development)
 
 # =============================================================================
-# 유지보수
+# Maintenance
 # =============================================================================
-# 실시간 모니터링 (CPU, MEM, NVIDIA/Intel/AMD GPU)
+# Real-time Monitoring (CPU, MEM, NVIDIA/Intel/AMD GPU)
 stats:
-	@echo -e "  $(INFO) 가용 자원 및 모든 컨테이너 모니터링을 시작합니다 (Ctrl+C로 종료)..."
+	@echo -e "  $(INFO) Initiating real-time resource monitoring (Ctrl+C to terminate)..."
 	@watch -t -n 1 "bash -c ' \
-		echo -e \"--- [모든 컨테이너 상태 (CPU/Mem/PIDs)] ---\n\"; \
+		echo -e \"--- [All Containers Status (CPU/Mem/PIDs)] ---\n\"; \
 		docker stats --no-stream --format \"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.PIDs}}\"; \
 		if [ \"$(HAS_NVIDIA)\" = \"true\" ]; then \
-			echo -e \"\n--- [NVIDIA GPU 상세 상태] ---\n\"; \
+			echo -e \"\n--- [NVIDIA GPU Details] ---\n\"; \
 			nvidia-smi --query-gpu=index,name,utilization.gpu,utilization.memory,memory.used,memory.total --format=csv,noheader,nounits | sed \"s/^/  GPU /\"; \
 		fi; \
 		if [ \"$(HAS_DRI)\" = \"true\" ]; then \
-			echo -e \"\n--- [Intel/AMD (DRI) 부하 상태] ---\n\"; \
+			echo -e \"\n--- [Intel/AMD (DRI) Load Status] ---\n\"; \
 			for dev in /sys/class/drm/renderD*; do \
 				[ -d \"\$$dev\" ] || continue; \
 				idx=\$${dev##*renderD}; \
@@ -388,17 +388,17 @@ stats:
 					usage=\$$(cat \"\$$dev/device/gpu_busy_percent\"); \
 					echo \"\$$usage%\"; \
 				else \
-					echo \"Active (Use make top for detail)\"; \
+					echo \"Active (Use make top for details)\"; \
 				fi; \
 			done; \
 		fi; \
 	'" || [ $$? -eq 130 ]
 
-# 전문가용 상세 모니터링 (CPU 코어별 + GPU 프로세스별)
+# Detailed Expert Monitoring (Per CPU Core + Per GPU Process)
 top:
 	@CONTAINER=$$(docker ps --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)" --format "{{.Names}}" | head -n 1); \
 	if [ -n "$$CONTAINER" ]; then \
-		echo -e "  $(INFO) 컨테이너($$CONTAINER) 내부 상세 모니터링을 시작합니다..."; \
+		echo -e "  $(INFO) Initiating granular container-level monitoring ($$CONTAINER)..."; \
 		docker exec -it $$CONTAINER bash -c " \
 			FOUND=0; \
 			if command -v nvtop >/dev/null 2>&1; then \
@@ -414,11 +414,11 @@ top:
 			if [ \"\$$FOUND\" = \"0\" ]; then htop; fi; \
 		" || [ $$? -eq 130 ]; \
 	else \
-		echo -e "  $(ERROR) 실행 중인 프로젝트 컨테이너가 없습니다. 호스트 도구를 시도합니다..."; \
+		echo -e "  $(ERROR) No running project container found. Trying host tools instead..."; \
 		FOUND=0; \
 		if command -v nvtop >/dev/null 2>&1; then \
 			if nvtop 2>&1 | head -n 1 | grep -q "No GPU"; then \
-				echo -e "  $(WARN) 호스트 nvtop이 GPU를 감지하지 못했습니다. 대안을 시도합니다..."; \
+				echo -e "  $(WARN) Host nvtop failed to detect a GPU. Trying an alternative..."; \
 			else \
 				nvtop || [ $$? -eq 130 ]; FOUND=1; \
 			fi; \
@@ -428,10 +428,10 @@ top:
 				[ -e "$$dev/device/vendor" ] || continue; \
 				vendor=$$(cat "$$dev/device/vendor" 2>/dev/null); \
 				if [ "$$vendor" = "0x8086" ] && command -v intel_gpu_top >/dev/null 2>&1; then \
-					echo -e "  $(INFO) Intel GPU 감지됨. intel_gpu_top을 실행합니다..."; \
+					echo -e "  $(INFO) Intel GPU detected. Running intel_gpu_top..."; \
 					sudo intel_gpu_top || [ $$? -eq 130 ]; FOUND=1; break; \
 				elif ([ "$$vendor" = "0x1002" ] || [ "$$vendor" = "0x1022" ]) && command -v radeontop >/dev/null 2>&1; then \
-					echo -e "  $(INFO) AMD GPU 감지됨. radeontop을 실행합니다..."; \
+					echo -e "  $(INFO) AMD GPU detected. Running radeontop..."; \
 					radeontop || [ $$? -eq 130 ]; FOUND=1; break; \
 				fi; \
 			done; \
@@ -440,20 +440,20 @@ top:
 			htop || [ $$? -eq 130 ]; FOUND=1; \
 		fi; \
 		if [ "$$FOUND" = "0" ]; then \
-			echo -e "  $(ERROR) 적절한 모니터링 도구(nvtop, intel_gpu_top, htop)를 찾을 수 없습니다."; exit 1; \
+			echo -e "  $(ERROR) Appropriate monitoring tools (nvtop, intel_gpu_top, htop) could not be found."; exit 1; \
 		fi; \
 	fi
 
 logs:
 	@if [ -n "$$($(COMPOSE) $(COMPOSE_DEV) ps --status running -q 2>/dev/null)" ]; then \
-		echo -e "  $(INFO) [Dev] 개발 환경 로그를 스트리밍합니다..."; \
+		echo -e "  $(INFO) [Dev] Streaming development logs..."; \
 		$(COMPOSE) $(COMPOSE_DEV) logs -f --tail 100; \
 	elif [ -f docker-compose.prod.yml ] && [ -n "$$($(COMPOSE) $(COMPOSE_PROD) ps --status running -q 2>/dev/null)" ]; then \
-		echo -e "  $(INFO) [Prod] 배포 환경 로그를 스트리밍합니다..."; \
+		echo -e "  $(INFO) [Prod] Streaming production logs..."; \
 		$(COMPOSE) $(COMPOSE_PROD) logs -f --tail 100; \
 	fi
 
-# $1: EXTRA_ARGS (볼륨 삭제 시 -v 등)
+# $1: EXTRA_ARGS (e.g. -v for volumes)
 define TEARDOWN_SERVICES
 	$(COMPOSE) $(COMPOSE_DEV) --profile "*" down $1 --remove-orphans
 	@if [ -f docker-compose.prod.yml ]; then \
@@ -461,99 +461,99 @@ define TEARDOWN_SERVICES
 	fi
 endef
 
-# $1: MOUNT_DIR (절대 경로), $2: 삭제할 타겟(들)
+# $1: MOUNT_DIR (Absolute Path), $2: Targets to delete
 define SUDO_FREE_RM
-	echo -e "  $(INFO) 무권한 삭제(Sudo-Free) 수행: $2"; \
+	echo -e "  $(INFO) Performing sudo-free deletion: $2"; \
 	docker run --rm -v "$1:/mnt" alpine sh -c "cd /mnt && rm -rf $2" 2>/dev/null || true; \
 	if [ "$(SKIP_ALPINE_RM)" != "1" ]; then \
-		echo -e "  $(INFO) 임시 생성된 무권한 삭제용 alpine 이미지를 정리합니다..."; \
+		echo -e "  $(INFO) Cleaning up the temporary alpine image used for sudo-free deletion..."; \
 		docker rmi alpine:latest 2>/dev/null || true; \
 	fi
 endef
 
 down:
 	$(call TEARDOWN_SERVICES)
-	@echo -e "  $(OK) 모든 컨테이너가 성공적으로 중지 및 제거되었습니다."
+	@echo -e "  $(OK) All containers have successfully been stopped and removed."
 
 clean:
 	$(call TEARDOWN_SERVICES,-v)
-	@echo -e "  $(INFO) $(COMPOSE_PROJECT_NAME) 관련 모든 네임드 볼륨을 삭제합니다..."
+	@echo -e "  $(INFO) Removing all named volumes related to $(COMPOSE_PROJECT_NAME)..."
 	@VOLUMES=$$(docker volume ls -q --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)"); \
 	if [ -n "$$VOLUMES" ]; then \
 		docker volume rm $$VOLUMES 2>/dev/null || true; \
 	fi
 	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
-		echo -e "  $(WARN) CI/FORCE 모드: 호스트 폴더 삭제 프롬프트를 묻지 않고 강제로 삭제합니다."; ans="y"; \
+		echo -e "  $(WARN) CI/FORCE mode: Forcibly deleting host folders without prompting."; ans="y"; \
 	else \
-		echo -e "  $(WARN) 호스트의 build, install, log 폴더 및 .venv 링크를 삭제하시겠습니까?"; \
-		echo -n "  (주의: .env에서 바인드 마운트로 설정하여 사용 중이었다면 실제 데이터가 완전히 유실됩니다!) [Y/N]: "; \
+		echo -e "  $(WARN) Do you want to delete the build, install, log, and .venv host folders?"; \
+		echo -n "  (WARNING: If you used bind mounts in .env, actual data will be lost!) [Y/N]: "; \
 		read ans || true; \
 	fi; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
 		$(call SUDO_FREE_RM,$(WORKSPACE_PATH),build install log .venv); \
 	else \
-		echo -e "  $(INFO) 호스트 폴더 삭제를 안전하게 건너뜁니다."; \
+		echo -e "  $(INFO) Safely skipped deleting host folders."; \
 	fi
-	@echo -e "  $(OK) 프로젝트 기본 정리(clean) 작업이 완료되었습니다."
+	@echo -e "  $(OK) General project clean up completed."
 
 clean-cache:
 	@CACHE_DIR=$(HOST_CACHE_DIR); \
 	if [ -z "$$CACHE_DIR" ] || [ "$$CACHE_DIR" = "/" ]; then \
-		echo -e "  $(ERROR) 캐시 경로($$CACHE_DIR)가 유효하지 않거나 안전하지 않습니다."; \
+		echo -e "  $(ERROR) Cache directory ($$CACHE_DIR) is invalid or unsafe."; \
 		exit 1; \
 	fi; \
 	if ! (echo "$$CACHE_DIR" | grep -q "$(COMPOSE_PROJECT_NAME)" || echo "$$CACHE_DIR" | grep -q "$(WORKSPACE_PATH)"); then \
-		echo -e "  $(WARN) 이 캐시 경로($$CACHE_DIR)는 공유 캐시입니다. 다른 프로젝트에 영향을 줄 수 있습니다."; \
+		echo -e "  $(WARN) This cache string ($$CACHE_DIR) points to a shared global cache. Proceeding here affects all projects."; \
 	fi; \
 	if [ -d "$$CACHE_DIR" ]; then \
 		if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
 			ans="y"; \
 		else \
-			echo -e "  $(WARN) 호스트 측 도커 캐시 폴더($$CACHE_DIR)를 정말 삭제하시겠습니까? [Y/N]"; \
+			echo -e "  $(WARN) Are you sure you want to delete the host cache directory ($$CACHE_DIR)? [Y/N]"; \
 			read ans || true; \
 		fi; \
-		if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) 삭제를 취소합니다."; exit 1; fi; \
+		if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) Deletion cancelled."; exit 1; fi; \
 		$(call SUDO_FREE_RM,$$(dirname "$$CACHE_DIR"),$$(basename "$$CACHE_DIR")); \
 	fi
-	@echo -e "  $(OK) 도커 로컬 캐시 정리(clean-cache) 작업이 완료되었습니다."
+	@echo -e "  $(OK) Docker local cache clean up (clean-cache) completed."
 
-# 프로젝트 관련 모든 리소스(이미지 포함) 초기화
+# Reset all project-related resources (including images)
 clean-all:
 	@$(MAKE) clean SKIP_ALPINE_RM=1
 	@$(MAKE) clean-cache SKIP_ALPINE_RM=1
-	@echo -e "  $(INFO) 임시 생성된 무권한 삭제용 alpine 이미지를 정리합니다..."
+	@echo -e "  $(INFO) Cleaning up the temporary alpine image used for sudo-free deletion..."
 	@docker rmi alpine:latest 2>/dev/null || true
-	@echo -e "  $(INFO) $(COMPOSE_PROJECT_NAME) 프로젝트 관련 모든 이미지를 정리합니다..."
+	@echo -e "  $(INFO) Cleaning up all images related to project $(COMPOSE_PROJECT_NAME)..."
 	@IMAGES=$$(docker images -q --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)"); \
 	if [ -n "$$IMAGES" ]; then \
 		docker rmi -f $$IMAGES 2>/dev/null || true; \
-		echo -e "  $(OK) 프로젝트 관련 이미지가 삭제되었습니다."; \
+		echo -e "  $(OK) Project-related images removed."; \
 	else \
-		echo -e "  $(INFO) 삭제할 프로젝트 관련 이미지가 없습니다."; \
+		echo -e "  $(INFO) No project-related images to delete."; \
 	fi
-	@echo -e "  $(OK) 프로젝트 전체 초기화(clean-all) 작업이 완료되었습니다."
+	@echo -e "  $(OK) Full project reset (clean-all) completed."
 
-# 도커 시스템 전역 정리 (주의: 모든 프로젝트의 빌드 캐시에 영향을 줌)
+# Global Docker cleanup (Warning: affects build caches across all projects on the system)
 docker-clean:
 	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
 		ans="y"; \
 	else \
-		echo -e "  $(WARN) 도커 시스템 전역을 정리하시겠습니까? (빌드 캐시 및 미사용 이미지 삭제) [Y/N]"; \
+		echo -e "  $(WARN) Do you want to globally clean Docker on this host? (Deletes all build cache and unused images) [Y/N]"; \
 		read ans || true; \
 	fi; \
-	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) 작업을 취소합니다."; exit 1; fi
-	@echo -e "  $(INFO) 도커 빌드 캐시(BuildKit)를 정리합니다..."
+	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) Operation cancelled."; exit 1; fi
+	@echo -e "  $(INFO) Cleaning up Docker BuildKit caches..."
 	@docker builder prune -a -f
-	@echo -e "  $(INFO) 미사용 이미지를 정리합니다..."
+	@echo -e "  $(INFO) Cleaning up unused images..."
 	@docker image prune -f
-	@echo -e "  $(OK) 도커 시스템 전역 정리가 완료되었습니다."
+	@echo -e "  $(OK) Global Docker cleanup completed."
 
-# 환경 변수 동기화 확인
+# Verify environment variables synchronization
 env-check:
-	@echo -e "  $(INFO) .env와 .env.example의 설정을 대조합니다..."
+	@echo -e "  $(INFO) Comparing .env settings against .env.example..."
 	@MISSING=$$(comm -23 <(grep -E "^[^#]+=" .env.example | cut -d= -f1 | sort) <(grep -E "^[^#]+=" .env | cut -d= -f1 | sort)); \
 	if [ -n "$$MISSING" ]; then \
-		echo -e "  $(WARN) 다음 환경 변수가 .env에 누락되었습니다:\n$$MISSING"; \
+		echo -e "  $(WARN) The following environment variables are missing in your .env:\n$$MISSING"; \
 	else \
-		echo -e "  $(OK) 모든 필수 환경 변수가 정상 설정되었습니다."; \
+		echo -e "  $(OK) All required environment variables are properly set."; \
 	fi

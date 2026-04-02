@@ -1,6 +1,11 @@
 #!/bin/bash
+# =============================================================================
 # scripts/utils_logging.sh
-# 중앙 집중식 로깅 유틸리티 (색상, 형식, 타임스탬프, 파일 로깅 지원)
+# Centralized logging utility for standardized shell output
+#
+# Provides color-coded logging functions (INFO, OK, WARN, ERROR, DEBUG) 
+# with support for timestamps, custom prefixes, and file-based logging.
+# =============================================================================
 
 # ANSI Color Codes
 RED='\033[0;31m'
@@ -11,7 +16,7 @@ CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 NC='\033[0m'
 
-# 설정 로드 (기본값)
+# Load settings (defaults)
 LOG_SHOW_TIME="${LOG_SHOW_TIME:-false}"
 DEBUG_MODE="${DEBUG_MODE:-false}"
 
@@ -28,14 +33,14 @@ _log_base() {
 
     local prefix="${LOG_PREFIX:+${CYAN}${LOG_PREFIX}${NC} }"
 
-    # 로그 파일 디렉토리가 없으면 최초 1회만 생성 (디스크 I/O 최적화)
+    # Create log file directory if it doesn't exist (only once for disk I/O optimization)
     if [ -n "${LOG_FILE}" ]; then
         local log_dir
         log_dir=$(dirname "${LOG_FILE}")
         [ ! -d "$log_dir" ] && mkdir -p "$log_dir"
     fi
 
-    # Process multi-line messages (마지막 줄바꿈 누락 방지)
+    # Process multi-line messages (prevents missing the last newline)
     while IFS= read -r line || [ -n "$line" ]; do
         # Only add prefix to the line if it's not empty, otherwise just print the prefix
         if [ -z "$line" ]; then
@@ -44,14 +49,14 @@ _log_base() {
             local full_msg="${time_str}${prefix}${color}[${type}]${NC} ${symbol:+${symbol} }$line"
         fi
 
-        # ERROR/WARN은 표준 에러(stderr, >&2)로 출력하여 셸 파이프 처리 호환성 확보
+        # Output ERROR/WARN to standard error (stderr, >&2) for shell pipe compatibility
         if [ "$type" = "ERROR" ] || [ "$type" = "WARN" ]; then
             echo -e "$full_msg" >&2
         else
             echo -e "$full_msg"
         fi
 
-        # 파일 로깅 (색상 제거 후 기록)
+        # File logging (record after removing colors)
         if [ -n "${LOG_FILE}" ]; then
             echo -e "$full_msg" | sed 's/\x1b\[[0-9;]*m//g' >> "${LOG_FILE}"
         fi
@@ -68,5 +73,5 @@ log_debug() {
     fi
 }
 
-# Makefile 등에서 색상 변수만 따로 쓰고 싶을 때를 위해 export
+# Export color variables for independent use in Makefile, etc.
 export RED GREEN YELLOW BLUE CYAN PURPLE NC

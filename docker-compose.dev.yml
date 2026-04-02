@@ -1,11 +1,11 @@
 # =============================================================================
 # Dev-Template/docker-compose.dev.yml
-# 개발(Dev) 환경 설정 — GUI 연동 및 소스 코드 바인드 마운트
+# Development (Dev) Environment Configuration — GUI integration and Source Code Bind Mount
 # =============================================================================
 include:
   - path: docker-compose.common.yml
 
-# ── 개발 환경 전용 볼륨 앵커 (Flat List) ──────────────────────────────────────
+# ── Development Volume Mounting Anchors (Source Code & Persistence) ──────────
 x-dev-volumes: &dev-volumes
   - ${HOST_X11_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix:rw
   - ${HOST_XAUTHORITY:-/root/.Xauthority}:/root/.Xauthority:ro
@@ -30,7 +30,7 @@ x-ros-volumes: &ros-volumes
   - ${ROS_INSTALL_VOL:-ros_install_data}:/workspace/install
   - ${ROS_LOG_VOL:-ros_log_data}:/workspace/log
 
-# ── 개발 환경 서비스 공유 설정 앵커 ──────────────────────────────────────────
+# ── Developer Service Shared Configuration (Target: dev) ─────────────────────
 x-dev-shared: &dev-shared
   build:
     target: dev
@@ -44,7 +44,7 @@ x-ros-dev-shared: &ros-dev-shared
   command: ${ROS_LAUNCH_COMMAND:-bash}
 
 services:
-  # ── 순수 C++/Python 서비스 ──────────────────────────────────────────────
+  # [Pure Dev] Development Services
   basic-cpu:
     extends: { file: docker-compose.common.yml, service: base-dev }
     <<: *dev-shared
@@ -60,7 +60,7 @@ services:
     <<: *dev-shared
     profiles: ["basic-nvidia"]
 
-  # ── ROS 서비스 (기본) ───────────────────────────────────────────────────
+  # [ROS] Development Services (Default Entry Point)
   ros-cpu:
     extends: { file: docker-compose.common.yml, service: base-ros }
     <<: *ros-dev-shared

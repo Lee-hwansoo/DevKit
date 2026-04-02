@@ -1,8 +1,9 @@
 # =============================================================================
-# dependencies/dependencies.repos (vcstool)
-# =============================================================================
-# 외부 ROS1/ROS2 패키지 저장소를 명시하세요.
-# 결정성을 위해 'version'에 브랜치 대신 태그나 커밋 해시를 권장합니다.
+# dependencies/dependencies.repos
+# External ROS1/ROS2 repository synchronization via vcstool
+#
+# List external repository sources here. To ensure deterministic builds,
+# use specific tags or commit hashes for the 'version' field.
 # =============================================================================
 repositories:
 #  thirdparty/example_pkg:

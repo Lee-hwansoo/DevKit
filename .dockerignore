@@ -1,5 +1,6 @@
 # =============================================================================
-# Docker Build Context에서 제외할 파일
+# .dockerignore
+# Exclude files and directories from the Docker build context
 # =============================================================================
 
 # Git
@@ -7,13 +8,13 @@
 .gitignore
 .gitattributes
 
-# ROS2 Build Artifacts
+# Build Artifacts
 build/
 install/
 log/
 .ccache/
 
-# Thirdparty (컨테이너 내에서 vcs import)
+# Thirdparty (Cloned inside the container via vcs import)
 thirdparty/
 
 # Python
@@ -30,7 +31,7 @@ CMakeFiles/
 .vscode/
 .idea/
 
-# Environment (보안)
+# Environment (Security)
 .env
 .env.*
 
@@ -39,4 +40,4 @@ CMakeFiles/
 *.tar.gz
 
 # Documentation
-# *.md (README.md 접근을 위해 주석 처리)
+# *.md (Commented out to allow README.md access during build)

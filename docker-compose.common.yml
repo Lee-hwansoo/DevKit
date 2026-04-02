@@ -1,10 +1,10 @@
 # =============================================================================
 # Dev-Template/docker-compose.common.yml
-# 공통 서비스 템플릿 및 설정 (SSOT: Single Source of Truth)
+# Common Service Template and Configuration (SSOT: Single Source of Truth)
 # =============================================================================
 
-# ── 공통 환경변수 (런타임) ──────────────────────────────────────────────
-# ⚠ 주의: 이 경로들은 docker/entrypoint.sh 내부 경로와 동기화되어야 합니다.
+# ── Runtime Environment Definitions (Single Source of Truth) ──────────────────
+# Path sync required with internal logic in docker/entrypoint.sh
 x-common-env: &common-env
   COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myproject}
   LANG: ${LANG:-C.UTF-8}
@@ -42,10 +42,10 @@ x-nvidia-deploy: &nvidia-deploy
           count: ${NVIDIA_GPU_COUNT:-all}
           capabilities: [gpu]
 
-# ── GPU 장치 마운트 (Intel/AMD) ──────────────────────────────────────────
-# (앵커는 각 파일에서 로컬로 정의해야 호환됩니다)
+# ── GPU Device Mounts (Intel/AMD) ──────────────────────────────────────────
+# (Anchors must be defined locally in each file to be compatible)
 
-# ── 공통 Healthcheck ──────────────────────────────────────────────────────
+# ── ROS Healthcheck Configuration ───────────────────────────────────────────
 x-ros-healthcheck: &ros-healthcheck
   test: [
     "CMD", "bash", "-c",
@@ -56,9 +56,9 @@ x-ros-healthcheck: &ros-healthcheck
   retries: 3
   start_period: 30s
 
-# ── 템플릿 서비스 (Abstract Services) ──────────────────────────────────────
+# ── Service Templates (Abstract Bases) ───────────────────────────────────────
 services:
-  # 기본 서비스 템플릿
+  # Core Configuration Base (Shared across all services)
   base-common:
     platform: linux/${TARGETARCH:-amd64}
     profiles: [abstract]
@@ -89,14 +89,14 @@ services:
         CMAKE_EXTRA_ARGS: ${CMAKE_EXTRA_ARGS:-}
         COLCON_EXTRA_FLAGS: ${COLCON_EXTRA_FLAGS:-}
 
-  # 순수 개발 전용 템플릿
+  # Pure Development Template
   base-dev:
     profiles: [abstract]
     extends: base-common
     environment:
       <<: *common-env
 
-  # iGPU 가속 템플릿 (Intel/AMD)
+  # Integrated GPU (iGPU) Acceleration (Intel/AMD)
   base-igpu:
     profiles: [abstract]
     extends: base-common
@@ -105,7 +105,7 @@ services:
     devices:
       - /dev/dri:/dev/dri
 
-  # NVIDIA 가속 템플릿
+  # NVIDIA Acceleration Template
   base-nvidia:
     profiles: [abstract]
     extends: base-common
@@ -114,7 +114,7 @@ services:
     deploy:
       <<: *nvidia-deploy
 
-  # ROS 전용 템플릿
+  # ROS Specific Template
   base-ros:
     profiles: [abstract]
     extends: base-common
@@ -122,7 +122,7 @@ services:
       <<: *common-env
     healthcheck: *ros-healthcheck
 
-  # ROS + iGPU 가속 템플릿
+  # ROS + iGPU Acceleration Template
   base-ros-igpu:
     profiles: [abstract]
     extends: base-common
@@ -132,7 +132,7 @@ services:
     devices:
       - /dev/dri:/dev/dri
 
-  # ROS + NVIDIA 병합 템플릿
+  # Hybrid Container: ROS + NVIDIA Acceleration
   base-ros-nvidia:
     profiles: [abstract]
     extends: base-common

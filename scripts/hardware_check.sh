@@ -1,16 +1,16 @@
 #!/bin/bash
 # =============================================================================
 # scripts/hardware_check.sh
-# 컨테이너 내부 하드웨어 가속 및 환경 진단 도구
+# In-container hardware acceleration and environment diagnostic tool
 #
-# 체크 항목:
-#   - GPU 렌더러 상태 (Hardware vs Software)
-#   - OpenGL/Vulkan 드라이버 정보
-#   - Python/uv 및 ccache 상태
-#   - 주요 환경 변수 및 디바이스 노드(/dev) 접근성
+# Checklist:
+#   - GPU Renderer Status (Hardware vs Software)
+#   - OpenGL/Vulkan Driver Information
+#   - Python/uv and ccache Status
+#   - Key Environment Variables and Device Node (/dev) Accessibility
 # =============================================================================
 
-# 로깅 유틸리티 로드
+# Load logging utility
 SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
@@ -21,7 +21,7 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 
 # =============================================================================
-# [1] 컨테이너 환경
+# [1] System Context & Environment Variables
 # =============================================================================
 echo -e "${BLUE}[1/6] Environment${NC}"
 echo "    Kernel: $(uname -r)"
@@ -33,7 +33,7 @@ echo "    CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-not set}"
 echo "    UV_PYTHON: ${UV_PYTHON:-not set}"
 
 # =============================================================================
-# [2] GPU 디바이스
+# [2] GPU Hardware & Device Nodes
 # =============================================================================
 echo -e "\n${BLUE}[2/6] GPU Devices${NC}"
 
@@ -53,18 +53,18 @@ if [ -d "/dev/dri" ]; then
     fi
 fi
 
-# nvidia-smi (NVIDIA)
+# NVIDIA Management Library (NVML) Status
 if command -v nvidia-smi &>/dev/null; then
     GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
     if [ -n "$GPU_NAME" ]; then
         echo -e "  ${GREEN}✓${NC} NVIDIA: $GPU_NAME"
-        # 툴킷 확인 (이미 실행 중이면 툴킷이 있는 것임)
+        # Check Toolkit (If running, toolkit exists)
         echo -e "    Status: NVIDIA Container Toolkit is active"
     fi
 fi
 
 # =============================================================================
-# [3] OpenGL Renderer
+# [3] OpenGL Acceleration & Renderer Identification
 # =============================================================================
 echo -e "\n${BLUE}[3/6] OpenGL Renderer${NC}"
 if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
@@ -91,7 +91,7 @@ elif command -v glxinfo &>/dev/null; then
 fi
 
 # =============================================================================
-# [4] Vulkan
+# [4] Vulkan API Support
 # =============================================================================
 echo -e "\n${BLUE}[4/6] Vulkan Support${NC}"
 if command -v vulkaninfo &>/dev/null; then
@@ -106,7 +106,7 @@ else
 fi
 
 # =============================================================================
-# [5] Python / uv 환경
+# [5] Python Runtime & uv Package Manager Status
 # =============================================================================
 echo -e "\n${BLUE}[5/6] Python / uv Environment${NC}"
 if command -v uv &>/dev/null; then
@@ -121,7 +121,7 @@ if command -v python3 &>/dev/null; then
     echo "    System Python3: $(python3 --version)"
 fi
 
-# ccache
+# Compiler Cache (ccache) Performance
 if command -v ccache &>/dev/null; then
     echo -e "  ${GREEN}✓${NC} ccache: $(ccache --version | head -1)"
     CCACHE_STATS=$(ccache -s 2>/dev/null | grep "cache hit" | head -1)
@@ -129,7 +129,7 @@ if command -v ccache &>/dev/null; then
 fi
 
 # =============================================================================
-# [6] SocketCAN
+# [6] SocketCAN Implementation & Interface Status
 # =============================================================================
 echo -e "\n${BLUE}[6/6] SocketCAN${NC}"
 if ip link show can0 >/dev/null 2>&1; then
@@ -142,7 +142,7 @@ else
 fi
 
 # =============================================================================
-# Summary
+# Diagnostic Results Summary
 # =============================================================================
 echo ""
 echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"

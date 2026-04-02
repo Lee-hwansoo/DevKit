@@ -1,19 +1,18 @@
 # =============================================================================
-# dependencies/apt.txt (User extensions)
-# =============================================================================
-# 이 파일에는 프로젝트 특화로 추가 필요한 OS 패키지를 기입하세요.
+# dependencies/apt.txt
+# User-defined system package extensions for the development environment
 #
-# [필터링 태그 시스템 가이드]
-# - # runtime      : 배포용(Production) 이미지에도 포함할 패키지
-# - # ros1         : ROS 1 (Noetic 등) 환경에만 설치할 패키지
-# - # ros2         : ROS 2 (Humble 등) 환경에만 설치할 패키지
-# - (주석 없음)     : 모든 개발 환경에 설치되나, 배포용 이미지에서는 제외됨
+# Filtering Tag System Guide:
+#   - # runtime : Packages to include in the production (runtime) image
+#   - # ros1    : Packages for ROS 1 (Noetic) environments only
+#   - # ros2    : Packages for ROS 2 (Humble) environments only
+#   - (No tag)  : Installed in all dev environments, excluded from production
 #
-# 예시:
-# - libyaml-cpp-dev # runtime,ros2 (ROS 2 배포/개발 환경 공통 설치)
-# - python3-catkin-tools # ros1    (ROS 1 개발 환경 전용 도구)
+# Examples:
+#   - libyaml-cpp-dev # runtime,ros2 (Installed in ROS2 runtime & dev)
+#   - python3-catkin-tools # ros1    (ROS1 dev-only tool)
 # =============================================================================
 
-# 빌드 및 유틸리티
+# Build & Utilities
 ccache
 ninja-build

@@ -1,8 +1,14 @@
 #!/bin/bash
+# =============================================================================
 # scripts/env_detector.sh
-# 호스트 환경(GPU, 아키텍처, 툴킷, 디스플레이)을 정밀 진단하는 진단 엔진
+# Diagnostic engine for host environment detection
+#
+# Precisely detects GPU availability, hardware architecture, container toolkits,
+# and display server configurations (X11/Wayland). Results are output in
+# KEY=VALUE format for Makefile integration.
+# =============================================================================
 
-# 1. GPU 및 툴킷 감지
+# 1. Identify GPU hardware and container toolkit compatibility
 HAS_NVIDIA="false"
 HAS_TOOLKIT="false"
 HAS_DRI="false"
@@ -15,12 +21,12 @@ if docker info 2>/dev/null | grep -iq "Runtimes: .*nvidia"; then
     HAS_TOOLKIT="true"
 fi
 
-# /dev/dri 존재 감지 (Intel/AMD 소프트웨어 렌더링 디버깅 및 자동 마운트 선택에 활용)
+# Detect /dev/dri existence (Used for Intel/AMD resource allocation and auto-mount selection)
 if [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1; then
     HAS_DRI="true"
 fi
 
-# 2. 아키텍처 감지
+# 2. Determine host CPU architecture for binary compatibility
 RAW_ARCH=$(uname -m)
 case "${RAW_ARCH}" in
     x86_64)  HOST_ARCH="amd64" ;;
@@ -29,8 +35,8 @@ case "${RAW_ARCH}" in
     *)       HOST_ARCH="unknown" ;;
 esac
 
-# 3. 디스플레이 서버 감지 및 캐시 경로 확보
-# DOCKER_DEV_CACHE_DIR이 설정되어 있으면 사용, 없으면 워크스페이스 내 .docker_cache 사용
+# 3. Detect Display Protocols and Establish Secure Cache Paths
+# Ensure a valid cache directory exists, defaulting to .docker_cache within the workspace
 if [ -z "${DOCKER_DEV_CACHE_DIR}" ]; then
     HOST_CACHE_DIR="${WORKSPACE_PATH:-$(pwd)}/.docker_cache"
 else
@@ -41,7 +47,7 @@ mkdir -p "${HOST_CACHE_DIR}"
 DISPLAY_TYPE="X11"
 HOST_XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}"
 HOST_WAYLAND_DISPLAY="${WAYLAND_DISPLAY}"
-# sudo 대응: sudo로 실행 시 SUDO_USER의 실제 홈 디렉토리를 참조하여 X11 인증 파일 경로를 정확히 찾습니다.
+# Sudo support: Accurately locate the X11 authority file by referencing the real home directory of the SUDO_USER.
 if [ -n "${SUDO_USER}" ]; then
     ORIGINAL_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
     HOST_HOME="${ORIGINAL_HOME}"
@@ -53,7 +59,7 @@ fi
 
 if [ -n "$WAYLAND_DISPLAY" ]; then
     DISPLAY_TYPE="Wayland"
-    # 실제 소켓 파일 존재 확인 및 경로 정규화
+    # Verify actual socket file existence and normalize path
     if [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]; then
         HOST_WAYLAND_DISPLAY="${WAYLAND_DISPLAY}"
     elif [ -S "/run/user/$(id -u)/${WAYLAND_DISPLAY}" ]; then
@@ -66,16 +72,16 @@ if [ -z "${HOST_XDG_RUNTIME_DIR}" ] || [ ! -d "${HOST_XDG_RUNTIME_DIR}" ]; then
     HOST_XDG_RUNTIME_DIR="${HOST_CACHE_DIR}/dummy_xdg_runtime"
 fi
 
-# X11 소켓 디렉토리 감지 (자동 생성 포함)
+# Detect the X11 Unix socket directory with automatic fallback creation
 if [ -d /tmp/.X11-unix ]; then
     HOST_X11_DIR="/tmp/.X11-unix"
 else
-    # X11이 없거나 특수한 환경인 경우를 대비한 가상 경로 생성
+    # Create a virtual path for environments without X11 or in special cases
     mkdir -p "${HOST_CACHE_DIR}/dummy_x11_unix"
     HOST_X11_DIR="${HOST_CACHE_DIR}/dummy_x11_unix"
 fi
 
-# 4. 호스트 파일 더미 매핑 (SSOT & Headless 대비)
+# 4. Host File Dummy Mapping (Ensuring stability for Headless or SSOT environments)
 if [ -d "${HOST_HOME}/.ssh" ]; then
     HOST_SSH_DIR="${HOST_HOME}/.ssh"
 else
@@ -95,7 +101,7 @@ if [ ! -f "${HOST_XAUTHORITY}" ]; then
     HOST_XAUTHORITY="${HOST_CACHE_DIR}/dummy_xauthority"
 fi
 
-# 경로 값 공백 검증 (Makefile eval 호환성)
+# Validate that path variables do not contain spaces to prevent Makefile parsing issues
 for _path_var in HOST_HOME HOST_CACHE_DIR HOST_X11_DIR HOST_SSH_DIR HOST_GITCONFIG HOST_XAUTHORITY; do
     _val=$(eval echo '$'"$_path_var")
     if echo "$_val" | grep -q ' '; then
@@ -103,7 +109,7 @@ for _path_var in HOST_HOME HOST_CACHE_DIR HOST_X11_DIR HOST_SSH_DIR HOST_GITCONF
     fi
 done
 
-# 5. 결과 출력 (Makefile 등에서 활용 가능한 KEY=VALUE 형식)
+# 5. Output results in KEY=VALUE format for Makefile or environment injection
 echo "HAS_NVIDIA=${HAS_NVIDIA}"
 echo "HAS_TOOLKIT=${HAS_TOOLKIT}"
 echo "HAS_DRI=${HAS_DRI}"

@@ -1,31 +1,41 @@
+# =============================================================================
+# config/terminator_config
+# Optimized layout and keybinding configuration for Terminator
+#
+# Features:
+#   - 2x2 Grid Layout (Main, Monitoring, Logs x2)
+#   - Intuitive Alt-based window management and broadcasting
+#   - D2Coding font support for enhanced legibility
+# =============================================================================
+
 [global_config]
     title_hide_sizetext = True
     suppress_multiple_term_dialog = True
     inactive_color_offset = 0.8
 
 [keybindings]
-    # --- 창 관리 ---
+    # --- Window Management ---
     open_new_term = <Alt>t
     close_term = <Alt>w
 
-    # --- 화면 분할 ---
-    split_horiz = <Alt>h    # 가로로 자르기 (상/하)
-    split_vert = <Alt>v     # 세로로 자르기 (좌/우)
+    # --- Screen Splitting ---
+    split_horiz = <Alt>h    # Split Horizontally (Top/Bottom)
+    split_vert = <Alt>v     # Split Vertically (Left/Right)
 
-    # --- 포커스 이동 (방향키) ---
+    # --- Directional Focus (Arrow Keys) ---
     go_up = <Alt>Up
     go_down = <Alt>Down
     go_left = <Alt>Left
     go_right = <Alt>Right
 
-    # [Broadcast] 모든 창에 동시 입력 (source, Ctrl+C 등)
+    # [Broadcast] Simultaneous input to all terminals (source commands, Ctrl+C, etc.)
     broadcast_all = <Alt>a
     broadcast_off = <Alt>o
 
-    # [Zoom] 현재 창 전체화면 토글 (로그 확인용)
+    # [Zoom] Toggle fullscreen for the active terminal (Vertical space for logs)
     toggle_zoom = <Alt>z
 
-    # [Resize] 창 크기 조절 (Ctrl+Shift+방향키)
+    # [Resize] Adjust terminal size (Ctrl+Shift+Arrow Keys)
     resize_up = <Ctrl><Shift>Up
     resize_down = <Ctrl><Shift>Down
     resize_left = <Ctrl><Shift>Left
@@ -56,50 +66,50 @@
 [layouts]
     [[default]]
         # --- 2x2 Grid Layout ---
-        # 최상위 윈도우
+        # Top-level window
         [[[window0]]]
             type = Window
             parent = ""
             size = 720, 600
 
-        # 1단계: 상하 분리 (VPaned)
+        # Step 1: Vertical Split (VPaned)
         [[[child1]]]
             type = VPaned
             parent = window0
-            ratio = 0.5  # [설정] 상단 50%, 하단 50% 크기
+            ratio = 0.5  # [Config] 50% Top, 50% Bottom
 
-        # 2단계-상단: 좌우 분리 (HPaned)
+        # Step 2-Top: Horizontal Split (HPaned)
         [[[child2]]]
             type = HPaned
             parent = child1
-            ratio = 0.5  # [설정] 왼쪽(메인) 50%, 오른쪽(서브 및 모니터링) 50%
+            ratio = 0.5  # [Config] 50% Left (Main), 50% Right (Sub/Monitoring)
 
-        # 3단계-하단: 좌우 분리 (HPaned)
+        # Step 3-Bottom: Horizontal Split (HPaned)
         [[[child3]]]
             type = HPaned
             parent = child1
-            ratio = 0.5  # [설정] 왼쪽(로그1) 50%, 오른쪽(로그2) 50%
+            ratio = 0.5  # [Config] 50% Left (Log 1), 50% Right (Log 2)
 
-        # 1. 메인 작업창 (상단 왼쪽)
+        # 1. Main Workshop (Top Left)
         [[[terminal_main]]]
             type = Terminal
             parent = child2
             profile = default
 
-        # 2. htop 모니터링창 (상단 오른쪽) -> [설정] 자동 실행
+        # 2. htop Monitoring (Top Right) -> [Config] Auto-execute
         [[[terminal_htop]]]
             type = Terminal
             parent = child2
             profile = default
             command = htop
 
-        # 3. 로그창 1 (하단 왼쪽)
+        # 3. Log Terminal 1 (Bottom Left)
         [[[terminal_log1]]]
             type = Terminal
             parent = child3
             profile = default
 
-        # 4. 로그창 2 (하단 오른쪽)
+        # 4. Log Terminal 2 (Bottom Right)
         [[[terminal_log2]]]
             type = Terminal
             parent = child3

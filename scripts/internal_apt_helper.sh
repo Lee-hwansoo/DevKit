@@ -1,29 +1,35 @@
 #!/bin/bash
+# =============================================================================
 # scripts/internal_apt_helper.sh
-# ── Build-time APT Management Utility ──────────────────────────────────────
+# Build-time APT management utility for automated package installation
+#
+# Handles APT initialization, snapshot configuration, ROS repository setup,
+# and filtered package installation (all vs runtime) during the Docker build
+# process.
+# =============================================================================
 
 set -e
 COMMAND=$1
 
-# 로깅 유틸리티 로드 (도커 빌드 중에는 경로가 다를 수 있음)
+# Load logging utility (path may vary during docker build)
 SOURCE_LOG="/tmp/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[APT Helper]"
 
-# 0. Initialize APT for Docker (Keep cache for BuildKit mounts)
+# 0. Initialize APT for Docker Container (Enable caching for BuildKit mount compatibility)
 init_apt() {
     rm -f /etc/apt/apt.conf.d/docker-clean
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
     log_info "Docker APT cache preservation enabled."
 }
 
-# 1. Configure APT Snapshot and disable Valid-Until checks
+# 1. Configure APT Snapshot Repository and Disable Valid-Until Checks
 setup_snapshot() {
     local date=$1
     if [ "$date" != "latest" ] && [ -n "$date" ]; then
-        # [Common] Disable Valid-Until for snapshots
+        # Disable Valid-Until verification for historical snapshots
         echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99-disable-valid-until
 
         if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
@@ -39,12 +45,12 @@ setup_snapshot() {
     fi
 }
 
-# 1-1. Setup ROS Repository (GPG keys and source lists)
+# 1-1. Configure ROS Repository (Import GPG keys and setup source lists)
 setup_ros_repo() {
     local distro=$1
     [ -z "$distro" ] && return
 
-    # Ensure dependencies for adding repos
+    # Ensure minimal prerequisites for repository management (curl, gnupg2)
     apt-get update && apt-get install -y --no-install-recommends curl gnupg2
 
     # Get Ubuntu codename without lsb_release
@@ -61,7 +67,8 @@ setup_ros_repo() {
     fi
     log_info "ROS repository configured for: $distro ($codename)"
 }
-# 2. Install user-defined packages with optional filtering
+
+# 2. Install user-defined packages with conditional tag-based filtering
 install_packages() {
     local filter=$1  # "all" (dev/builder) or "runtime" (production)
     local distro=$2
@@ -92,7 +99,7 @@ install_packages() {
 
     local pkgs=""
 
-    # helper for filtering
+    # Internal helper for package list extraction and tag filtering
     filter_pkg_list() {
         local file=$1
         local pattern=$2
@@ -130,7 +137,7 @@ install_packages() {
         if ! apt-get update; then
             log_error "'apt-get update' failed."
             if [ -f /etc/apt/apt.conf.d/99-snapshot ]; then
-                log_info "TIP: An APT Snapshot is active. If this persists, the snapshot date might be invalid or the repository might be down."
+                log_info "Recommendation: A snapshot is active. Verify the snapshot date or repository availability."
             fi
             exit 1
         fi

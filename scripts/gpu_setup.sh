@@ -1,16 +1,16 @@
 #!/bin/bash
 # =============================================================================
 # scripts/gpu_setup.sh
-# GPU 하드웨어 가속 환경 자동 감지 및 설정 스위칭
+# Automatic detection and setup switching for GPU hardware acceleration environment
 #
-# 지원 장치: NVIDIA, Intel, AMD, CPU(Software)
-# 특징:
-#   - Wayland/X11 디스플레이 자동 대응
-#   - NVIDIA 하이브리드 그래픽(PRIME) 최적화 설정
-#   - 가속 실패 시 소프트웨어 렌더링(llvmpipe) 자동 전환
+# Supported devices: NVIDIA, Intel, AMD, CPU (Software)
+# Features:
+#   - Automatic fallback for Wayland/X11 displays
+#   - Optimized setup for NVIDIA hybrid graphics (PRIME)
+#   - Automatic fallback to software rendering (llvmpipe) upon acceleration failure
 # =============================================================================
 
-# 로깅 유틸리티 로드
+# Load logging utility
 SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
@@ -19,12 +19,12 @@ LOG_PREFIX="[GPU]"
 # =============================================================================
 # Detection Helpers
 # =============================================================================
+# Checks for NVIDIA GPU presence via device node and nvidia-smi availability
 has_nvidia() {
     [ -e /dev/nvidiactl ] && command -v nvidia-smi >/dev/null 2>&1
 }
 
-# 디스플레이 서버 정밀 감지
-# 디스플레이 서버 정밀 감지 (Host에서 주입한 DISPLAY_TYPE 신뢰)
+# Detects the active display server (Wayland vs X11) with fallback logic
 detect_display_server() {
     if [ -n "${DISPLAY_TYPE:-}" ]; then
         echo "${DISPLAY_TYPE}"
@@ -44,17 +44,17 @@ detect_display_server() {
     fi
 }
 
-# Intel 벤더 ID: 0x8086
+# Identifies Intel DRI devices by searching for the vendor ID 0x8086
 has_intel_dri() {
     [ -d /dev/dri ] && grep -rl "0x8086" /sys/class/drm/*/device/vendor 2>/dev/null | grep -q .
 }
 
-# AMD 벤더 ID: 0x1002
+# Identifies AMD DRI devices by searching for the vendor ID 0x1002
 has_amd_dri() {
     [ -d /dev/dri ] && grep -rl "0x1002" /sys/class/drm/*/device/vendor 2>/dev/null | grep -q .
 }
 
-# 제조사 불명 DRI 장치 (Intel/AMD 감지 불가 시 fallback)
+# Fallback check for any generic DRI-compatible GPU devices
 has_any_dri() {
     [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1
 }
@@ -75,7 +75,7 @@ reset_gpu_env() {
 # GPU Setup Functions
 # =============================================================================
 write_gpu_env() {
-    # 사용자 환경에 맞는 경로에 환경변수 기록
+    # Persists GPU-specific environment variables for use in future shell sessions
     local env_file="${HOME}/.gpu_env.sh"
     cat > "$env_file" << EOF
 # __GPU_ENV_START
@@ -89,7 +89,7 @@ EOF
 }
 
 setup_nvidia() {
-    # 명시적 호출이 아닌 경우, 이미 설정되어 있다면 불필요한 재설정 방지
+    # Avoid redundant configuration if NVIDIA environment is already active
     if [ "${__GLX_VENDOR_LIBRARY_NAME:-}" = "nvidia" ] && [ "${__NV_PRIME_RENDER_OFFLOAD:-}" = "1" ]; then
         log_info "NVIDIA environment already active. Skipping redundant setup."
         return
@@ -103,7 +103,7 @@ setup_nvidia() {
     local ds=$(detect_display_server)
     log_info "Detected Display Server: $ds"
 
-    # Wayland/XWayland 전용 NVIDIA 설정
+    # NVIDIA Settings exclusive to Wayland/XWayland
     if [[ "$ds" == *"Wayland"* ]]; then
         [ -z "${QT_QPA_PLATFORM:-}" ] && export QT_QPA_PLATFORM="wayland;xcb"
         [ -z "${GDK_BACKEND:-}" ] && export GDK_BACKEND="wayland,x11"
@@ -145,7 +145,7 @@ setup_software() {
 }
 
 # =============================================================================
-# Auto Detection
+# Automated environment-based GPU setup selection
 # =============================================================================
 setup_auto() {
     # If LIBGL_ALWAYS_SOFTWARE is already 1 (e.g. from docker-compose), respect it.
@@ -188,7 +188,7 @@ setup_auto() {
         detected=true
     fi
 
-    # 검증: 실제 렌더러가 동작하는지 확인 (DISPLAY가 있을 때만)
+    # Verification: Validates that the selected hardware renderer is active (Display required)
     if [ "$detected" = true ] && [ "$ds" != "None" ]; then
         if command -v glxinfo &>/dev/null; then
             local renderer
@@ -214,7 +214,7 @@ setup_auto() {
 # Status
 # =============================================================================
 __gpu_status_impl() {
-    log_info "=== GPU Status ==="
+    log_info "=== GPU Diagnostic Status ==="
     log_info "GPU_MODE env: ${GPU_MODE:-not set}"
 
     if has_nvidia; then
@@ -258,10 +258,10 @@ __gpu_status_impl() {
 }
 
 # =============================================================================
-# iGPU Setup (DRI only — NVIDIA excluded)
+# Integrated GPU (iGPU) Setup (Excludes NVIDIA)
 # =============================================================================
 setup_igpu() {
-    # DRI 장치를 기반으로 Intel/AMD를 자동 판별 (NVIDIA 제외)
+    # Auto-determine Intel/AMD based on DRI device (Excluding NVIDIA)
     if has_intel_dri; then
         setup_intel
     elif has_amd_dri; then
@@ -293,7 +293,7 @@ case "${1:-auto}" in
         ;;
 esac
 
-# ROS2 환경 복구 (GPU 설정 후 PATH가 깨지는 경우 방지)
+# Recover ROS2 environment (prevent PATH breaking after GPU setup)
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
 if [ -f "$ROS_SETUP" ]; then
     source "$ROS_SETUP" 2>/dev/null || true
