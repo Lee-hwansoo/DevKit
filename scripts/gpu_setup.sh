@@ -16,13 +16,22 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[GPU]"
 
+# Load shared GPU detection helpers (P-2: SSOT for GPU detection functions)
+SOURCE_GPU="/docker_dev/scripts/utils_gpu_detect.sh"
+[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/utils_gpu_detect.sh"
+[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="/opt/scripts/utils_gpu_detect.sh"
+if [ -f "$SOURCE_GPU" ]; then
+    source "$SOURCE_GPU"
+else
+    echo "${LOG_PREFIX:-[GPU]} FATAL: utils_gpu_detect.sh not found. GPU detection unavailable." >&2
+    exit 1
+fi
+
 # =============================================================================
 # Detection Helpers
 # =============================================================================
-# Checks for NVIDIA GPU presence via device node and nvidia-smi availability
-has_nvidia() {
-    [ -e /dev/nvidiactl ] && command -v nvidia-smi >/dev/null 2>&1
-}
+# GPU vendor detection functions (has_nvidia, has_intel_dri, has_amd_dri,
+# has_any_dri, has_tegra, has_rocm) are provided by utils_gpu_detect.sh above.
 
 # Detects the active display server (Wayland vs X11) with fallback logic
 detect_display_server() {
@@ -42,21 +51,6 @@ detect_display_server() {
     else
         echo "None"
     fi
-}
-
-# Identifies Intel DRI devices by searching for the vendor ID 0x8086
-has_intel_dri() {
-    [ -d /dev/dri ] && grep -rl "0x8086" /sys/class/drm/*/device/vendor 2>/dev/null | grep -q .
-}
-
-# Identifies AMD DRI devices by searching for the vendor ID 0x1002
-has_amd_dri() {
-    [ -d /dev/dri ] && grep -rl "0x1002" /sys/class/drm/*/device/vendor 2>/dev/null | grep -q .
-}
-
-# Fallback check for any generic DRI-compatible GPU devices
-has_any_dri() {
-    [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1
 }
 
 # =============================================================================

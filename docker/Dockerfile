@@ -58,7 +58,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY scripts/gpu_setup.sh /opt/scripts/gpu_setup.sh
 COPY scripts/utils_logging.sh /opt/scripts/utils_logging.sh
-RUN chmod +x /entrypoint.sh /opt/scripts/gpu_setup.sh
+COPY scripts/utils_gpu_detect.sh /opt/scripts/utils_gpu_detect.sh
+RUN chmod +x /entrypoint.sh /opt/scripts/gpu_setup.sh /opt/scripts/utils_gpu_detect.sh
 
 # ── Stage: dev-base-tools (Compilers, GUI & Diagnostics) ─────────────────────
 FROM base AS dev-base-tools

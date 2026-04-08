@@ -3,7 +3,7 @@
 # scripts/utils_logging.sh
 # Centralized logging utility for standardized shell output
 #
-# Provides color-coded logging functions (INFO, OK, WARN, ERROR, DEBUG) 
+# Provides color-coded logging functions (INFO, OK, WARN, ERROR, DEBUG)
 # with support for timestamps, custom prefixes, and file-based logging.
 # =============================================================================
 
