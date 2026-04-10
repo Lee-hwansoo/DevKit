@@ -306,7 +306,6 @@ Utilize these integrated tasks from your host terminal to manage the project lif
 | **`make clean-all`** | **Project Reset** | Completely tear down **all images, volumes, and host caches** strictly tied to the project |
 | **`make docker-clean`** | **Docker System Cleanup** | Purge entire system build caches and orphaned unused images (Global Reset) |
 | **`make env-check`** | **Check Env Variables** | Auto-inspect for structural discrepancies of `.env` configurations against `.env.example` |
-| **`make scale-basic N=2`** | Service Scaling | (Advanced) Horizontally scale the `basic` service to N instances (e.g., `docker compose up --scale basic=2`) |
 
 > 💡 **Tip (Non-interactive Force Execution and CI Mode)**
 > To fundamentally prevent data loss, the `clean` series commands require deletion consent (`[Y/N]`) by default.

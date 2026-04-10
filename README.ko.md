@@ -306,7 +306,6 @@ cb                # ROS: colcon build 수행 (RelWithDebInfo 기본)
 | **`make clean-all`**       | **프로젝트 초기화**     | 프로젝트와 관련된 **모든 이미지, 볼륨, 호스트 캐시**를 삭제                  |
 | **`make docker-clean`**    | **도커 시스템 정리**    | 시스템 전체의 빌드 캐시 및 미사용 이미지를 삭제 (글로벌 초기화)              |
 | **`make env-check`**       | **환경 변수 체크**      | `.env` 설정 누락 여부를 `.env.example` 기준으로 자동 검사                    |
-| **`make scale-basic N=2`** | 서비스 수평 확장        | (고급) `basic` 서비스를 N개로 확장 (예: `docker compose up --scale basic=2`) |
 
 > 💡 **Tip (비대화형 강제 실행 및 CI 모드)**
 > 데이터 유실 방지를 위해 `clean` 계열 명령어 실행 시 기본적으로 삭제 동의(`[Y/N]`)를 묻습니다.

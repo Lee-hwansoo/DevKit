@@ -107,15 +107,6 @@ define EXEC_DETACHED
 	fi
 endef
 
-# $1: COMPOSE_FILES, $2: SERVICE_PREFIX, $3: MSG
-define SCALE_SERVICE
-	@$(DETECT_MODE) \
-	TARGET_SVC=$2-$$CHOSEN_MODE; \
-	echo -e "  $(INFO) Scaling [$3] service to $(N) instances (Service: $$TARGET_SVC)..."; \
-	$(COMPOSE) $1 --profile $$TARGET_SVC up -d --scale $$TARGET_SVC=$(N) $$TARGET_SVC
-	@echo -e "  $(OK) Service scaling complete."
-endef
-
 # $1: COMPOSE_FILES, $2: SERVICE_PREFIX, $3: MSG, $4: EXTRA_ARGS, $5: HINT_MSG
 define BUILD_SERVICE
 	@$(DETECT_MODE) \
@@ -139,8 +130,7 @@ endef
 		build-ros-prod build-dev-prod rebuild-ros-prod rebuild-dev-prod \
         ros-prod dev-prod \
 		save-ros save-dev load-ros load-dev \
-        stats top logs down clean clean-cache clean-all docker-clean env-check \
-        scale-basic scale-ros
+        stats top logs down clean clean-cache clean-all docker-clean env-check
 
 # =============================================================================
 # Default & Help
@@ -190,10 +180,6 @@ help:
 	@echo "    make clean-all      : Completely reset all Docker resources (images/volumes/cache) for the project"
 	@echo "    make docker-clean   : Global Docker system cleanup (wipe overall build caches and dangling images)"
 	@echo "    make env-check      : Automatically check for missing settings in .env compared to .env.example"
-	@echo ""
-	@echo "  [ Scaling ]"
-	@echo "    make scale-basic N=2: Scale pure dev services to N instances"
-	@echo "    make scale-ros N=2  : Scale ROS dev services to N instances"
 
 # =============================================================================
 # Initial Setup and Status Check
@@ -306,14 +292,6 @@ dev-shell: check
 dev-term: check xauth
 	$(call EXEC_DETACHED,$(DEV_FILTER),$(TERMINAL),Development)
 
-# Scaling
-scale-basic: check
-	@if [ -z "$(N)" ]; then echo -e "  $(ERROR) Please specify N, the number of instances to scale. (e.g., make scale-basic N=2)"; exit 1; fi
-	$(call SCALE_SERVICE,$(COMPOSE_DEV),basic,Development)
-
-scale-ros: check
-	@if [ -z "$(N)" ]; then echo -e "  $(ERROR) Please specify N, the number of instances to scale. (e.g., make scale-ros N=2)"; exit 1; fi
-	$(call SCALE_SERVICE,$(COMPOSE_DEV),ros,ROS)
 
 # =============================================================================
 # Production Execution (Prod) - Auto GPU Detection
