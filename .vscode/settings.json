@@ -1,0 +1,136 @@
+{
+    // =========================================================================
+    // .vscode/settings.json
+    // Project-level IDE configuration for DevKit
+    //
+    // These settings are optimized for Docker container-based development
+    // with ROS 1/2, C++, and Python. Paths reference /workspace (container root).
+    // ROS version is auto-detected via the ROS_DISTRO environment variable.
+    // =========================================================================
+
+    // ── Editor Defaults ──────────────────────────────────────────────────────
+    "editor.formatOnSave": true,
+    "editor.rulers": [100, 120],
+    "editor.tabSize": 4,
+    "editor.detectIndentation": true,
+
+    // ── File Associations ────────────────────────────────────────────────────
+    "files.associations": {
+        "*.launch.py": "python",
+        "*.xacro": "xml",
+        "*.urdf": "xml",
+        "*.sdf": "xml",
+        "*.world": "xml",
+        "*.repos": "yaml",
+        "*.msg": "ros.msg",
+        "*.srv": "ros.srv",
+        "*.action": "ros.action",
+        "*.json": "jsonc",
+        "Dockerfile*": "dockerfile"
+    },
+
+    // ── Search & Explorer Exclusions ─────────────────────────────────────────
+    "files.exclude": {
+        "**/build": true,
+        "**/install": true,
+        "**/log": true,
+        "**/.docker_cache": true,
+        "**/src/thirdparty": true,
+        "**/__pycache__": true,
+        "**/*.pyc": true
+    },
+    "search.exclude": {
+        "**/build": true,
+        "**/install": true,
+        "**/log": true,
+        "**/.docker_cache": true,
+        "**/src/thirdparty": true,
+        "**/node_modules": true,
+        "**/.git": true
+    },
+    "files.watcherExclude": {
+        "**/build/**": true,
+        "**/install/**": true,
+        "**/log/**": true,
+        "**/.docker_cache/**": true,
+        "**/src/thirdparty/**": true
+    },
+
+    // ── C/C++ (cpptools) ─────────────────────────────────────────────────────
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.cppStandard": "c++${env:CMAKE_CXX_STANDARD}",
+    "C_Cpp.default.cStandard": "c${env:CMAKE_C_STANDARD}",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "C_Cpp.codeAnalysis.runAutomatically": true,
+    "C_Cpp.errorSquiggles": "enabled",
+
+    // ── CMake ────────────────────────────────────────────────────────────────
+    "cmake.sourceDirectory": "${workspaceFolder}/src",
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.installPrefix": "${workspaceFolder}/install",
+    "cmake.configureOnOpen": false,
+
+    // ── Python ───────────────────────────────────────────────────────────────
+    "python.defaultInterpreterPath": "${workspaceFolder}/install/.venv/bin/python",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/src",
+        "${workspaceFolder}/install/lib/python3/dist-packages",
+        "/opt/ros/${env:ROS_DISTRO}/lib/python3/dist-packages"
+    ],
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+
+    // ── Ruff (Python Linter/Formatter) ───────────────────────────────────────
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
+
+    // ── XML (URDF/Xacro/SDF) ─────────────────────────────────────────────────
+    "[xml]": {
+        "editor.tabSize": 2
+    },
+
+    // ── YAML ─────────────────────────────────────────────────────────────────
+    "[yaml]": {
+        "editor.tabSize": 2
+    },
+
+    // ── CMake Files ──────────────────────────────────────────────────────────
+    "[cmake]": {
+        "editor.tabSize": 2
+    },
+
+    // ── ROS Extension ────────────────────────────────────────────────────────
+    // Auto-detected from ROS_DISTRO env var; override here if needed
+    // "ros.distro": "humble",
+
+    // ── Docker ───────────────────────────────────────────────────────────────
+    "docker.defaultRegistryPath": "",
+
+    // ── Terminal ──────────────────────────────────────────────────────────────
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.scrollback": 10000,
+
+    // ── Python Testing (pytest) ──────────────────────────────────────────────
+    // Enables VSCode Test Explorer (flask icon) for pytest discovery.
+    // Tests are discovered from src/ directory. If pytest is not installed,
+    // the Test Explorer simply shows no tests — no side effects.
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "src",
+        "-v"
+    ],
+    "python.testing.unittestEnabled": false,
+
+    // ── Spell Checker ────────────────────────────────────────────────────────
+    "cSpell.words": [
+        "colcon", "catkin", "rosdep", "rviz", "gazebo", "xacro", "urdf",
+        "roslaunch", "rosrun", "roscore", "rostopic", "rosnode",
+        "cyclonedds", "fastrtps", "devkit", "ccache", "debugpy",
+        "noetic", "humble", "cmake", "eigen", "gtsam"
+    ]
+}

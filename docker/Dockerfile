@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends locales tzdata \
-    && locale-gen ${LANG} \
+    && (locale-gen ${LANG} || [ "${LANG}" = "C.UTF-8" ]) \
     && update-locale LANG=${LANG}
 
 # ── Stage: runtime-common (Optimized Execution Context) ──────────────────────

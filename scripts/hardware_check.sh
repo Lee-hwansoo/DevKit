@@ -320,7 +320,7 @@ elif command -v glxinfo &>/dev/null; then
         [ -n "$GL_VER" ] && _hw_detail "    GL Ver:  $GL_VER"
     else
         _hw_err "OpenGL: Display connection failed"
-        _hw_detail_e "    ${YELLOW}→${NC} On host: xhost +local:root"
+        _hw_detail_e "    ${YELLOW}→${NC} On host: xhost +SI:localuser:root"
     fi
 else
     # P-6: Explicit message when glxinfo is not installed but display is set

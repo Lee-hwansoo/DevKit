@@ -45,16 +45,19 @@ done
 # Values: auto (default) | nvidia | intel | amd | cpu
 log_info "GPU mode: ${GPU_MODE:-auto}"
 
+# GPU setup runs in current shell for env export, but failures are caught
+# to prevent blocking container startup in CI/headless environments
 if [ -f "/docker_dev/scripts/gpu_setup.sh" ]; then
-    source /docker_dev/scripts/gpu_setup.sh "${GPU_MODE:-auto}"
+    source /docker_dev/scripts/gpu_setup.sh "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
 elif [ -f "/opt/scripts/gpu_setup.sh" ]; then
-    source /opt/scripts/gpu_setup.sh "${GPU_MODE:-auto}"
+    source /opt/scripts/gpu_setup.sh "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
 else
     log_warn "gpu_setup.sh not found. Skipping GPU configuration."
 fi
 
-# Since it runs as root, DEV_HOME=/root
-DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")
+# Detect actual home directory of the current user (root in dev, devkit in prod)
+DEV_HOME=$(getent passwd "${SUDO_USER:-${USER:-root}}" | cut -d: -f6)
+[ -z "$DEV_HOME" ] && DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")
 
 # =============================================================================
 # [2] Environment Detection (Dev vs Prod)
@@ -80,6 +83,7 @@ if [ "$IS_DEV" = true ]; then
         fi
         if [ ! -f "${XAUTHORITY:-$HOME/.Xauthority}" ]; then
             log_warn "Xauthority file not found. GUI apps may fail."
+            log_warn "On host: xhost +SI:localuser:root"
         fi
     elif [ -n "${WAYLAND_DISPLAY:-}" ]; then
         log_ok "Wayland display ${WAYLAND_DISPLAY} set"

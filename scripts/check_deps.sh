@@ -3,9 +3,14 @@
 # scripts/check_deps.sh
 # Verifies build artifacts for missing runtime shared library dependencies
 #
+# This script is a DEVELOPMENT/BUILD-TIME tool only.
+# It is NOT included in production runtime images (dev-runtime, ros-runtime).
+#
 # Scans the target directory for ELF files and shared objects, using ldd to
 # identify missing dependencies.
 # =============================================================================
+
+set -eo pipefail
 
 TARGET_DIR=${1:-/workspace/install}
 MISSING_COUNT=0

@@ -124,6 +124,7 @@ setup_intel() {
     reset_gpu_env
     export LIBGL_ALWAYS_SOFTWARE=0
     export MESA_LOADER_DRIVER_OVERRIDE=iris
+    export GALLIUM_DRIVER=iris
     write_gpu_env
     log_ok "Intel GPU configured (Mesa/iris driver)"
 }
@@ -164,11 +165,16 @@ setup_software() {
 # Automated environment-based GPU setup selection
 # =============================================================================
 setup_auto() {
-    # If LIBGL_ALWAYS_SOFTWARE is already 1 (e.g. from docker-compose), respect it.
+    # If LIBGL_ALWAYS_SOFTWARE is 1 from environment, log it but don't return early if GPU_MODE is not cpu
     if [ "${LIBGL_ALWAYS_SOFTWARE:-0}" = "1" ]; then
-        log_info "LIBGL_ALWAYS_SOFTWARE=1 detected from environment. Using software rendering."
-        setup_software
-        return
+        if [ "${1:-auto}" != "cpu" ] && [ "${1:-auto}" != "software" ]; then
+            log_info "LIBGL_ALWAYS_SOFTWARE=1 detected. Attempting to override for hardware acceleration..."
+            export LIBGL_ALWAYS_SOFTWARE=0
+        else
+            log_info "LIBGL_ALWAYS_SOFTWARE=1 detected. Respecting software rendering request."
+            setup_software
+            return
+        fi
     fi
 
     local detected=false
@@ -219,7 +225,7 @@ setup_auto() {
             renderer=$(glxinfo 2>/dev/null | grep "OpenGL renderer" | cut -d: -f2 | xargs || true)
             if [[ "$renderer" == *"llvmpipe"* ]] || [ -z "$renderer" ]; then
                 log_warn "!!! GPU detected but renderer is SOFTWARE ($renderer) !!!"
-                log_warn "Check host X11 permissions (xhost +local:root) or NVIDIA toolkit."
+                log_warn "Check host X11 permissions (xhost +SI:localuser:root) or NVIDIA toolkit."
                 setup_software
             fi
         elif command -v vulkaninfo &>/dev/null; then

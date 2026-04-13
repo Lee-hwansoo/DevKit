@@ -40,9 +40,27 @@ elif [ -f "$REPOS_FILE" ]; then
     log_info "Running vcs import to $TARGET_DIR ..."
     vcs import "$TARGET_DIR" < "$REPOS_FILE" || log_warn "vcs import completed with some warnings."
 
-    # Purge any previous overlays so the git working tree is clean for pulling
-    log_info "Cleaning up previous overlays in git repositories to prevent merge conflicts..."
-    find "$TARGET_DIR" -type d -name ".git" -prune -execdir git reset --hard HEAD \; -execdir git clean -fd \; &>/dev/null || true
+    # Protect local patches — only hard reset with explicit --force flag
+    FORCE_RESET=false
+    for arg in "$@"; do [ "$arg" == "--force" ] && FORCE_RESET=true; done
+
+    if [ "$FORCE_RESET" = true ]; then
+        log_warn "Force mode: resetting all third-party repos to HEAD (local patches will be lost)..."
+        find "$TARGET_DIR" -type d -name ".git" -prune -execdir git reset --hard HEAD \; -execdir git clean -fd \; &>/dev/null || true
+    else
+        # Check for dirty repos and warn instead of destroying
+        DIRTY_REPOS=""
+        while IFS= read -r git_dir; do
+            repo_dir="$(dirname "$git_dir")"
+            if [ -n "$(cd "$repo_dir" && git status --porcelain 2>/dev/null)" ]; then
+                DIRTY_REPOS="${DIRTY_REPOS}\n  - ${repo_dir}"
+            fi
+        done < <(find "$TARGET_DIR" -type d -name ".git" 2>/dev/null)
+        if [ -n "$DIRTY_REPOS" ]; then
+            log_warn "Repos with uncommitted changes (skipping reset):${DIRTY_REPOS}"
+            log_warn "Use --force to discard all local changes."
+        fi
+    fi
 
     # Update existing repositories after checking for newly added ones
     log_info "Performing vcs pull to update existing repositories..."

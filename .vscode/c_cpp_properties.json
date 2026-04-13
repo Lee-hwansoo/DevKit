@@ -1,0 +1,54 @@
+{
+    // =========================================================================
+    // .vscode/c_cpp_properties.json
+    // C++ IntelliSense configurations for DevKit
+    //
+    // Two configurations are provided:
+    //   1. "Docker (Container)" - When working inside the container via Dev Containers
+    //   2. "Host (Bind Mount)"  - When build/ is bind-mounted to the host
+    //
+    // ROS include paths use ${env:ROS_DISTRO} for automatic ROS 1/2 switching.
+    //
+    // Note: For full IntelliSense, set ROS_BUILD_VOL=./build in .env
+    //       so compile_commands.json is accessible from the host.
+    // =========================================================================
+    "version": 4,
+    "configurations": [
+        {
+            "name": "Docker (Container)",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c${env:CMAKE_C_STANDARD}",
+            "cppStandard": "c++${env:CMAKE_CXX_STANDARD}",
+            "includePath": [
+                "${workspaceFolder}/src/**",
+                "${workspaceFolder}/install/include/**",
+                "/opt/ros/${env:ROS_DISTRO}/include/**",
+                "/usr/include/**"
+            ],
+            "defines": [],
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/src",
+                    "${workspaceFolder}/install/include",
+                    "/opt/ros/${env:ROS_DISTRO}/include"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
+        },
+        {
+            "name": "Host (Bind Mount)",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c${env:CMAKE_C_STANDARD}",
+            "cppStandard": "c++${env:CMAKE_CXX_STANDARD}",
+            "includePath": [
+                "${workspaceFolder}/src/**",
+                "${workspaceFolder}/install/include/**"
+            ],
+            "defines": [],
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json"
+        }
+    ]
+}

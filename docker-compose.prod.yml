@@ -6,7 +6,6 @@ include:
   - path: docker-compose.common.yml
 
 # ── Production Runtime Configuration Anchors ─────────────────────────────────
-# Optimized for performance and stability in deployment environments
 x-prod-svc: &prod-svc
   restart: always
 
@@ -14,8 +13,13 @@ x-prod-volumes: &prod-volumes
   - ${PROD_LOG_VOL:-prod_log_data}:/workspace/log
 
 # ── Production Runtime Service Shared Configuration (Switch Strategy) ─────────
+# Production security hardening — explicitly override dev defaults
+# (privileged, host networking, etc.) for defense-in-depth.
 x-ros-prod-shared: &ros-prod-shared
   <<: *prod-svc
+  privileged: ${PRIVILEGED:-false}
+  network_mode: ${NETWORK_MODE:-bridge}
+  ipc: ${IPC_MODE:-private}
   image: ${COMPOSE_PROJECT_NAME}/ros-runtime:${IMAGE_TAG:-latest}
   build:
     target: ros-runtime
@@ -24,16 +28,14 @@ x-ros-prod-shared: &ros-prod-shared
 
 x-dev-prod-shared: &dev-prod-shared
   <<: *prod-svc
+  privileged: ${PRIVILEGED:-false}
+  network_mode: ${NETWORK_MODE:-bridge}
+  ipc: ${IPC_MODE:-private}
   image: ${COMPOSE_PROJECT_NAME}/dev-runtime:${IMAGE_TAG:-latest}
   build:
     target: dev-runtime
   volumes: *prod-volumes
   command: ${APP_COMMAND:-bash}
-  healthcheck:
-    test: ["CMD-SHELL", "echo 'alive' || exit 1"]
-    interval: 30s
-    timeout: 10s
-    retries: 3
 
 services:
   # [ROS] Production-Grade Runtime Services (CPU/iGPU/NVIDIA)

@@ -8,7 +8,7 @@
 # process.
 # =============================================================================
 
-set -e
+set -eo pipefail
 COMMAND=$1
 
 # Load logging utility (path may vary during docker build)
@@ -58,11 +58,43 @@ setup_ros_repo() {
     codename=$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2)
     if [ -z "$codename" ]; then codename=$(grep '^UBUNTU_CODENAME=' /etc/os-release | cut -d= -f2); fi
 
+    # Known GPG fingerprint for ROS repository key
+    local ROS_GPG_FINGERPRINT="C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654"
+
+    # Use mktemp for safe temp file (prevents symlink attacks in multi-user environments)
+    local TMP_KEY
+    TMP_KEY=$(mktemp /tmp/ros_repo_key.XXXXXX)
+    trap 'rm -f "$TMP_KEY"' RETURN
+
     if [ "$distro" = "noetic" ]; then
-        curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg
+        curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc -o "$TMP_KEY"
+    else
+        curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o "$TMP_KEY"
+    fi
+
+    # Verify GPG key fingerprint (supply-chain attack mitigation)
+    # Policy: STRICT_GPG_CHECK=true → Fail-Closed (abort on mismatch, for high-security environments)
+    #         STRICT_GPG_CHECK=false/unset → Fail-Open (warn only, resilient to key rotations)
+    local ACTUAL_FP
+    ACTUAL_FP=$(gpg --with-colons --import-options show-only --import "$TMP_KEY" 2>/dev/null \
+        | awk -F: '/^fpr/{print $10; exit}')
+    if [ -n "$ROS_GPG_FINGERPRINT" ] && [ "$ACTUAL_FP" != "$ROS_GPG_FINGERPRINT" ]; then
+        if [ "${STRICT_GPG_CHECK:-false}" = "true" ]; then
+            log_error "FATAL: GPG fingerprint mismatch! Expected: $ROS_GPG_FINGERPRINT, Got: $ACTUAL_FP"
+            log_error "Aborting (STRICT_GPG_CHECK=true). To update, run 'make update-gpg' on the host."
+            return 1
+        else
+            log_warn "GPG fingerprint mismatch! Expected: $ROS_GPG_FINGERPRINT, Got: $ACTUAL_FP"
+            log_warn "Continuing (Fail-Open). To update and silence this warning, run 'make update-gpg' on the host."
+        fi
+    else
+        log_info "GPG key fingerprint verified: $ACTUAL_FP"
+    fi
+    gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg < "$TMP_KEY"
+
+    if [ "$distro" = "noetic" ]; then
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros/ubuntu $codename main" > /etc/apt/sources.list.d/ros1-latest.list
     else
-        curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key | gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $codename main" > /etc/apt/sources.list.d/ros2.list
     fi
     log_info "ROS repository configured for: $distro ($codename)"

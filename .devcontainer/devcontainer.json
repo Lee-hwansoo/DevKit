@@ -1,0 +1,80 @@
+// =============================================================================
+// .devcontainer/devcontainer.json
+// VSCode Dev Containers configuration for DevKit
+//
+// This configuration attaches VSCode directly to the DevKit Docker container,
+// providing a seamless integrated development experience.
+//
+// Supports both ROS 2 (Humble) and ROS 1 (Noetic) environments.
+// The active ROS version is determined by ROS_DISTRO in .env.
+//
+// Usage:
+//   1. Start the container first: `make ros` (or `make dev`)
+//   2. Open Command Palette → "Dev Containers: Attach to Running Container..."
+//   OR
+//   3. Use this file to auto-configure the attachment settings
+//
+// Note: This file works WITH the existing Docker Compose workflow,
+//       it does NOT replace `make ros` / `make dev`.
+// =============================================================================
+{
+    "name": "DevKit (ROS ${localEnv:ROS_DISTRO:humble})",
+
+    // ── Container Connection ─────────────────────────────────────────────────
+    // Attach to the container started by `make ros` or `make dev`
+    "dockerComposeFile": [
+        "../docker-compose.dev.yml"
+    ],
+    // Use the ROS CPU service as the default target (GPU variants auto-detected by Makefile)
+    // Change to "basic-cpu" for pure C++/Python development without ROS
+    "service": "ros-cpu",
+    "workspaceFolder": "/workspace",
+    "shutdownAction": "none",
+
+    // ── Extensions (Installed inside the container) ──────────────────────────
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "ms-python.python",
+                "ms-python.debugpy",
+                "charliermarsh.ruff",
+                "ms-iot.vscode-ros",
+                "redhat.vscode-xml",
+                "redhat.vscode-yaml",
+                "EditorConfig.EditorConfig",
+                "streetsidesoftware.code-spell-checker"
+            ],
+            "settings": {
+                // Inherit project settings from .vscode/settings.json automatically
+                // These overrides ensure container-specific paths work correctly
+                "python.defaultInterpreterPath": "/workspace/install/.venv/bin/python",
+                "C_Cpp.default.compileCommands": "/workspace/build/compile_commands.json",
+                "terminal.integrated.defaultProfile.linux": "bash"
+            }
+        }
+    },
+
+    // ── Remote Environment Variables ─────────────────────────────────────────
+    // Injected into the VSCode Server process itself (not just the terminal).
+    // This ensures background extensions (CMake Tools, C++ IntelliSense, ROS)
+    // can resolve ROS paths without relying on shell-level `source`.
+    "remoteEnv": {
+        "ROS_DISTRO": "${containerEnv:ROS_DISTRO}",
+        "AMENT_PREFIX_PATH": "/workspace/install:/opt/ros/${containerEnv:ROS_DISTRO}",
+        "CMAKE_PREFIX_PATH": "/workspace/install:/opt/ros/${containerEnv:ROS_DISTRO}",
+        "LD_LIBRARY_PATH": "/workspace/install/lib:/opt/ros/${containerEnv:ROS_DISTRO}/lib:${containerEnv:LD_LIBRARY_PATH}",
+        "PYTHONPATH": "/workspace/install/lib/python3/dist-packages:/opt/ros/${containerEnv:ROS_DISTRO}/lib/python3/dist-packages:${containerEnv:PYTHONPATH}",
+        "PATH": "/workspace/install/.venv/bin:/workspace/install/bin:${containerEnv:PATH}",
+        "ROS_PACKAGE_PATH": "/workspace/src:/opt/ros/${containerEnv:ROS_DISTRO}/share"
+    },
+
+    // ── Lifecycle Commands ───────────────────────────────────────────────────
+    // Source the ROS and workspace environments after VSCode attaches
+    // Auto-detects ROS 1 (devel/setup.bash) vs ROS 2 (install/setup.bash)
+    "postAttachCommand": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; source /workspace/install/setup.bash 2>/dev/null || source /workspace/devel/setup.bash 2>/dev/null; echo '✅ DevKit environment ready (ROS ${ROS_DISTRO:-humble})'",
+
+    // ── Features ─────────────────────────────────────────────────────────────
+    "remoteUser": "root"
+}

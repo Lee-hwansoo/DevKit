@@ -1,0 +1,34 @@
+{
+    // =========================================================================
+    // .vscode/extensions.json
+    // Recommended VSCode extensions for DevKit projects
+    //
+    // VSCode will prompt team members to install these extensions
+    // when they open this workspace for the first time.
+    // =========================================================================
+    "recommendations": [
+        // ── C++ Development ──────────────────────────────────────────────────
+        "ms-vscode.cpptools",               // C/C++ IntelliSense, debugging (GDB/LLDB)
+        "ms-vscode.cmake-tools",            // CMake integration & build automation
+
+        // ── Python Development ───────────────────────────────────────────────
+        "ms-python.python",                 // Python language support & IntelliSense
+        "ms-python.debugpy",                // Python debug adapter (debugpy)
+        "charliermarsh.ruff",               // Ultra-fast Python linter & formatter
+
+        // ── ROS 1 & 2 ────────────────────────────────────────────────────────────
+        "ms-iot.vscode-ros",                // ROS 2 launch, topic, node integration
+
+        // ── Docker & Remote ──────────────────────────────────────────────────
+        "ms-vscode-remote.remote-containers", // Dev Containers support
+        "ms-azuretools.vscode-docker",      // Docker file management & compose
+
+        // ── Configuration Formats ────────────────────────────────────────────
+        "redhat.vscode-xml",                // XML support (URDF, Xacro, SDF, launch)
+        "redhat.vscode-yaml",              // YAML support (ROS params, configs)
+
+        // ── Quality & Consistency ────────────────────────────────────────────
+        "EditorConfig.EditorConfig",        // .editorconfig enforcement
+        "streetsidesoftware.code-spell-checker" // Spell checking for comments & docs
+    ]
+}

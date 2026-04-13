@@ -65,6 +65,31 @@ else
     HOST_XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 fi
 
+# Generate container-scoped Xauthority (limits X11 cookie exposure)
+HOST_XAUTHORITY_SCOPED="${HOST_CACHE_DIR}/container_xauthority"
+if [ -f "${HOST_XAUTHORITY}" ] && command -v xauth >/dev/null 2>&1; then
+    DISPLAY_NUM="${DISPLAY#:}"
+    DISPLAY_NUM="${DISPLAY_NUM%%.*}"
+    xauth extract - ":${DISPLAY_NUM}" 2>/dev/null | xauth -f "${HOST_XAUTHORITY_SCOPED}" merge - 2>/dev/null
+    if [ -s "${HOST_XAUTHORITY_SCOPED}" ]; then
+        HOST_XAUTHORITY="${HOST_XAUTHORITY_SCOPED}"
+    fi
+fi
+
+# Detect SSH Agent Forwarding socket with robust fallback for sudo environments
+# 1. Check current session's socket validity
+if [ -S "${SSH_AUTH_SOCK}" ]; then
+    HOST_SSH_AUTH_SOCK="${SSH_AUTH_SOCK}"
+# 2. Case: running via sudo (Try to recover from original user's session)
+elif [ -n "${SUDO_USER}" ]; then
+    # Search for valid agent sockets belonging to the original user in /tmp
+    # Targeted search to minimize performance impact
+    _USER_SOCK=$(find /tmp/ssh-* /tmp/ssh-agent-* -type s -user "${SUDO_USER}" -name "agent.*" 2>/dev/null | head -n 1)
+    HOST_SSH_AUTH_SOCK="${_USER_SOCK:-}"
+else
+    HOST_SSH_AUTH_SOCK=""
+fi
+
 if [ -n "$WAYLAND_DISPLAY" ]; then
     DISPLAY_TYPE="Wayland"
     # Verify actual socket file existence and normalize path
@@ -89,13 +114,6 @@ else
     HOST_X11_DIR="${HOST_CACHE_DIR}/dummy_x11_unix"
 fi
 
-# 4. Host File Dummy Mapping (Ensuring stability for Headless or SSOT environments)
-if [ -d "${HOST_HOME}/.ssh" ]; then
-    HOST_SSH_DIR="${HOST_HOME}/.ssh"
-else
-    mkdir -p "${HOST_CACHE_DIR}/dummy_ssh"
-    HOST_SSH_DIR="${HOST_CACHE_DIR}/dummy_ssh"
-fi
 
 if [ -f "${HOST_HOME}/.gitconfig" ]; then
     HOST_GITCONFIG="${HOST_HOME}/.gitconfig"
@@ -110,8 +128,9 @@ if [ ! -f "${HOST_XAUTHORITY}" ]; then
 fi
 
 # Validate that path variables do not contain spaces to prevent Makefile parsing issues
-for _path_var in HOST_HOME HOST_CACHE_DIR HOST_X11_DIR HOST_SSH_DIR HOST_GITCONFIG HOST_XAUTHORITY; do
-    _val=$(eval echo '$'"$_path_var")
+# Use bash indirect reference ${!var} instead of eval to prevent code injection
+for _path_var in HOST_HOME HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_XAUTHORITY; do
+    _val="${!_path_var}"
     if echo "$_val" | grep -q ' '; then
         log_warn "$_path_var contains spaces ('$_val'). This may cause Makefile eval issues."
     fi
@@ -130,4 +149,4 @@ echo "HOST_HOME=${HOST_HOME}"
 echo "HOST_CACHE_DIR=${HOST_CACHE_DIR}"
 echo "HOST_X11_DIR=${HOST_X11_DIR}"
 echo "HOST_GITCONFIG=${HOST_GITCONFIG}"
-echo "HOST_SSH_DIR=${HOST_SSH_DIR}"
+echo "HOST_SSH_AUTH_SOCK=${HOST_SSH_AUTH_SOCK}"

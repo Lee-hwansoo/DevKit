@@ -57,8 +57,9 @@ x-ros-healthcheck: &ros-healthcheck
   start_period: 30s
 
 # ── Dev Healthcheck Configuration (Lightweight Shell Liveness) ──────────────
+# Verify shell is alive via pid 1 liveness (not just 'echo alive')
 x-dev-healthcheck: &dev-healthcheck
-  test: ["CMD-SHELL", "echo 'alive' || exit 1"]
+  test: ["CMD-SHELL", "kill -0 1 2>/dev/null || exit 1"]
   interval: 30s
   timeout: 5s
   retries: 3
@@ -113,6 +114,7 @@ services:
       <<: *common-env
     devices:
       - /dev/dri:/dev/dri
+    healthcheck: *dev-healthcheck
 
   # NVIDIA Acceleration Template
   base-nvidia:
@@ -122,6 +124,7 @@ services:
       <<: *nvidia-env
     deploy:
       <<: *nvidia-deploy
+    healthcheck: *dev-healthcheck
 
   # ROS Specific Template
   base-ros:
@@ -137,9 +140,9 @@ services:
     extends: base-common
     environment:
       <<: *common-env
-    healthcheck: *ros-healthcheck
     devices:
       - /dev/dri:/dev/dri
+    healthcheck: *ros-healthcheck
 
   # Hybrid Container: ROS + NVIDIA Acceleration
   base-ros-nvidia:
@@ -147,6 +150,6 @@ services:
     extends: base-common
     environment:
       <<: *nvidia-env
-    healthcheck: *ros-healthcheck
     deploy:
       <<: *nvidia-deploy
+    healthcheck: *ros-healthcheck

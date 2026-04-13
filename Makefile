@@ -144,7 +144,7 @@ define SUDO_FREE_RM
 endef
 
 # Core Infrastructure Variables Export
-export HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_ARCH TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_SSH_DIR
+export HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_ARCH TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_SSH_DIR HOST_SSH_AUTH_SOCK
 
 # Centralized UI Sub-Header Macro
 define PRINT_SECTION
@@ -157,7 +157,7 @@ endef
 		build-ros-prod build-dev-prod rebuild-ros-prod rebuild-dev-prod \
         ros-prod ros-prod-stop dev-prod dev-prod-stop \
 		save-ros save-dev load-ros load-dev \
-        stats top logs down clean clean-cache clean-all docker-clean env-check
+		update-gpg stats top logs down clean clean-cache clean-all docker-clean env-check
 
 # =============================================================================
 # Default & Help
@@ -202,6 +202,7 @@ help:
 	@echo "    make load-dev       : Restore the pure dev image from the compressed file"
 	@echo ""
 	@echo "  [ Maintenance & Tools ]"
+	@echo "    make update-gpg     : Verify and update ROS GPG repository fingerprints in build scripts"
 	@echo "    make stats          : Monitor system overall resources (CPU/Mem/GPU) in real time"
 	@echo "    make top            : Detailed monitoring based on project containers (CPU Cores / GPU Processes)"
 	@echo "    make logs           : Stream real-time logs of running containers (Ctrl+C to stop)"
@@ -384,6 +385,9 @@ load-dev:
 # =============================================================================
 # Maintenance
 # =============================================================================
+update-gpg:
+	@bash scripts/update_ros_gpg.sh
+
 # Real-time Monitoring (CPU, MEM, NVIDIA/Intel/AMD GPU)
 stats:
 	@echo -e "  $(INFO) Initiating real-time resource monitoring (Ctrl+C to terminate)..."
