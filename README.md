@@ -438,12 +438,39 @@ Python dependencies are deterministically managed using the lightning-fast `uv` 
 
   ```toml
   # pyproject.toml structural isolation strategy
+  [project]
+  name = "DevKit"
+  version = "0.1.0"
+  description = "Add your description here"
+  readme = "README.md"
+  requires-python = ">=3.10"
+  dependencies = []
+
   [project.optional-dependencies]
-  cpu = ["torch==2.9.1"]
-  gpu = ["torch==2.9.1"]
+  cpu = ["torch==2.11.0", "torchvision"]
+  gpu = ["torch==2.11.0", "torchvision"]
+
+  [[tool.uv.index]]
+  name = "pytorch-cpu"
+  url = "https://download.pytorch.org/whl/cpu"
+  explicit = true
+
+  [[tool.uv.index]]
+  name = "pytorch-cu128"
+  url = "https://download.pytorch.org/whl/cu128"
+  explicit = true
+
+  [tool.uv]
+  conflicts = [
+      [ { extra = "cpu" }, { extra = "gpu" } ]
+  ]
 
   [tool.uv.sources]
   torch = [
+      { index = "pytorch-cpu", extra = "cpu" },
+      { index = "pytorch-cu128", extra = "gpu" },
+  ]
+  torchvision = [
       { index = "pytorch-cpu", extra = "cpu" },
       { index = "pytorch-cu128", extra = "gpu" },
   ]

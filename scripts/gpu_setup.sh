@@ -71,6 +71,16 @@ reset_gpu_env() {
 write_gpu_env() {
     # Persists GPU-specific environment variables for use in future shell sessions
     local env_file="${HOME}/.gpu_env.sh"
+
+    # Determine uv extra (PyTorch selection) based on detectable hardware
+    local uv_extra="cpu"
+    # If explicitly forcing CPU mode, keep it cpu
+    if [ "${LIBGL_ALWAYS_SOFTWARE:-0}" = "0" ]; then
+        if [ "${__GLX_VENDOR_LIBRARY_NAME:-}" = "nvidia" ] || has_nvidia || has_tegra; then
+            uv_extra="gpu"
+        fi
+    fi
+
     cat > "$env_file" << EOF
 # __GPU_ENV_START
 export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-0}
@@ -78,6 +88,7 @@ $([ -n "${GALLIUM_DRIVER:-}" ] && echo "export GALLIUM_DRIVER=${GALLIUM_DRIVER}"
 $([ -n "${MESA_LOADER_DRIVER_OVERRIDE:-}" ] && echo "export MESA_LOADER_DRIVER_OVERRIDE=${MESA_LOADER_DRIVER_OVERRIDE}")
 $([ -n "${__NV_PRIME_RENDER_OFFLOAD:-}" ] && echo "export __NV_PRIME_RENDER_OFFLOAD=${__NV_PRIME_RENDER_OFFLOAD}")
 $([ -n "${__GLX_VENDOR_LIBRARY_NAME:-}" ] && echo "export __GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME}")
+export UV_EXTRA=${uv_extra}
 # __GPU_ENV_END
 EOF
 }

@@ -90,13 +90,18 @@ for arg in "$@"; do
 done
 
 if [ "$DO_ROSDEP" = true ] && command -v rosdep &>/dev/null && [ -n "${ROS_DISTRO}" ]; then
-    log_info "Checking rosdep dependencies for ${TARGET_DIR}..."
+    log_info "Gathering all workspace dependencies (src/) via rosdep for ${ROS_DISTRO}..."
+    # Ensure apt is updated for fresh dependency resolution
     apt-get update -qq || true
-    if ! rosdep install --from-paths "$TARGET_DIR" --ignore-src -r -y --rosdistro "$ROS_DISTRO"; then
+
+    # Scan the entire src directory to include both internal and third-party packages
+    if ! rosdep install --from-paths src --ignore-src -r -y --rosdistro "$ROS_DISTRO"; then
         log_warn "Some rosdep packages failed to install. Check the output above."
     else
-        log_ok "rosdep check completed."
+        log_ok "Workspace-wide rosdep check completed."
     fi
+elif [ "$DO_ROSDEP" = true ]; then
+    log_info "ROS environment not detected. Skipping rosdep system dependency check."
 elif [ "$DO_ROSDEP" = false ] && command -v rosdep &>/dev/null; then
     log_info "Skipping rosdep install. (Use --rosdep to force check)"
 fi

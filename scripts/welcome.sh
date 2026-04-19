@@ -22,6 +22,7 @@ print_banner WELCOME
 echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC}"
 echo -e ""
 echo -e "  ${BLUE}Core Helpers:${NC}"
+echo -e "    ${GREEN}mksync${NC}        : One-step initialization (uvs + sync_deps + cb)"
 echo -e "    ${GREEN}hw_check${NC}      : Full hardware & environment diagnostics"
 echo -e "    ${GREEN}gpu_status${NC}    : Detailed GPU & Display status"
 echo -e "    ${GREEN}gpu_setup${NC}     : Auto-configure GPU mode (nvidia/igpu/cpu)"
