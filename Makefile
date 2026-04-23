@@ -247,7 +247,7 @@ check-host:
 	fi
 
 xauth:
-	@if [ "$(DISPLAY_TYPE)" = "X11" ] && [ -n "$(DISPLAY)" ]; then \
+	@if [ -n "$(DISPLAY)" ]; then \
 		if command -v xauth >/dev/null 2>&1; then \
 			touch $(HOST_XAUTHORITY) 2>/dev/null || true; \
 			xauth nlist $(DISPLAY) | sed -e 's/^..../ffff/' | xauth -f $(HOST_XAUTHORITY) nmerge - 2>/dev/null || true; \
@@ -255,6 +255,8 @@ xauth:
 	fi
 	@if [ -n "$(DISPLAY)" ] && command -v xhost >/dev/null 2>&1; then \
 		xhost +local:root > /dev/null 2>&1 || true; \
+		xhost +si:localuser:root > /dev/null 2>&1 || true; \
+		xhost +si:localuser:$(shell whoami) > /dev/null 2>&1 || true; \
 	fi
 
 check: check-host
@@ -318,13 +320,13 @@ dev-restart: dev-stop dev
 ROS_FILTER := ^$(COMPOSE_PROJECT_NAME)[-_]ros-(cpu|igpu|nvidia)
 DEV_FILTER := ^$(COMPOSE_PROJECT_NAME)[-_]basic-(cpu|igpu|nvidia)
 
-ros-shell: check
+ros-shell: check xauth
 	$(call EXEC_CONTAINER,$(ROS_FILTER),bash,ROS)
 
 ros-term: check xauth
 	$(call EXEC_DETACHED,$(ROS_FILTER),$(TERMINAL),ROS)
 
-dev-shell: check
+dev-shell: check xauth
 	$(call EXEC_CONTAINER,$(DEV_FILTER),bash,Development)
 
 dev-term: check xauth
