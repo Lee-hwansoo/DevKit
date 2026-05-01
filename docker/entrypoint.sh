@@ -93,10 +93,22 @@ if [ "$IS_DEV" = true ]; then
 
         # Ensure XDG_RUNTIME_DIR exists with correct permissions (SSOT: /tmp/runtime-root)
         XDG_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
-        export XDG_RUNTIME_DIR="$XDG_DIR"
-        if [ ! -d "$XDG_DIR" ]; then
-            mkdir -p "$XDG_DIR" && chmod 700 "$XDG_DIR"
-            log_ok "XDG_RUNTIME_DIR created: $XDG_DIR"
+        if [ -d "$XDG_DIR" ] && [ "$(stat -c %u "$XDG_DIR" 2>/dev/null)" != "$(id -u)" ]; then
+            # If directory is owned by host user (1000) but we are root, create a proxy dir to satisfy Qt security
+            INTERNAL_XDG="/tmp/runtime-internal"
+            if [ ! -d "$INTERNAL_XDG" ]; then
+                mkdir -p "$INTERNAL_XDG" && chmod 700 "$INTERNAL_XDG"
+                # Symlink Wayland/X11 sockets from the mounted dir
+                find "$XDG_DIR" -maxdepth 1 -not -path "$XDG_DIR" -exec ln -s {} "$INTERNAL_XDG/" 2>/dev/null \;
+            fi
+            export XDG_RUNTIME_DIR="$INTERNAL_XDG"
+            log_ok "XDG_RUNTIME_DIR proxied to satisfy ownership requirements: $INTERNAL_XDG"
+        else
+            export XDG_RUNTIME_DIR="$XDG_DIR"
+            if [ ! -d "$XDG_DIR" ]; then
+                mkdir -p "$XDG_DIR" && chmod 700 "$XDG_DIR"
+                log_ok "XDG_RUNTIME_DIR created: $XDG_DIR"
+            fi
         fi
     else
         log_warn "No DISPLAY or WAYLAND_DISPLAY set — GUI apps will not work."
