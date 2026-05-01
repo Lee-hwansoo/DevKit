@@ -73,42 +73,54 @@ fi
 
 # [3] Display Protocol & GUI Integration (Development Only)
 if [ "$IS_DEV" = true ]; then
-    if [ -n "${DISPLAY:-}" ]; then
-        DISPLAY_NUM="${DISPLAY#:}"
-        DISPLAY_NUM="${DISPLAY_NUM%%.*}"
-        if [ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ] 2>/dev/null; then
-            log_ok "X11 display ${DISPLAY} available"
-        else
-            log_warn "DISPLAY=${DISPLAY} set but X11 socket not found."
-        fi
-        if [ ! -f "${XAUTHORITY:-$HOME/.Xauthority}" ]; then
-            log_warn "Xauthority file not found. GUI apps may fail."
-            log_warn "On host: xhost +SI:localuser:root"
-        fi
-    elif [ -n "${WAYLAND_DISPLAY:-}" ]; then
-        log_ok "Wayland display ${WAYLAND_DISPLAY} set"
-        export QT_QPA_PLATFORM="wayland;xcb"
-        export GDK_BACKEND="wayland,x11"
-        log_ok "Exported Wayland GUI variables"
-
-        # Ensure XDG_RUNTIME_DIR exists with correct permissions (SSOT: /tmp/runtime-root)
+    if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        # [SSOT] Fix XDG_RUNTIME_DIR ownership issue (WSL2 root vs 1000 compatibility)
+        # Qt/GTK apps check ownership and warn if it doesn't match current user (root)
         XDG_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
+        
         if [ -d "$XDG_DIR" ] && [ "$(stat -c %u "$XDG_DIR" 2>/dev/null)" != "$(id -u)" ]; then
-            # If directory is owned by host user (1000) but we are root, create a proxy dir to satisfy Qt security
             INTERNAL_XDG="/tmp/runtime-internal"
             if [ ! -d "$INTERNAL_XDG" ]; then
                 mkdir -p "$INTERNAL_XDG" && chmod 700 "$INTERNAL_XDG"
-                # Symlink Wayland/X11 sockets from the mounted dir
-                find "$XDG_DIR" -maxdepth 1 -not -path "$XDG_DIR" -exec ln -s {} "$INTERNAL_XDG/" 2>/dev/null \;
+                # Symlink sockets to satisfy both security checks and connectivity
+                # Use -sf for idempotency in case of restarts
+                find "$XDG_DIR" -maxdepth 1 -not -path "$XDG_DIR" -exec ln -sf {} "$INTERNAL_XDG/" 2>/dev/null \;
             fi
             export XDG_RUNTIME_DIR="$INTERNAL_XDG"
-            log_ok "XDG_RUNTIME_DIR proxied to satisfy ownership requirements: $INTERNAL_XDG"
+            log_ok "XDG_RUNTIME_DIR proxied for security compliance: $INTERNAL_XDG"
         else
+            # Fallback: Ensure directory exists and export if not proxied
             export XDG_RUNTIME_DIR="$XDG_DIR"
-            if [ ! -d "$XDG_DIR" ]; then
-                mkdir -p "$XDG_DIR" && chmod 700 "$XDG_DIR"
-                log_ok "XDG_RUNTIME_DIR created: $XDG_DIR"
+            if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+                mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+                log_ok "XDG_RUNTIME_DIR created: $XDG_RUNTIME_DIR"
             fi
+        fi
+
+        # Persist for 'docker exec' sessions (e.g. make ros-shell)
+        touch /root/.bashrc
+        sed -i '/export XDG_RUNTIME_DIR=/d' /root/.bashrc
+        echo "export XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\"" >> /root/.bashrc
+
+        if [ -n "${DISPLAY:-}" ]; then
+            DISPLAY_NUM="${DISPLAY#:}"
+            DISPLAY_NUM="${DISPLAY_NUM%%.*}"
+            if [ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ] 2>/dev/null; then
+                log_ok "X11 display ${DISPLAY} verified"
+            else
+                log_warn "DISPLAY=${DISPLAY} set but X11 socket not found."
+            fi
+            if [ ! -f "${XAUTHORITY:-$HOME/.Xauthority}" ]; then
+                log_warn "Xauthority file not found. GUI apps may fail."
+                log_warn "On host: xhost +SI:localuser:root"
+            fi
+        fi
+
+        if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+            log_ok "Wayland display ${WAYLAND_DISPLAY} set"
+            export QT_QPA_PLATFORM="wayland;xcb"
+            export GDK_BACKEND="wayland,x11"
+            log_ok "Wayland GUI variables initialized"
         fi
     else
         log_warn "No DISPLAY or WAYLAND_DISPLAY set — GUI apps will not work."
