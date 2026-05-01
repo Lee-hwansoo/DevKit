@@ -144,7 +144,7 @@ define SUDO_FREE_RM
 endef
 
 # Core Infrastructure Variables Export
-export HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_ARCH TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_SSH_DIR HOST_SSH_AUTH_SOCK
+export IS_WSL HOST_ARCH HAS_NVIDIA HAS_TOOLKIT HAS_DRI TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_SSH_DIR HOST_SSH_AUTH_SOCK
 
 # Centralized UI Sub-Header Macro
 define PRINT_SECTION
@@ -228,10 +228,11 @@ setup:
 status: check
 	$(call PRINT_SECTION,Project Configuration Summary)
 	@echo "  Project Name:      $(COMPOSE_PROJECT_NAME)"
-	@echo "  ROS Version:       $(ROS_DISTRO)"
+	@echo "  OS Environment:    $(if $(filter true,$(IS_WSL)),WSL 2 (Windows Subsystem for Linux),Linux Native)"
 	@echo "  Architecture:      $(HOST_ARCH) (Target: $(TARGETARCH))"
 	@echo "  Display:           $(DISPLAY) ($(DISPLAY_TYPE))"
 	@echo "  GPU Mode (Set):    $(GPU_MODE)"
+	@echo "  ROS Version:       $(ROS_DISTRO)"
 	$(call PRINT_SECTION,Running Containers)
 	@docker ps --filter "name=$(COMPOSE_PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | sed 's/^/  /'
 	$(call PRINT_SECTION,Created Docker Volumes)
@@ -242,8 +243,15 @@ status: check
 	fi
 
 check-host:
-	@if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "false" ]; then \
-		echo -e "  $(WARN) NVIDIA GPU detected but NVIDIA Container Toolkit is not installed."; \
+	@if [ "$(HAS_NVIDIA)" = "true" ]; then \
+		if [ "$(HAS_TOOLKIT_BIN)" = "false" ]; then \
+			echo -e "  $(WARN) NVIDIA GPU detected but NVIDIA Container Toolkit is not installed."; \
+			echo -e "  $(INFO) Refer to README.md for installation instructions."; \
+		elif [ "$(HAS_TOOLKIT)" = "false" ]; then \
+			echo -e "  $(WARN) NVIDIA Container Toolkit is installed but NOT configured for Docker."; \
+			echo -e "  $(INFO) Fix: Run 'sudo nvidia-ctk runtime configure --runtime=docker'"; \
+			echo -e "  $(INFO) Then restart Docker: 'sudo systemctl restart docker' OR 'sudo service docker restart'"; \
+		fi \
 	fi
 
 xauth:
@@ -262,6 +270,14 @@ xauth:
 check: check-host
 	@if [ ! -f .env ]; then echo -e "  $(ERROR) .env not found. Please run 'make setup' first."; exit 1; fi
 	@if [ ! -d "$(WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) WORKSPACE_PATH ($(WORKSPACE_PATH)) does not exist."; exit 1; fi
+	@if [ "$(IS_WSL)" = "true" ]; then \
+		bash scripts/wsl_auditor.sh; \
+		if [[ "$(CURDIR)" == /mnt/* ]]; then \
+			echo -e "  $(WARN) You are running from a Windows mount path ($(CURDIR))."; \
+			echo -e "  $(INFO) IO performance will be significantly degraded in WSL 2."; \
+			echo -e "  $(INFO) Recommendation: Move the project to the WSL home directory (e.g., ~/work/)."; \
+		fi \
+	fi
 	$(call VALIDATE_COMPOSE_NAME)
 	$(call VALIDATE_ROS_ENV)
 

@@ -76,6 +76,15 @@ log_debug() {
 # Export color variables for independent use in Makefile, etc.
 export RED GREEN YELLOW BLUE CYAN PURPLE NC
 
+# Formatted status strings for manual usage (e.g. within sections or sub-items)
+INFO="${BLUE}[INFO]${NC}"
+OK="${GREEN}[OK]${NC}"
+WARN="${YELLOW}[WARN]${NC}"
+ERROR="${RED}[ERROR]${NC}"
+DEBUG="${PURPLE}[DEBUG]${NC}"
+
+export INFO OK WARN ERROR DEBUG
+
 # =============================================================================
 # DevKit Branding & Banners
 # =============================================================================

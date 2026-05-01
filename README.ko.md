@@ -239,6 +239,117 @@ make dev            # 순수 C++/Python 컨테이너 시작 (GPU 자동 감지)
 
 ---
 
+---
+
+## 📑 시스템 아키텍처 요구사항
+
+본 DevKit은 **"호스트 오염 제로(Zero-Pollution)"**와 **"단일 오케스트레이션(Unified Orchestration)"**을 아키텍처 철학으로 삼습니다. 이를 실현하기 위해 모든 호스트 환경은 아래의 **3대 핵심 스택**을 필수 인프라로 요구합니다.
+
+### 🎯 핵심 인프라 스택 (Core Infrastructure Stack)
+
+| 구성 요소 | 역할 (Role) | 아키텍처적 필요성 |
+| :--- | :---: | :--- |
+| **Docker Engine** | **Runtime & Isolation** | 모든 개발 도구와 의존성을 격리된 컨테이너 내부에 가둡니다. |
+| **GNU Make** | **Command Center** | 복잡한 도커 명령을 단일 워크플로우(`make ros` 등)로 추상화하고 자동화합니다. |
+| **NVIDIA Toolkit** | **HW Acceleration** | 호스트의 GPU 자원을 컨테이너 내부로 손실 없이 패스스루(Pass-through)합니다. |
+
+---
+
+### 📊 환경별 구현 매트릭스 (Implementation Matrix)
+
+사용자의 OS 환경에 따라 핵심 스택을 구현하는 방식이 상이합니다. 본인의 환경에 맞는 경로를 선택하십시오.
+
+| 구분 | 🐧 Native Linux (Ubuntu 등) | 🪟 Windows (WSL 2) |
+| :--- | :--- | :--- |
+| **권장 방식** | **Native Docker Engine** | **Native Docker (Option B)** |
+| **Docker 설치** | `apt-get`을 통한 네이티브 설치 | WSL 2 내부 직접 설치 (Systemd 활성화 필수) |
+| **Make 설치** | `sudo apt install make` | `sudo apt install make` (WSL 내부) |
+| **GPU 지원** | `nvidia-container-toolkit` 설치 | Windows용 NVIDIA 드라이버 + Toolkit 설치 |
+| **권한 관리** | `docker` 그룹 추가 필수 | `docker` 그룹 추가 필수 (Native 방식 시) |
+| **특이 사항** | 없음 (가장 높은 성능) | **IO 성능**: `/mnt/c`가 아닌 `~/` 경로 사용 필수 |
+
+---
+
+### 🛠 환경별 상세 설정 가이드
+
+#### 1. 공통 설치: Docker Engine & NVIDIA Toolkit (Native)
+
+**Native Linux** 사용자 및 **WSL 2** 사용자를 위한 표준 설치 절차입니다.
+
+```bash
+# A. Docker Engine 설치 (Official Repo)
+## 1) 기존 Docker 삭제 (충돌 방지)
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc | cut -f1)
+## 2) Docker 공식 저장소 추가
+sudo apt update
+sudo apt install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+## 3) Docker 설치
+sudo apt update
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# B. NVIDIA Container Toolkit 설치
+sudo apt-get update && sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg2
+## 1) NVIDIA 공식 저장소 추가
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+  && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+## 2) NVIDIA Container Toolkit 설치
+export NVIDIA_CONTAINER_TOOLKIT_VERSION=1.19.0-1
+sudo apt-get install -y \
+  nvidia-container-toolkit=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+  nvidia-container-toolkit-base=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+  libnvidia-container-tools=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+  libnvidia-container1=${NVIDIA_CONTAINER_TOOLKIT_VERSION}
+## 3) NVIDIA 런타임 설정 및 서비스 재시작
+sudo nvidia-ctk runtime configure --runtime=docker
+### Systemd 사용 시
+sudo systemctl restart docker
+### Systemd 미사용 시
+sudo service docker restart
+
+# C. 권한 설정 및 동작 확인
+## 현재 사용자를 docker 그룹에 추가 (sudo 없이 사용 가능하도록)
+sudo usermod -aG docker $USER
+## 로그아웃 없이 현재 터미널에 그룹 권한 즉시 적용
+newgrp docker
+## 도커 및 GPU 인식 확인
+docker ps
+nvidia-smi
+```
+
+#### 2. WSL 2 전용 추가 설정
+
+- **프로젝트 파일 위치**:
+  - **권장**: `\\wsl$\Ubuntu\home\username\my_project`
+  - **비권장**: `C:\Users\username\my_project` (I/O 속도가 매우 느려집니다.)
+- **Systemd 활성화**: WSL 2 내부 `/etc/wsl.conf`에 `[boot]\nsystemd=true` 추가 후 `wsl --shutdown` 필수.
+- **GUI 및 그래픽 가속**
+  - **Windows 11**: 별도의 설정 없이 `rviz2`나 `gazebo`가 윈도우 앱처럼 실행됩니다. (WSLg 기본 지원)
+  - **Windows 10**: VcXsrv 등의 X Server 설치가 필요할 수 있습니다.
+- **네트워크 모드 (ROS 2 멀티캐스트 설정)**: 로컬 네트워크의 실제 로봇이나 하드웨어와 통신해야 한다면, **Mirrored Networking Mode** 사용을 강력히 권장합니다.
+  1. Windows 사용자 폴더(`%USERPROFILE%`)에 `.wslconfig` 파일을 생성하거나 편집합니다.
+  2. 다음 내용을 추가합니다:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+  3. WSL 재시작: 터미널에서 `wsl --shutdown` 실행 후 다시 접속합니다.
+
+---
+
 ## 💻 GPU 및 개발 환경 실행 방법
 
 시스템이 최적의 모드를 자동으로 선택합니다.

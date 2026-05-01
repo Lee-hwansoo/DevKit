@@ -12,29 +12,12 @@
 source "$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh" 2>/dev/null || true
 LOG_PREFIX="[Env Detector]"
 
-# 1. Identify GPU hardware and container toolkit compatibility
-HAS_NVIDIA="false"
-HAS_TOOLKIT="false"
-HAS_DRI="false"
-
-if command -v nvidia-smi >/dev/null 2>&1; then
-    HAS_NVIDIA="true"
+# 1. Check Environment and Determine host CPU architecture
+IS_WSL="false"
+if grep -qi "Microsoft" /proc/version 2>/dev/null; then
+    IS_WSL="true"
 fi
 
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-    if docker info 2>/dev/null | grep -iq "Runtimes: .*nvidia"; then
-        HAS_TOOLKIT="true"
-    fi
-else
-    log_warn "Docker daemon is not running or not accessible. GPU toolkit detection skipped."
-fi
-
-# Detect /dev/dri existence (Used for Intel/AMD resource allocation and auto-mount selection)
-if [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1; then
-    HAS_DRI="true"
-fi
-
-# 2. Determine host CPU architecture for binary compatibility
 RAW_ARCH=$(uname -m)
 case "${RAW_ARCH}" in
     x86_64)  HOST_ARCH="amd64" ;;
@@ -42,6 +25,34 @@ case "${RAW_ARCH}" in
     armv8*)  HOST_ARCH="arm64" ;;
     *)       HOST_ARCH="unknown" ;;
 esac
+
+# 2. Identify GPU hardware and container toolkit compatibility
+HAS_NVIDIA="false"
+HAS_TOOLKIT="false"      # Docker-configured status
+HAS_TOOLKIT_BIN="false"  # Binary installation status
+HAS_DRI="false"
+
+if command -v nvidia-smi >/dev/null 2>&1; then
+    HAS_NVIDIA="true"
+fi
+
+if command -v nvidia-ctk >/dev/null 2>&1; then
+    HAS_TOOLKIT_BIN="true"
+fi
+
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    if docker info 2>/dev/null | grep -iq "Runtimes: .*nvidia"; then
+        HAS_TOOLKIT="true"
+    fi
+else
+    # Only warn if not in a quiet/Makefile context (optional, but keeping for now)
+    : 
+fi
+
+# Detect /dev/dri existence (Used for Intel/AMD resource allocation and auto-mount selection)
+if [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1; then
+    HAS_DRI="true"
+fi
 
 # 3. Detect Display Protocols and Establish Secure Cache Paths
 # Ensure a valid cache directory exists, defaulting to .docker_cache within the workspace
@@ -55,6 +66,16 @@ mkdir -p "${HOST_CACHE_DIR}"
 DISPLAY_TYPE="X11"
 HOST_XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}"
 HOST_WAYLAND_DISPLAY="${WAYLAND_DISPLAY}"
+
+# Special handling for WSLg (WSL 2 GUI)
+if [ "${IS_WSL}" = "true" ]; then
+    # Prioritize WSLg runtime directory if available
+    if [ -d "/mnt/wslg/runtime-dir" ]; then
+        HOST_XDG_RUNTIME_DIR="/mnt/wslg/runtime-dir"
+        [ -z "${HOST_WAYLAND_DISPLAY}" ] && HOST_WAYLAND_DISPLAY="wayland-0"
+    fi
+fi
+
 # Sudo support: Accurately locate the X11 authority file by referencing the real home directory of the SUDO_USER.
 if [ -n "${SUDO_USER}" ]; then
     ORIGINAL_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
@@ -90,12 +111,13 @@ else
     HOST_SSH_AUTH_SOCK=""
 fi
 
-if [ -n "$WAYLAND_DISPLAY" ]; then
+if [ -n "$HOST_WAYLAND_DISPLAY" ]; then
     DISPLAY_TYPE="Wayland"
     # Verify actual socket file existence and normalize path
-    if [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]; then
-        HOST_WAYLAND_DISPLAY="${WAYLAND_DISPLAY}"
-    elif [ -S "/run/user/$(id -u)/${WAYLAND_DISPLAY}" ]; then
+    if [ -S "${HOST_XDG_RUNTIME_DIR}/${HOST_WAYLAND_DISPLAY}" ]; then
+        # Path already normalized
+        :
+    elif [ -S "/run/user/$(id -u)/${HOST_WAYLAND_DISPLAY}" ]; then
         HOST_XDG_RUNTIME_DIR="/run/user/$(id -u)"
     fi
 fi
@@ -108,6 +130,9 @@ fi
 # Detect the X11 Unix socket directory with automatic fallback creation
 if [ -d /tmp/.X11-unix ]; then
     HOST_X11_DIR="/tmp/.X11-unix"
+elif [ "${IS_WSL}" = "true" ] && [ -d "/mnt/wslg/.X11-unix" ]; then
+    # WSLg alternative path
+    HOST_X11_DIR="/mnt/wslg/.X11-unix"
 else
     # Create a virtual path for environments without X11 or in special cases
     mkdir -p "${HOST_CACHE_DIR}/dummy_x11_unix"
@@ -137,10 +162,12 @@ for _path_var in HOST_HOME HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_XAUTH
 done
 
 # 5. Output results in KEY=VALUE format for Makefile or environment injection
+echo "IS_WSL=${IS_WSL}"
+echo "HOST_ARCH=${HOST_ARCH}"
 echo "HAS_NVIDIA=${HAS_NVIDIA}"
 echo "HAS_TOOLKIT=${HAS_TOOLKIT}"
+echo "HAS_TOOLKIT_BIN=${HAS_TOOLKIT_BIN}"
 echo "HAS_DRI=${HAS_DRI}"
-echo "HOST_ARCH=${HOST_ARCH}"
 echo "DISPLAY_TYPE=${DISPLAY_TYPE}"
 echo "HOST_XDG_RUNTIME_DIR=${HOST_XDG_RUNTIME_DIR}"
 echo "HOST_WAYLAND_DISPLAY=${HOST_WAYLAND_DISPLAY}"

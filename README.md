@@ -239,6 +239,116 @@ make dev            # Start pure C++/Python container (Auto-detects GPU)
 
 ---
 
+---
+
+## 📑 System Infrastructure Requirements
+
+DevKit is built upon the architectural philosophies of **"Zero-Pollution"** and **"Unified Orchestration."** To achieve these, every host environment requires the following **Core Infrastructure Trinity**.
+
+### 🎯 Core Infrastructure Stack
+
+| Component | Role | Architectural Rationale |
+| :--- | :---: | :--- |
+| **Docker Engine** | **Runtime & Isolation** | Encapsulates all development tools and dependencies within isolated containers. |
+| **GNU Make** | **Command Center** | Abstract and automates complex Docker operations into a unified workflow (e.g., `make ros`). |
+| **NVIDIA Toolkit** | **HW Acceleration** | Provides seamless hardware passthrough of host GPU resources into the container. |
+
+---
+
+### 📊 Implementation Matrix
+
+The method for implementing the core stack varies based on your Host OS. Select the path that corresponds to your environment.
+
+| Category | 🐧 Native Linux (Ubuntu, etc.) | 🪟 Windows (WSL 2) |
+| :--- | :--- | :--- |
+| **Recommended** | **Native Docker Engine** | **Native Docker (Option B)** |
+| **Docker Install** | Native installation via `apt-get` | Direct installation inside WSL 2 (Systemd required) |
+| **Make Install** | `sudo apt install make` | `sudo apt install make` (Inside WSL 2) |
+| **GPU Support** | `nvidia-container-toolkit` | Windows NVIDIA Driver + Toolkit |
+| **Permissions** | `docker` group membership required | `docker` group membership required (for Option B) |
+| **Critical Notes** | Highest native performance | **IO Performance**: Use `~/`, NOT `/mnt/c/` |
+
+---
+
+### 🛠 Detailed Setup Guide
+
+#### 1. Common Installation: Docker Engine & NVIDIA Toolkit (Native)
+Standard procedure for **Native Linux** and **WSL 2 (Option B)** users.
+
+```bash
+# A. Install Docker Engine (Official Repo)
+## 1) Remove Existing Docker (To prevent conflicts)
+sudo apt remove $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc | cut -f1)
+## 2) Add Docker Official Repository
+sudo apt update
+sudo apt install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+## 3) Docker Install
+sudo apt update
+sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# B. Install NVIDIA Container Toolkit
+sudo apt-get update && sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg2
+## 1) Add NVIDIA Official Repository
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
+  && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+## 2) Install NVIDIA Container Toolkit
+export NVIDIA_CONTAINER_TOOLKIT_VERSION=1.19.0-1
+sudo apt-get install -y \
+  nvidia-container-toolkit=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+  nvidia-container-toolkit-base=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+  libnvidia-container-tools=${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+  libnvidia-container1=${NVIDIA_CONTAINER_TOOLKIT_VERSION}
+## 3) NVIDIA Runtime Configuration & Service Restart
+sudo nvidia-ctk runtime configure --runtime=docker
+### If using Systemd
+sudo systemctl restart docker
+### If not using Systemd
+sudo service docker restart
+
+# C. Permission Setting & Verification
+## Add current user to docker group (To use without sudo)
+sudo usermod -aG docker $USER
+## Apply group permissions immediately to the current terminal
+newgrp docker
+## Verify Docker and GPU recognition
+docker ps
+nvidia-smi
+```
+
+#### 2. WSL 2 Specific Configuration
+
+- **Project File Location**:
+  - **Recommended**: `\\wsl$\Ubuntu\home\username\my_project`
+  - **Discouraged**: `C:\Users\username\my_project` (I/O speed will be significantly degraded.)
+- **Enable Systemd**: Add `[boot]\nsystemd=true` to `/etc/wsl.conf` inside WSL and run `wsl --shutdown` in PowerShell.
+- **GUI & Graphics Acceleration**
+  - **Windows 11**: `rviz2` or `gazebo` will run natively without extra configuration (WSLg support).
+  - **Windows 10**: You may need to install an X Server like VcXsrv.
+- **Networking Mode (ROS 2 Multicast)**: To communicate with hardware or robots on the local network, **Mirrored Networking Mode** is highly recommended.
+  1. Create or edit `%USERPROFILE%\.wslconfig` on Windows.
+  2. Add the following configuration:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+  3. Restart WSL: Run `wsl --shutdown` in PowerShell and restart your terminal.
+
+---
+
 ## 💻 Running the Environment and GPU Modes
 
 The system automatically selects the optimal hardware mode for your workstation.
