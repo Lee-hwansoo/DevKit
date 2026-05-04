@@ -12,6 +12,62 @@
 
 set -e
 
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+# Resolves XDG_RUNTIME_DIR, proxying to /tmp/runtime-internal when the mounted
+# directory is owned by a different UID (e.g. WSL2 host user=1000, container=root).
+# Prints the resolved path to stdout.
+setup_xdg_runtime() {
+    local xdg_dir="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
+    local my_uid
+    my_uid="$(id -u)"
+
+    if [ -d "$xdg_dir" ] && [ "$(stat -c %u "$xdg_dir" 2>/dev/null)" != "$my_uid" ]; then
+        local proxy="/tmp/runtime-internal"
+        mkdir -p "$proxy" && chmod 700 "$proxy"
+        # Remove stale symlinks before re-linking (handles socket recreation by compositor)
+        find "$proxy" -maxdepth 1 -type l -exec rm -f {} \;
+        find "$xdg_dir" -maxdepth 1 -not -path "$xdg_dir" -exec ln -sf {} "$proxy/" 2>/dev/null \;
+        log_ok "XDG_RUNTIME_DIR proxied for security compliance: $proxy"
+        echo "$proxy"
+    else
+        if [ ! -d "$xdg_dir" ]; then
+            mkdir -p "$xdg_dir" && chmod 700 "$xdg_dir"
+            log_ok "XDG_RUNTIME_DIR created: $xdg_dir"
+        fi
+        echo "$xdg_dir"
+    fi
+}
+
+# Verifies the X11 socket and Xauthority file; logs warnings if missing.
+verify_x11() {
+    local display="${DISPLAY:-}"
+    [ -z "$display" ] && return
+
+    local display_num="${display#:}"
+    display_num="${display_num%%.*}"
+    if [ -S "/tmp/.X11-unix/X${display_num}" ]; then
+        log_ok "X11 display ${display} verified"
+    else
+        log_warn "DISPLAY=${display} set but X11 socket not found."
+    fi
+    if [ ! -f "${XAUTHORITY:-$HOME/.Xauthority}" ]; then
+        log_warn "Xauthority file not found. GUI apps may fail."
+        log_warn "On host: xhost +SI:localuser:root"
+    fi
+}
+
+# Exports Wayland-specific Qt/GTK environment variables.
+setup_wayland() {
+    [ -z "${WAYLAND_DISPLAY:-}" ] && return
+    log_ok "Wayland display ${WAYLAND_DISPLAY} set"
+    export QT_QPA_PLATFORM="wayland;xcb"
+    export GDK_BACKEND="wayland,x11"
+    log_ok "Wayland GUI variables initialized"
+}
+
 # Load logging utility
 SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/opt/scripts/utils_logging.sh"
@@ -74,54 +130,16 @@ fi
 # [3] Display Protocol & GUI Integration (Development Only)
 if [ "$IS_DEV" = true ]; then
     if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
-        # [SSOT] Fix XDG_RUNTIME_DIR ownership issue (WSL2 root vs 1000 compatibility)
-        # Qt/GTK apps check ownership and warn if it doesn't match current user (root)
-        XDG_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
-        
-        if [ -d "$XDG_DIR" ] && [ "$(stat -c %u "$XDG_DIR" 2>/dev/null)" != "$(id -u)" ]; then
-            INTERNAL_XDG="/tmp/runtime-internal"
-            if [ ! -d "$INTERNAL_XDG" ]; then
-                mkdir -p "$INTERNAL_XDG" && chmod 700 "$INTERNAL_XDG"
-                # Symlink sockets to satisfy both security checks and connectivity
-                # Use -sf for idempotency in case of restarts
-                find "$XDG_DIR" -maxdepth 1 -not -path "$XDG_DIR" -exec ln -sf {} "$INTERNAL_XDG/" 2>/dev/null \;
-            fi
-            export XDG_RUNTIME_DIR="$INTERNAL_XDG"
-            log_ok "XDG_RUNTIME_DIR proxied for security compliance: $INTERNAL_XDG"
-        else
-            # Fallback: Ensure directory exists and export if not proxied
-            export XDG_RUNTIME_DIR="$XDG_DIR"
-            if [ ! -d "$XDG_RUNTIME_DIR" ]; then
-                mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
-                log_ok "XDG_RUNTIME_DIR created: $XDG_RUNTIME_DIR"
-            fi
-        fi
+        # Resolve XDG_RUNTIME_DIR (handles WSL2 uid mismatch via proxy)
+        export XDG_RUNTIME_DIR="$(setup_xdg_runtime)"
 
         # Persist for 'docker exec' sessions (e.g. make ros-shell)
-        touch /root/.bashrc
-        sed -i '/export XDG_RUNTIME_DIR=/d' /root/.bashrc
-        echo "export XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\"" >> /root/.bashrc
+        # Use /etc/profile.d for idempotency and user-independence (avoids .bashrc mutation)
+        echo "export XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\"" > /etc/profile.d/devkit-xdg.sh
+        chmod 644 /etc/profile.d/devkit-xdg.sh
 
-        if [ -n "${DISPLAY:-}" ]; then
-            DISPLAY_NUM="${DISPLAY#:}"
-            DISPLAY_NUM="${DISPLAY_NUM%%.*}"
-            if [ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ] 2>/dev/null; then
-                log_ok "X11 display ${DISPLAY} verified"
-            else
-                log_warn "DISPLAY=${DISPLAY} set but X11 socket not found."
-            fi
-            if [ ! -f "${XAUTHORITY:-$HOME/.Xauthority}" ]; then
-                log_warn "Xauthority file not found. GUI apps may fail."
-                log_warn "On host: xhost +SI:localuser:root"
-            fi
-        fi
-
-        if [ -n "${WAYLAND_DISPLAY:-}" ]; then
-            log_ok "Wayland display ${WAYLAND_DISPLAY} set"
-            export QT_QPA_PLATFORM="wayland;xcb"
-            export GDK_BACKEND="wayland,x11"
-            log_ok "Wayland GUI variables initialized"
-        fi
+        verify_x11
+        setup_wayland
     else
         log_warn "No DISPLAY or WAYLAND_DISPLAY set — GUI apps will not work."
     fi

@@ -257,7 +257,7 @@ check-host:
 xauth:
 	@if [ -n "$(DISPLAY)" ]; then \
 		if command -v xauth >/dev/null 2>&1; then \
-			[ -f "$(HOST_XAUTHORITY)" ] || touch "$(HOST_XAUTHORITY)" 2>/dev/null; \
+			[ -f "$(HOST_XAUTHORITY)" ] || touch "$(HOST_XAUTHORITY)" 2>/dev/null || true; \
 			xauth nlist $(DISPLAY) 2>/dev/null | sed -e 's/^..../ffff/' | xauth -f $(HOST_XAUTHORITY) nmerge - 2>/dev/null || true; \
 		fi; \
 	fi

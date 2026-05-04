@@ -13,9 +13,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh" 2>/dev/null || true
 LOG_PREFIX="[Env Detector]"
 
 # 1. Check Environment and Determine host CPU architecture
+# Composite WSL 2 detection: kernel signature + WSLg artifact check.
+# Simple "Microsoft" grep causes false positives on Azure VMs and Hyper-V guests.
 IS_WSL="false"
-if grep -qi "Microsoft" /proc/version 2>/dev/null; then
-    IS_WSL="true"
+if grep -qi "microsoft" /proc/version 2>/dev/null; then
+    if grep -qiE "WSL2|microsoft-standard" /proc/version 2>/dev/null || [ -d "/mnt/wslg" ] || [ -d "/run/WSL" ]; then
+        IS_WSL="true"
+    fi
 fi
 
 RAW_ARCH=$(uname -m)
@@ -46,7 +50,7 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     fi
 else
     # Only warn if not in a quiet/Makefile context (optional, but keeping for now)
-    : 
+    :
 fi
 
 # Detect /dev/dri existence (Used for Intel/AMD resource allocation and auto-mount selection)
