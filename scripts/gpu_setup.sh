@@ -366,7 +366,13 @@ setup_auto() {
         else
             if [ "$ds" != "None" ]; then
                 log_warn "Validation tools (glxinfo/vulkaninfo/vainfo) not found."
-                log_warn "To enable validation, add 'mesa-utils' or 'vulkan-tools' to apt.txt."
+                # Low-level fallback for senior architect standard (P-10)
+                local sys_vendor=$(get_gpu_vendor_sysfs)
+                if [ "$sys_vendor" != "Unknown" ]; then
+                    log_ok "Fallback Verification: Found $sys_vendor GPU via sysfs."
+                else
+                    log_warn "To enable full validation, add 'mesa-utils' or 'vulkan-tools' to apt.txt."
+                fi
             fi
         fi
     fi

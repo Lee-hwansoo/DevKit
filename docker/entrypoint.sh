@@ -121,12 +121,22 @@ persist_env_block() {
     local target="/etc/bash.bashrc"
     [ ! -f "$script" ] && return
     
-    if ! grep -q "# $marker" "$target" 2>/dev/null; then
-        {
-            echo "# $marker"
-            echo "[ -f $script ] && . $script"
-            echo "# ${marker/START/END}"
-        } >> "$target"
+    local start_mark="# $marker"
+    local end_mark="# ${marker/START/END}"
+    local block_content="${start_mark}\n[ -f $script ] && . $script\n${end_mark}"
+
+    if grep -q "$start_mark" "$target" 2>/dev/null; then
+        # Replace existing block using sed (idempotent update)
+        # We use a temp file to ensure atomic write and handle potential sed differences
+        local tmp_file
+        tmp_file=$(mktemp)
+        sed "/$start_mark/,/$end_mark/d" "$target" > "$tmp_file"
+        echo -e "$block_content" >> "$tmp_file"
+        cat "$tmp_file" > "$target"
+        rm -f "$tmp_file"
+    else
+        # Append new block if it doesn't exist
+        echo -e "\n$block_content" >> "$target"
     fi
 }
 
