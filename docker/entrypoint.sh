@@ -13,12 +13,29 @@
 set -e
 
 # =============================================================================
+# Bootstrap: Logging (must precede helper function definitions)
+# =============================================================================
+SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/opt/scripts/utils_logging.sh"
+[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+
+# Fallback: Define logging stubs if utility functions are unavailable (Safety net for production)
+if ! declare -f log_info > /dev/null 2>&1; then
+    log_info()  { echo "[INFO] $1"; }
+    log_ok()    { echo "[OK] $1";   }
+    log_warn()  { echo "[WARN] $1" >&2; }
+    log_error() { echo "[ERROR] $1" >&2; }
+fi
+LOG_PREFIX="[Entrypoint]"
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
 # Resolves XDG_RUNTIME_DIR, proxying to /tmp/runtime-internal when the mounted
 # directory is owned by a different UID (e.g. WSL2 host user=1000, container=root).
-# Prints the resolved path to stdout.
+# Prints the resolved path to stdout; all log messages go to stderr to prevent
+# stdout capture pollution when called as: export VAR="$(setup_xdg_runtime)"
 setup_xdg_runtime() {
     local xdg_dir="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
     local my_uid
@@ -30,12 +47,12 @@ setup_xdg_runtime() {
         # Remove stale symlinks before re-linking (handles socket recreation by compositor)
         find "$proxy" -maxdepth 1 -type l -exec rm -f {} \;
         find "$xdg_dir" -maxdepth 1 -not -path "$xdg_dir" -exec ln -sf {} "$proxy/" 2>/dev/null \;
-        log_ok "XDG_RUNTIME_DIR proxied for security compliance: $proxy"
+        log_ok "XDG_RUNTIME_DIR proxied for security compliance: $proxy" >&2
         echo "$proxy"
     else
         if [ ! -d "$xdg_dir" ]; then
             mkdir -p "$xdg_dir" && chmod 700 "$xdg_dir"
-            log_ok "XDG_RUNTIME_DIR created: $xdg_dir"
+            log_ok "XDG_RUNTIME_DIR created: $xdg_dir" >&2
         fi
         echo "$xdg_dir"
     fi
@@ -67,20 +84,6 @@ setup_wayland() {
     export GDK_BACKEND="wayland,x11"
     log_ok "Wayland GUI variables initialized"
 }
-
-# Load logging utility
-SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/opt/scripts/utils_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
-
-# Fallback: Define logging stubs if utility functions are unavailable (Safety net for production)
-if ! declare -f log_info > /dev/null 2>&1; then
-    log_info()  { echo "[INFO] $1"; }
-    log_ok()    { echo "[OK] $1";   }
-    log_warn()  { echo "[WARN] $1" >&2; }
-    log_error() { echo "[ERROR] $1" >&2; }
-fi
-LOG_PREFIX="[Entrypoint]"
 
 # =============================================================================
 # Clean up orphaned environment variables injected by Docker Compose V2
@@ -134,9 +137,12 @@ if [ "$IS_DEV" = true ]; then
         export XDG_RUNTIME_DIR="$(setup_xdg_runtime)"
 
         # Persist for 'docker exec' sessions (e.g. make ros-shell)
-        # Use /etc/profile.d for idempotency and user-independence (avoids .bashrc mutation)
+        # /etc/profile.d: login shells; /etc/bash.bashrc gateway: non-login interactive shells
         echo "export XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\"" > /etc/profile.d/devkit-xdg.sh
         chmod 644 /etc/profile.d/devkit-xdg.sh
+        # Bridge for non-login interactive shells (docker exec -it ... bash)
+        grep -qF 'devkit-xdg.sh' /etc/bash.bashrc 2>/dev/null || \
+            echo '[ -f /etc/profile.d/devkit-xdg.sh ] && . /etc/profile.d/devkit-xdg.sh' >> /etc/bash.bashrc
 
         verify_x11
         setup_wayland
