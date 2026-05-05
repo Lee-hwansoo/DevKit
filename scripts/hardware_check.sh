@@ -344,7 +344,12 @@ elif command -v glxinfo &>/dev/null; then
     fi
 else
     # P-6: Explicit message when glxinfo is not installed but display is set
-    _hw_skip "OpenGL: glxinfo not installed (apt: mesa-utils)"
+    local sys_vendor=$(get_gpu_vendor_sysfs)
+    if [ "$sys_vendor" != "Unknown" ]; then
+        _hw_ok "OpenGL: $sys_vendor GPU detected via sysfs (glxinfo missing)"
+    else
+        _hw_skip "OpenGL: glxinfo not installed (apt: mesa-utils)"
+    fi
 fi
 
 # Vulkan — name + API version

@@ -63,10 +63,13 @@ fi
 # Detect /dev/dri existence (Used for Intel/AMD resource allocation and auto-mount selection)
 if [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1; then
     HAS_DRI="true"
+elif [ "${IS_WSL}" = "true" ] && [ -e "/dev/dxg" ]; then
+    # In WSL 2, iGPU is supported via /dev/dxg even if /dev/dri is not mapped yet.
+    HAS_DRI="true"
 fi
 
 # Intel/AMD iGPU DRI Device Mount (Prevent crash on WSL2 where /dev/dri doesn't exist)
-if [ "${HAS_DRI}" = "true" ]; then
+if [ -d /dev/dri ]; then
     HOST_DRI_MOUNT="/dev/dri:/dev/dri"
 else
     HOST_DRI_MOUNT="/dev/null:/dev/null"

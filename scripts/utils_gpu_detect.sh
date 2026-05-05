@@ -68,3 +68,24 @@ get_gpu_prescription() {
             ;;
     esac
 }
+
+# =============================================================================
+# Low-level Hardware Verification (Fallback Logic)
+# =============================================================================
+# Resolves GPU vendor name via sysfs to handle cases where glxinfo is missing.
+get_gpu_vendor_sysfs() {
+    local vendor_id
+    # Try common DRI device paths
+    if [ -d /sys/class/drm ]; then
+        for vendor_file in /sys/class/drm/card*/device/vendor; do
+            [ -f "$vendor_file" ] || continue
+            vendor_id=$(cat "$vendor_file" 2>/dev/null | xargs || true)
+            case "$vendor_id" in
+                0x8086) echo "Intel" ; return ;;
+                0x10de) echo "NVIDIA"; return ;;
+                0x1002|0x1022) echo "AMD" ; return ;;
+            esac
+        done
+    fi
+    echo "Unknown"
+}
