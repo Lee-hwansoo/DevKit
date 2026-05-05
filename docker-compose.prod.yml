@@ -11,6 +11,7 @@ x-prod-svc: &prod-svc
 
 x-prod-volumes: &prod-volumes
   - ${PROD_LOG_VOL:-prod_log_data}:/workspace/log
+  - ${WSL_LIB_DIR_MOUNT:-/tmp}:/usr/lib/wsl:ro
 
 # ── Production Runtime Service Shared Configuration (Switch Strategy) ─────────
 # Production security hardening — explicitly override dev defaults

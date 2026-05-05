@@ -19,6 +19,7 @@ x-dev-volumes: &dev-volumes
   - ${DEV_BUILD_VOL:-dev_build_data}:/workspace/build
   - ${DEV_INSTALL_VOL:-dev_install_data}:/workspace/install
   - ${DEV_LOG_VOL:-dev_log_data}:/workspace/log
+  - ${WSL_LIB_DIR_MOUNT:-/tmp}:/usr/lib/wsl:ro
 
 x-ros-volumes: &ros-volumes
   - ${HOST_X11_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix:rw
@@ -31,6 +32,7 @@ x-ros-volumes: &ros-volumes
   - ${ROS_BUILD_VOL:-ros_build_data}:/workspace/build
   - ${ROS_INSTALL_VOL:-ros_install_data}:/workspace/install
   - ${ROS_LOG_VOL:-ros_log_data}:/workspace/log
+  - ${WSL_LIB_DIR_MOUNT:-/tmp}:/usr/lib/wsl:ro
 
 # SSH Agent Forwarding environment (shared across dev services)
 x-ssh-agent-env: &ssh-agent-env

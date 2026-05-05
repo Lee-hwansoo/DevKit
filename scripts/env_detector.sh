@@ -22,6 +22,13 @@ if grep -qi "microsoft" /proc/version 2>/dev/null; then
     fi
 fi
 
+# WSL2 D3D12/DirectX Device Mount (Prevent crash on Native Linux)
+if [ "${IS_WSL}" = "true" ] && [ -e "/dev/dxg" ]; then
+    HOST_DXG_MOUNT="/dev/dxg:/dev/dxg"
+else
+    HOST_DXG_MOUNT="/dev/null:/dev/null"
+fi
+
 RAW_ARCH=$(uname -m)
 case "${RAW_ARCH}" in
     x86_64)  HOST_ARCH="amd64" ;;
@@ -56,6 +63,13 @@ fi
 # Detect /dev/dri existence (Used for Intel/AMD resource allocation and auto-mount selection)
 if [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1; then
     HAS_DRI="true"
+fi
+
+# Intel/AMD iGPU DRI Device Mount (Prevent crash on WSL2 where /dev/dri doesn't exist)
+if [ "${HAS_DRI}" = "true" ]; then
+    HOST_DRI_MOUNT="/dev/dri:/dev/dri"
+else
+    HOST_DRI_MOUNT="/dev/null:/dev/null"
 fi
 
 # 3. Detect Display Protocols and Establish Secure Cache Paths
@@ -143,6 +157,14 @@ else
     HOST_X11_DIR="${HOST_CACHE_DIR}/dummy_x11_unix"
 fi
 
+# WSL2 D3D12 Graphics Driver Mount Path (Prevent crash on Native Linux)
+if [ "${IS_WSL}" = "true" ] && [ -d "/usr/lib/wsl" ]; then
+    WSL_LIB_DIR_MOUNT="/usr/lib/wsl"
+else
+    WSL_LIB_DIR_DUMMY="${HOST_CACHE_DIR}/dummy_wsl_lib"
+    mkdir -p "$WSL_LIB_DIR_DUMMY"
+    WSL_LIB_DIR_MOUNT="$WSL_LIB_DIR_DUMMY"
+fi
 
 if [ -f "${HOST_HOME}/.gitconfig" ]; then
     HOST_GITCONFIG="${HOST_HOME}/.gitconfig"
@@ -167,11 +189,13 @@ done
 
 # 5. Output results in KEY=VALUE format for Makefile or environment injection
 echo "IS_WSL=${IS_WSL}"
+echo "HOST_DXG_MOUNT=${HOST_DXG_MOUNT}"
 echo "HOST_ARCH=${HOST_ARCH}"
 echo "HAS_NVIDIA=${HAS_NVIDIA}"
 echo "HAS_TOOLKIT=${HAS_TOOLKIT}"
 echo "HAS_TOOLKIT_BIN=${HAS_TOOLKIT_BIN}"
 echo "HAS_DRI=${HAS_DRI}"
+echo "HOST_DRI_MOUNT=${HOST_DRI_MOUNT}"
 echo "DISPLAY_TYPE=${DISPLAY_TYPE}"
 echo "HOST_XDG_RUNTIME_DIR=${HOST_XDG_RUNTIME_DIR}"
 echo "HOST_WAYLAND_DISPLAY=${HOST_WAYLAND_DISPLAY}"
@@ -181,3 +205,4 @@ echo "HOST_CACHE_DIR=${HOST_CACHE_DIR}"
 echo "HOST_X11_DIR=${HOST_X11_DIR}"
 echo "HOST_GITCONFIG=${HOST_GITCONFIG}"
 echo "HOST_SSH_AUTH_SOCK=${HOST_SSH_AUTH_SOCK}"
+echo "WSL_LIB_DIR_MOUNT=${WSL_LIB_DIR_MOUNT}"

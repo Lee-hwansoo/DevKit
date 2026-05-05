@@ -9,12 +9,16 @@ x-common-env: &common-env
   COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myproject}
   LANG: ${LANG:-C.UTF-8}
   TZ: ${TZ:-UTC}
+  HAS_TOOLKIT: ${HAS_TOOLKIT:-false}
+  HAS_NVIDIA: ${HAS_NVIDIA:-false}
+  HAS_DRI: ${HAS_DRI:-false}
+  GPU_MODE: ${GPU_MODE:-auto}
   DISPLAY: ${DISPLAY:-:0}
   DISPLAY_TYPE: ${DISPLAY_TYPE:-X11}
   WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
   XDG_RUNTIME_DIR: /tmp/runtime-root
   UV_PYTHON: ${UV_PYTHON:-3.10}
-  GPU_MODE: ${GPU_MODE:-auto}
+  UV_SYNC_FLAGS: ${UV_SYNC_FLAGS:-}
   ROS_DISTRO: ${ROS_DISTRO:-humble}
   SYNC_TARGET_DIR: ${SYNC_TARGET_DIR:-src/thirdparty}
   ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
@@ -23,10 +27,9 @@ x-common-env: &common-env
   ROS_HOSTNAME: ${ROS_HOSTNAME:-localhost}
   ROS_IP: ${ROS_IP:-}
   CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
-  UV_SYNC_FLAGS: ${UV_SYNC_FLAGS:-}
-  QT_X11_NO_MITSHM: "1"
   CMAKE_EXTRA_ARGS: ${CMAKE_EXTRA_ARGS:-}
   COLCON_EXTRA_FLAGS: ${COLCON_EXTRA_FLAGS:-}
+  QT_X11_NO_MITSHM: "1"
 
 x-nvidia-env: &nvidia-env
   <<: *common-env
@@ -41,7 +44,7 @@ x-nvidia-deploy: &nvidia-deploy
       devices:
         - driver: nvidia
           count: ${NVIDIA_GPU_COUNT:-all}
-          capabilities: [gpu]
+          capabilities: [gpu, graphics, utility]
 
 # ── GPU Device Mounts (Intel/AMD) ──────────────────────────────────────────
 # (Anchors must be defined locally in each file to be compatible)
@@ -82,6 +85,9 @@ services:
       nofile:
         soft: ${ULIMIT_NOFILE:-65535}
         hard: ${ULIMIT_NOFILE:-65535}
+    devices:
+      - ${HOST_DXG_MOUNT:-/dev/null:/dev/null}
+      - ${HOST_DRI_MOUNT:-/dev/null:/dev/null}
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -113,8 +119,6 @@ services:
     extends: base-common
     environment:
       <<: *common-env
-    devices:
-      - /dev/dri:/dev/dri
     healthcheck: *dev-healthcheck
 
   # NVIDIA Acceleration Template
@@ -141,8 +145,6 @@ services:
     extends: base-common
     environment:
       <<: *common-env
-    devices:
-      - /dev/dri:/dev/dri
     healthcheck: *ros-healthcheck
 
   # Hybrid Container: ROS + NVIDIA Acceleration

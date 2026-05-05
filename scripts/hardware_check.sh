@@ -31,6 +31,15 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
+# Load GPU environment variables if available (crucial for non-interactive shells)
+GPU_ENV_FILES=(
+    "/etc/profile.d/devkit-gpu.sh"
+    "${HOME}/.gpu_env.sh"
+)
+for env_file in "${GPU_ENV_FILES[@]}"; do
+    [ -f "$env_file" ] && source "$env_file"
+done
+
 # Fallback: ensure color variables exist even if utils_logging.sh is missing (P-9)
 [ -z "${NC:-}" ] && RED='' GREEN='' YELLOW='' BLUE='' CYAN='' PURPLE='' NC=''
 
@@ -265,8 +274,17 @@ elif ls /dev/nvhost-* 2>/dev/null | grep -q .; then
     _hw_ok "Tegra GPU nodes: $TEGRA_DEVS"
 fi
 
+# WSL2 Paravirtualized Graphics
+if type has_dxg &>/dev/null && has_dxg; then
+    GPU_FOUND=true
+    _hw_ok "/dev/dxg (WSL2 D3D12 Paravirtualized Graphics)"
+elif [ -e "/dev/dxg" ]; then
+    GPU_FOUND=true
+    _hw_ok "/dev/dxg (WSL2 D3D12 Paravirtualized Graphics)"
+fi
+
 if ! $GPU_FOUND; then
-    _hw_err "No GPU device nodes found (/dev/nvidiactl, /dev/dri, /dev/nvhost-*)"
+    _hw_err "No GPU device nodes found (/dev/nvidiactl, /dev/dri, /dev/nvhost-*, /dev/dxg)"
 fi
 
 # NVIDIA nvidia-smi
@@ -303,9 +321,9 @@ if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
 elif command -v glxinfo &>/dev/null; then
     GLX_OUT=$(glxinfo 2>/dev/null || true)
     if [ -n "$GLX_OUT" ]; then
-        RENDERER=$(echo "$GLX_OUT" | grep "OpenGL renderer" | cut -d: -f2 | xargs)
-        VENDOR=$(echo "$GLX_OUT" | grep "OpenGL vendor" | cut -d: -f2 | xargs)
-        GL_VER=$(echo "$GLX_OUT" | grep "OpenGL version string" | cut -d: -f2 | xargs)
+        RENDERER=$(echo "$GLX_OUT" | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
+        VENDOR=$(echo "$GLX_OUT" | grep -Ei "OpenGL vendor" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
+        GL_VER=$(echo "$GLX_OUT" | grep -Ei "OpenGL version string" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
         if echo "$RENDERER" | grep -qi "llvmpipe"; then
             if [[ "${GPU_MODE:-auto}" =~ ^(cpu|software)$ ]]; then
                 _hw_skip "OpenGL: $RENDERER (Software — GPU_MODE=${GPU_MODE}, expected)"
@@ -313,10 +331,12 @@ elif command -v glxinfo &>/dev/null; then
                 _hw_warn "OpenGL: $RENDERER (Software Rendering — performance impact)"
                 _hw_detail_e "    ${YELLOW}→${NC} GPU_MODE=${GPU_MODE:-auto}. Run 'gpu_setup' or check GPU drivers."
             fi
-        else
+        elif [ -n "$RENDERER" ]; then
             _hw_ok "OpenGL: $RENDERER ${GREEN}(Hardware Accelerated)${NC}"
+        else
+            _hw_warn "OpenGL: Found but renderer name is empty. Acceleration state uncertain."
         fi
-        _hw_detail "    Vendor:  $VENDOR"
+        [ -n "$VENDOR" ] && _hw_detail "    Vendor:  $VENDOR"
         [ -n "$GL_VER" ] && _hw_detail "    GL Ver:  $GL_VER"
     else
         _hw_err "OpenGL: Display connection failed"

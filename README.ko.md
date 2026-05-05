@@ -348,6 +348,35 @@ nvidia-smi
    ```
   3. WSL 재시작: 터미널에서 `wsl --shutdown` 실행 후 다시 접속합니다.
 
+- **GPU 가속 및 하드웨어 정렬 (최적화) 🚀**
+  WSL 2는 내장 그래픽(iGPU)과 외장 그래픽(NVIDIA)이 공존할 때 내장 그래픽을 우선시하거나 소프트웨어 렌더러(`llvmpipe`)로 폴백하여 성능이 저하될 수 있습니다. 이를 해결하기 위해 호스트 리눅스(WSL)의 `~/.bashrc`에 하드웨어 사양에 맞는 설정을 추가하십시오.
+  
+  **1. 자동 상태 진단**: 호스트 터미널에서 `make status`를 실행하여 `WSL GPU Acceleration Audit` 경고가 뜨는지 확인하세요. 경고가 뜨지 않는다면 이미 최적화된 상태입니다.
+  
+  **1.1 수동 확인 (선택 사항)**: 설정을 적용하기 전/후에 호스트(WSL) 터미널에서 직접 확인할 수 있습니다.
+  - **렌더러 확인**: `glxinfo -B | grep "OpenGL renderer"`
+    - 출력 결과에 `llvmpipe`가 포함되어 있다면 소프트웨어 렌더링 중입니다.
+    - `D3D12` 또는 `NVIDIA`가 표시되어야 정상입니다.
+  - **NVIDIA 상태 확인**: `nvidia-smi` (NVIDIA 사용 시)
+  
+  **2. 하드웨어별 설정 (HOST(WSL) ~/.bashrc 에 추가)**:
+  - **Case A: NVIDIA 외장 그래픽(dGPU) 사용 시 (권장)**
+    ```bash
+    export MESA_LOADER_DRIVER_OVERRIDE=d3d12
+    export GALLIUM_DRIVER=d3d12
+    export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
+    ```
+  - **Case B: 인텔/AMD 내장 그래픽(iGPU)만 사용 시**
+    ```bash
+    export MESA_LOADER_DRIVER_OVERRIDE=d3d12
+    export GALLIUM_DRIVER=d3d12
+    ```
+
+  **3. 환경 변수 상세 설명**:
+  - `MESA_LOADER_DRIVER_OVERRIDE=d3d12`: Mesa 드라이버가 WSL2 전용 D3D12 브릿지를 사용하도록 강제합니다.
+  - `GALLIUM_DRIVER=d3d12`: 그래픽 파이프라인 백엔드를 D3D12로 고정합니다.
+  - `MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA`: 멀티 GPU 환경에서 성능이 낮은 내장 그래픽 대신 NVIDIA를 명시적으로 선택합니다. (호스트가 NVIDIA GPU를 보유한 경우 필수)
+
 ---
 
 ## 💻 GPU 및 개발 환경 실행 방법

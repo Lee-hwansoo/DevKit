@@ -347,6 +347,35 @@ nvidia-smi
    ```
   3. Restart WSL: Run `wsl --shutdown` in PowerShell and restart your terminal.
 
+- **GPU Acceleration & Hardware Alignment (Optimization) 🚀**
+  WSL 2 may prioritize your integrated GPU (iGPU) or fallback to a software renderer (`llvmpipe`) when both an iGPU and a discrete NVIDIA GPU are present, resulting in poor performance. To resolve this, add the appropriate settings for your hardware to your host Linux (WSL) `~/.bashrc`.
+
+  **1. Auto-Diagnosis**: Run `make status` on your host terminal and check for any `WSL GPU Acceleration Audit` warnings. If no warnings appear, your system is already optimized.
+
+  **1.1 Manual Verification (Optional)**: You can manually check the status on your HOST(WSL) terminal:
+  - **Check Renderer**: `glxinfo -B | grep "OpenGL renderer"`
+    - If you see `llvmpipe`, the system is using software rendering.
+    - You should see `D3D12` or `NVIDIA` for hardware acceleration.
+  - **Check NVIDIA Status**: `nvidia-smi` (For NVIDIA users)
+
+  **2. Hardware-Specific Setup (Add to HOST(WSL) ~/.bashrc)**:
+  - **Case A: Using Discrete NVIDIA GPU (dGPU) - Recommended**
+    ```bash
+    export MESA_LOADER_DRIVER_OVERRIDE=d3d12
+    export GALLIUM_DRIVER=d3d12
+    export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
+    ```
+  - **Case B: Using Integrated Intel/AMD GPU (iGPU) Only**
+    ```bash
+    export MESA_LOADER_DRIVER_OVERRIDE=d3d12
+    export GALLIUM_DRIVER=d3d12
+    ```
+
+  **3. Environment Variable Details**:
+  - `MESA_LOADER_DRIVER_OVERRIDE=d3d12`: Forces the Mesa driver to use the WSL2-specific D3D12 bridge.
+  - `GALLIUM_DRIVER=d3d12`: Pins the graphics pipeline backend to D3D12.
+  - `MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA`: Explicitly selects the NVIDIA GPU in multi-GPU environments instead of the lower-performance integrated graphics. (Essential if your host has an NVIDIA GPU)
+
 ---
 
 ## 💻 Running the Environment and GPU Modes
