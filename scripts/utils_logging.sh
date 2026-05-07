@@ -149,15 +149,24 @@ print_banner() {
     esac
 }
 
-# print_section [title]
+# print_section [title] - Creates a professional horizontal divider
 print_section() {
-    local title="$1"
-    local prefix="--- [ $title ] "
-    local total_len=51
-    local pad_len=$(( total_len - ${#prefix} ))
-    local padding=""
-    if [ $pad_len -gt 0 ]; then
-        padding=$(printf '%*s' "$pad_len" "" | tr ' ' '-')
-    fi
-    echo -e "  ${CYAN}${prefix}${padding}${NC}"
+    local title="[ $1 ]"
+    local total_len=60
+    local title_len=${#title}
+    local pad_len=$(( (total_len - title_len) / 2 ))
+    local padding=$(printf '%*s' "$pad_len" "" | tr ' ' '=')
+    
+    echo -e ""
+    echo -e "${CYAN}${padding}${title}${padding}${NC}"
+}
+
+# log_detail [message] - Indented auxiliary information
+log_detail() {
+    echo -e "    ${CYAN}→${NC} $1"
+}
+
+# log_step_done [message] - Completion of a step
+log_step_done() {
+    echo -e "  ${GREEN}✓${NC} $1"
 }

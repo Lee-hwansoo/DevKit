@@ -12,30 +12,31 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
-# Fallback: ensure color variables exist if utils_logging.sh is missing
-if [ -z "${NC:-}" ]; then
-    CYAN='\033[0;36m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'
-    YELLOW='\033[1;33m'; NC='\033[0m'
-fi
-
 print_banner WELCOME
 echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC}"
+
+print_section "Quick Start"
+echo -e "    ${GREEN}mksync${NC}          : Fully initialize workspace (venv + deps + build)"
+
+print_section "Build & Sync"
+echo -e "    ${GREEN}cb${NC} / ${GREEN}cbr${NC}        : colcon build (Dev / Release)"
+echo -e "    ${GREEN}sync_deps${NC}       : Sync external repos from .repos file"
+echo -e "    ${GREEN}check_deps${NC}      : Verify missing runtime libraries in install/"
+
+print_section "ROS & Apps"
+echo -e "    ${GREEN}rt${NC} / ${GREEN}rn${NC} / ${GREEN}rl${NC}    : List topics / nodes / launch files"
+echo -e "    ${GREEN}s${NC} / ${GREEN}sb${NC}           : Source workspace / Source bashrc"
+
+print_section "Environment"
+echo -e "    ${GREEN}mkenv${NC} / ${GREEN}activate${NC} : Setup & Enter Python virtualenv"
+echo -e "    ${GREEN}uvs${NC} / ${GREEN}uvr${NC}        : uv sync / uv run"
+
+print_section "Diagnostics"
+echo -e "    ${GREEN}hw_check${NC}        : Run full hardware & environment diagnostics"
+echo -e "    ${GREEN}gpu_status${NC}      : Show detailed GPU & Display info"
+
 echo -e ""
-echo -e "  ${BLUE}Core Helpers:${NC}"
-echo -e "    ${GREEN}mksync${NC}        : One-step initialization (uvs + sync_deps + cb)"
-echo -e "    ${GREEN}hw_check${NC}      : Full hardware & environment diagnostics"
-echo -e "    ${GREEN}gpu_status${NC}    : Detailed GPU & Display status"
-echo -e "    ${GREEN}gpu_setup${NC}     : Auto-configure GPU mode (nvidia/igpu/cpu)"
-echo -e "    ${GREEN}cb / cbm / cbr${NC}: colcon build (standard / metas / release)"
-echo -e "    ${GREEN}mkenv / activate${NC}: Create & Activate python venv"
-echo -e "    ${GREEN}sync_deps${NC}     : Sync external repos from .repos file"
-echo -e "    ${GREEN}check_deps${NC}    : Verify missing runtime libraries in install/"
-echo -e ""
-echo -e "  ${BLUE}Quick Shortcuts:${NC}"
-echo -e "    ${GREEN}rt / rn / rl${NC}  : ros2 topic / node / launch"
-echo -e "    ${GREEN}s / sb${NC}        : Source workspace / Source bashrc"
-echo -e "    ${GREEN}la / ll${NC}       : Detailed ls (all / long format)"
-echo -e "    ${GREEN}h / help${NC}       : Show full Alias & Shortcut Guide"
-echo -e ""
-echo -e ""
+echo -e "  Type ${CYAN}h${NC} or ${CYAN}help${NC} to see the full alias & shortcut guide."
 echo -e "  Workspace: ${CYAN}/workspace${NC} (mapped from host)"
+echo -e ""
+

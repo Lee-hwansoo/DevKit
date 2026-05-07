@@ -40,9 +40,6 @@ for env_file in "${GPU_ENV_FILES[@]}"; do
     [ -f "$env_file" ] && source "$env_file"
 done
 
-# Fallback: ensure color variables exist even if utils_logging.sh is missing (P-9)
-[ -z "${NC:-}" ] && RED='' GREEN='' YELLOW='' BLUE='' CYAN='' PURPLE='' NC=''
-
 # Load shared GPU detection helpers (P-2)
 SOURCE_GPU="/docker_dev/scripts/utils_gpu_detect.sh"
 [ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/utils_gpu_detect.sh"
@@ -68,7 +65,7 @@ fi
 # =============================================================================
 # [1/5] System & Storage
 # =============================================================================
-_hw_hdr "[1/5] System & Storage"
+print_section "1/5 System & Storage"
 
 # Host/Virtualization Detection
 if grep -qi "microsoft" /proc/version 2>/dev/null; then
@@ -146,7 +143,7 @@ done < <(df -h / /workspace 2>/dev/null | awk 'NR>1' | sort -u)
 # =============================================================================
 # [2/5] Network & Time Sync
 # =============================================================================
-_hw_hdr "[2/5] Network & Time Sync"
+print_section "2/5 Network & Time Sync"
 
 # IP Address
 IP_ADDR=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -165,6 +162,7 @@ while read -r iface rest; do
     if [ -n "$mtu" ]; then
         if [ "$mtu" -lt 1500 ] 2>/dev/null; then
             _hw_warn "MTU: ${iface_clean} MTU ${mtu} (below standard 1500 — may affect sensor streams)"
+            log_detail "Packet loss may occur in high-bandwidth sensor data (Lidar/Camera)."
         else
             _hw_detail "      ${iface_clean}: MTU ${mtu}"
         fi
@@ -198,8 +196,9 @@ elif command -v timedatectl >/dev/null 2>&1; then
         _hw_ok "Clock Sync: synchronized"
     else
         _hw_err "Clock Sync: NOT synchronized"
-        _hw_detail_e "    ${YELLOW}→ TF timestamp errors may occur.${NC}"
-        _hw_detail_e "    ${YELLOW}  Run: sudo systemctl restart systemd-timesyncd${NC}"
+        log_detail "TF timestamp errors may occur (Drift detected)."
+        _hw_detail_e "    ${CYAN}  Fix (Manual): sudo hwclock -s${NC}"
+        _hw_detail_e "    ${CYAN}  Fix (Service): sudo systemctl restart systemd-timesyncd${NC}"
     fi
     [ -n "$NTP_SERVICE" ] && _hw_detail "    NTP:        $NTP_SERVICE"
 else
@@ -241,7 +240,7 @@ fi
 # =============================================================================
 # [3/5] GPU Acceleration
 # =============================================================================
-_hw_hdr "[3/5] GPU Acceleration"
+print_section "3/5 GPU Acceleration"
 
 GPU_FOUND=false
 
@@ -336,7 +335,7 @@ elif command -v glxinfo &>/dev/null; then
                 _hw_skip "OpenGL: $RENDERER (Software — GPU_MODE=${GPU_MODE}, expected)"
             else
                 _hw_warn "OpenGL: $RENDERER (Software Rendering — performance impact)"
-                _hw_detail_e "    ${YELLOW}→${NC} GPU_MODE=${GPU_MODE:-auto}. Run 'gpu_setup' or check GPU drivers."
+                log_detail "GPU_MODE=${GPU_MODE:-auto}. Run 'gpu_setup' or check GPU drivers."
             fi
         elif [ -n "$RENDERER" ]; then
             _hw_ok "OpenGL: $RENDERER ${GREEN}(Hardware Accelerated)${NC}"
@@ -347,7 +346,7 @@ elif command -v glxinfo &>/dev/null; then
         [ -n "$GL_VER" ] && _hw_detail "    GL Ver:  $GL_VER"
     else
         _hw_err "OpenGL: Display connection failed"
-        _hw_detail_e "    ${YELLOW}→${NC} On host: xhost +SI:localuser:root"
+        log_detail "On host: xhost +SI:localuser:root"
     fi
 else
     # P-6: Explicit message when glxinfo is not installed but display is set
@@ -377,7 +376,7 @@ fi
 # =============================================================================
 # [4/5] Development Toolchain
 # =============================================================================
-_hw_hdr "[4/5] Development Toolchain"
+print_section "4/5 Development Toolchain"
 
 # Build env variables
 if [ -z "${CMAKE_CXX_STANDARD:-}" ]; then
@@ -447,7 +446,7 @@ fi
 # =============================================================================
 # [5/5] I/O & Peripherals
 # =============================================================================
-_hw_hdr "[5/5] I/O & Peripherals"
+print_section "5/5 I/O & Peripherals"
 
 # Video Devices (Cameras) — safe glob handling via process substitution
 VIDEO_FOUND=false
@@ -517,14 +516,36 @@ else
     echo -e "${GREEN}Diagnostics complete. All checks passed.${NC}"
 fi
 echo ""
-echo "Quick commands:"
-echo "  gpu_status       — Detailed GPU & Display info"
-echo "  gpu_check        — OpenGL renderer info (glxinfo)"
-echo "  gpu_test         — Quick performance test (glxgears)"
-echo "  vulkan_check     — Vulkan device info"
-echo "  gpu_setup        — Auto-configure GPU mode"
-echo "  use_cpu/nvidia   — Force Software / NVIDIA rendering"
-echo "  use_intel/amd    — Force Intel / AMD Mesa rendering"
-echo "  mkenv / activate — Create & Activate Python venv"
-echo "  cb / cbm / cbr   — colcon build (standard / metas / release)"
-echo "  ccache-stat      — Show compiler cache statistics"
+if [ "$DIAG_ERRORS" -gt 0 ] || [ "$DIAG_WARNINGS" -gt 0 ]; then
+    echo -e "${BLUE}================================================================${NC}"
+    echo -e "  ${BLUE}Resolution Guide for Detected Issues${NC}"
+    echo -e "${BLUE}================================================================${NC}"
+    
+    # 1. Clock Sync Resolution
+    if [ "$DIAG_ERRORS" -gt 0 ]; then
+        echo -e "  ${YELLOW}[Clock Sync Error]${NC}"
+        echo -e "    WSL2 often drifts after PC sleep/hibernation."
+        echo -e "    1. Force sync with host: ${CYAN}sudo hwclock -s${NC}"
+        echo -e "    2. Restart service:    ${CYAN}sudo systemctl restart systemd-timesyncd${NC}"
+        echo -e "    3. Permanent fix: Add 'sudo hwclock -s' to your ~/.bashrc"
+        echo ""
+    fi
+
+    # 2. MTU Warning Resolution
+    if [ "$DIAG_WARNINGS" -gt 0 ]; then
+        echo -e "  ${YELLOW}[Network/MTU Warning]${NC}"
+        echo -e "    Standard MTU is 1500. For high-end Lidar, you might need 9000 (Jumbo)."
+        echo -e "    1. Check MTU:   ${CYAN}ip link show eth0${NC}"
+        echo -e "    2. Set MTU:     ${CYAN}sudo ip link set dev eth0 mtu 9000${NC}"
+        echo -e "    3. Host check:  Ensure Windows WSL Ethernet adapter also has matching MTU."
+        echo ""
+    fi
+fi
+
+echo -e "  ${BLUE}Next Steps:${NC}"
+echo -e "    ${GREEN}gpu_status${NC}      : Detailed GPU & Display diagnostics"
+echo -e "    ${GREEN}mksync${NC}          : Fully initialize workspace (venv + deps + build)"
+echo -e "    ${GREEN}cb${NC} / ${GREEN}cbr${NC}        : colcon build (Standard / Release)"
+echo -e "    ${GREEN}sync_deps${NC}       : Sync external repos from .repos file"
+echo -e "    ${GREEN}check_deps${NC}      : Verify missing runtime libraries in install/"
+echo -e "    ${GREEN}h${NC} / ${GREEN}help${NC}         : Show full command guide"

@@ -90,16 +90,16 @@ if [ "${HAS_SYSTEMD}" = "false" ] || [ "${HAS_MIRRORED}" = "false" ]; then
     print_section "WSL Environment Audit"
 
     if [ "${HAS_SYSTEMD}" = "false" ]; then
-        echo -e "  ${WARN} Systemd is not enabled in WSL 2."
-        echo -e "  ${INFO} Required for: Native Docker Engine and automated service management."
-        echo -e "  ${INFO} Fix: Add 'systemd=true' to your /etc/wsl.conf inside WSL."
+        log_warn "Systemd is not enabled in WSL 2."
+        log_detail "Required for: Native Docker Engine and automated service management."
+        log_detail "Fix: Add 'systemd=true' to your /etc/wsl.conf inside WSL."
     fi
 
     if [ "${HAS_MIRRORED}" = "false" ]; then
-        echo -e "  ${WARN} Mirrored Networking Mode is not enabled in .wslconfig."
-        echo -e "  ${INFO} Required for: Stable ROS 2 Multicast communication and local network access."
-        echo -e "  ${INFO} Path: ${WSL_CONFIG_PATH}"
-        echo -e "  ${INFO} Fix: Add 'networkingMode=mirrored' under [wsl2] section."
+        log_warn "Mirrored Networking Mode is not enabled in .wslconfig."
+        log_detail "Required for: Stable ROS 2 Multicast communication."
+        log_detail "Path: ${WSL_CONFIG_PATH}"
+        log_detail "Fix: Add 'networkingMode=mirrored' under [wsl2] section."
     fi
     echo ""
 fi
@@ -122,14 +122,14 @@ if [ "${IS_WSL}" = "true" ] && command -v glxinfo &>/dev/null; then
         # Scenario A: Software Rendering Fallback (Critical performance impact)
         if [[ "$host_renderer" == *"llvmpipe"* ]]; then
             print_section "WSL GPU Acceleration Audit"
-            echo -e "  ${WARN} Host OpenGL is stuck on Software Rendering (llvmpipe)."
-            echo -e "  ${INFO} Rationale: WSL 2 found hardware but Mesa is not utilizing it."
+            log_warn "Host OpenGL is stuck on Software Rendering (llvmpipe)."
+            log_detail "Rationale: WSL 2 found hardware but Mesa is not utilizing it."
             
             if has_nvidia; then
-                echo -e "  ${INFO} Fix (NVIDIA): Add the following to your HOST(WSL) ~/.bashrc:"
+                log_info "Fix (NVIDIA): Add the following to your HOST(WSL) ~/.bashrc:"
                 get_gpu_prescription "nvidia_wsl" "    "
             elif has_dxg || has_any_dri; then
-                echo -e "  ${INFO} Fix (iGPU): Add the following to your HOST(WSL) ~/.bashrc:"
+                log_info "Fix (iGPU): Add the following to your HOST(WSL) ~/.bashrc:"
                 get_gpu_prescription "igpu_wsl" "    "
             fi
             echo ""
@@ -137,9 +137,9 @@ if [ "${IS_WSL}" = "true" ] && command -v glxinfo &>/dev/null; then
         # Scenario B: Sub-optimal GPU selection (e.g. using iGPU while NVIDIA dGPU is available)
         elif [[ "$host_renderer" == *"D3D12"* ]] && has_nvidia && [[ "$host_renderer" != *"NVIDIA"* ]]; then
             print_section "WSL GPU Acceleration Audit"
-            echo -e "  ${INFO} Current Renderer: ${host_renderer} (iGPU)"
-            echo -e "  ${INFO} Optimization: High-performance NVIDIA dGPU is available but idle."
-            echo -e "  ${INFO} Fix: Add the following to your HOST(WSL) ~/.bashrc:"
+            log_info "Current Renderer: ${host_renderer} (iGPU)"
+            log_detail "Optimization: High-performance NVIDIA dGPU is available but idle."
+            log_info "Fix: Add the following to your HOST(WSL) ~/.bashrc:"
             get_gpu_prescription "nvidia_optimize_wsl" "    "
             echo ""
         fi

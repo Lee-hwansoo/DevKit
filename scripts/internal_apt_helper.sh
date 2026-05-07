@@ -50,8 +50,8 @@ setup_ros_repo() {
     local distro=$1
     [ -z "$distro" ] && return
 
-    # Ensure minimal prerequisites for repository management (curl, gnupg2)
-    apt-get update && apt-get install -y --no-install-recommends curl gnupg2
+    # Ensure minimal prerequisites for repository management (curl, gnupg2, ca-certificates)
+    apt-get update && apt-get install -y --no-install-recommends curl gnupg2 ca-certificates
 
     # Get Ubuntu codename without lsb_release
     local codename
@@ -105,8 +105,8 @@ setup_cuda_repo() {
     local cuda_version=$1
     if [ -z "$cuda_version" ]; then return; fi
 
-    # Ensure minimal prerequisites for repository management (curl, gnupg2)
-    apt-get update && apt-get install -y --no-install-recommends curl gnupg2
+    # Ensure minimal prerequisites for repository management (curl, gnupg2, ca-certificates)
+    apt-get update && apt-get install -y --no-install-recommends curl gnupg2 ca-certificates
 
     # Get OS version ID (e.g., 22.04 -> 2204)
     local os_version

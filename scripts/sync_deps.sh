@@ -34,6 +34,7 @@ TARGET_DIR="${PROJECT_ROOT}/${SYNC_TARGET_DIR:-src/thirdparty}"
 mkdir -p "$TARGET_DIR"
 
 # 3. vcstool Integration
+print_section "VCS Repository Import"
 if ! command -v vcs &>/dev/null; then
     log_warn "vcstool (vcs) not found. Skipping repository import."
 elif [ -f "$REPOS_FILE" ]; then
@@ -70,16 +71,22 @@ else
 fi
 
 # 4. Package Overlay Application
+print_section "Overlay Application"
 if [ -d "$OVERLAY_DIR" ]; then
     HAS_FILES=$(find "$OVERLAY_DIR" -mindepth 1 -not -name "*.md" | wc -l)
     if [ "$HAS_FILES" -gt 0 ]; then
         log_info "Applying overlays from $OVERLAY_DIR ..."
         cp -a "$OVERLAY_DIR/." "$TARGET_DIR/"
-        log_ok "Overlays applied successfully."
+        log_step_done "Overlays applied successfully."
+    else
+        log_info "No files found in overlay directory."
     fi
+else
+    log_info "Overlay directory not found."
 fi
 
 # 5. System Dependency Resolution (rosdep)
+print_section "System Dependencies (rosdep)"
 # Skipped by default; runs only when --rosdep flag is present
 DO_ROSDEP=false
 for arg in "$@"; do
@@ -90,7 +97,7 @@ for arg in "$@"; do
 done
 
 if [ "$DO_ROSDEP" = true ] && command -v rosdep &>/dev/null && [ -n "${ROS_DISTRO}" ]; then
-    log_info "Gathering all workspace dependencies (src/) via rosdep for ${ROS_DISTRO}..."
+    log_info "Gathering dependencies for ${ROS_DISTRO}..."
     # Ensure apt is updated for fresh dependency resolution
     apt-get update -qq || true
 
@@ -98,7 +105,7 @@ if [ "$DO_ROSDEP" = true ] && command -v rosdep &>/dev/null && [ -n "${ROS_DISTR
     if ! rosdep install --from-paths src --ignore-src -r -y --rosdistro "$ROS_DISTRO"; then
         log_warn "Some rosdep packages failed to install. Check the output above."
     else
-        log_ok "Workspace-wide rosdep check completed."
+        log_step_done "Workspace-wide rosdep check completed."
     fi
 elif [ "$DO_ROSDEP" = true ]; then
     log_info "ROS environment not detected. Skipping rosdep system dependency check."
