@@ -37,6 +37,9 @@ readonly GPU_ENV_VARS=(
     LIBGL_ALWAYS_SOFTWARE
     __NV_PRIME_RENDER_OFFLOAD
     __GLX_VENDOR_LIBRARY_NAME
+    __EGL_VENDOR_LIBRARY_FILENAMES
+    VK_ICD_FILENAMES
+    __VK_LAYER_NV_optimus
     MESA_D3D12_DEFAULT_ADAPTER_NAME
     QT_XCB_FORCE_SOFTWARE_OPENGL
     LIBGL_ALWAYS_INDIRECT
@@ -80,15 +83,20 @@ path_prepend() {
 is_setup_active() {
     local target_vendor="$1"
     local active_vendor="${__GLX_VENDOR_LIBRARY_NAME:-}"
-    
+
     # If the vendor matches exactly, it's active
     [[ "$active_vendor" == "$target_vendor" ]] && return 0
-    
+
     # WSL2 Special Case: Mesa is the vendor, but we target NVIDIA via D3D12
     if [[ "$target_vendor" == "nvidia" ]] && has_dxg; then
         [[ "$active_vendor" == "mesa" ]] && [[ "${MESA_D3D12_DEFAULT_ADAPTER_NAME:-}" == "NVIDIA" ]] && return 0
     fi
-    
+
+    # Check for Vulkan ICD as a secondary indicator for NVIDIA
+    if [[ "$target_vendor" == "nvidia" ]] && [[ -n "${VK_ICD_FILENAMES:-}" ]] && [[ "$VK_ICD_FILENAMES" == *"nvidia"* ]]; then
+        return 0
+    fi
+
     return 1
 }
 
@@ -201,11 +209,11 @@ setup_nvidia() {
     reset_gpu_env
     export LIBGL_ALWAYS_SOFTWARE=0
     export __NV_PRIME_RENDER_OFFLOAD=1
+    export __VK_LAYER_NV_optimus=NVIDIA_only
 
     if has_dxg; then
         # WSL2 Hybrid: Use Mesa D3D12 bridge for OpenGL, but target NVIDIA adapter.
-        # This is required because native NVIDIA GLX drivers are not injected into WSL2 containers.
-        log_info "WSL2 detected: Configuring NVIDIA-backed Mesa D3D12 bridge for OpenGL."
+        log_info "WSL2 detected: Configuring NVIDIA-backed Mesa D3D12 bridge."
         export __GLX_VENDOR_LIBRARY_NAME="mesa"
         export MESA_LOADER_DRIVER_OVERRIDE="d3d12"
         export GALLIUM_DRIVER="d3d12"
@@ -213,8 +221,26 @@ setup_nvidia() {
         export LIBGL_ALWAYS_INDIRECT=0
         path_prepend "/usr/lib/wsl/lib"
     else
-        # Native Linux: Use standard NVIDIA GLX driver.
+        # Native Linux: Use standard NVIDIA GLX/EGL/Vulkan drivers.
+        log_info "Native Linux detected: Configuring direct NVIDIA acceleration path."
         export __GLX_VENDOR_LIBRARY_NAME="nvidia"
+
+        # Explicitly point to NVIDIA ICD files to prevent Mesa from hijacking
+        # Search for ICD files in prioritized standard locations
+        local icd_paths=(
+            "/usr/share/vulkan/icd.d/nvidia_icd.json"
+            "/etc/vulkan/icd.d/nvidia_icd.json"
+            "/usr/share/glvnd/egl_vendor.d/10_nvidia.json"
+        )
+        for path in "${icd_paths[@]}"; do
+            if [ -f "$path" ]; then
+                if [[ "$path" == *"vulkan"* ]]; then
+                    [ -z "${VK_ICD_FILENAMES:-}" ] && export VK_ICD_FILENAMES="$path"
+                elif [[ "$path" == *"egl_vendor"* ]]; then
+                    [ -z "${__EGL_VENDOR_LIBRARY_FILENAMES:-}" ] && export __EGL_VENDOR_LIBRARY_FILENAMES="$path"
+                fi
+            fi
+        done
     fi
 
     local ds=$(detect_display_server)
@@ -224,14 +250,17 @@ setup_nvidia() {
     if [[ "$ds" == *"Wayland"* ]]; then
         [ -z "${QT_QPA_PLATFORM:-}" ] && export QT_QPA_PLATFORM="wayland;xcb"
         [ -z "${GDK_BACKEND:-}" ] && export GDK_BACKEND="wayland,x11"
-        [ -z "${GBM_BACKEND:-}" ] && export GBM_BACKEND="nvidia-drm"
+        # Only set GBM_BACKEND if we are NOT on WSL2 (WSL2 doesn't use GBM for container display)
+        if ! has_dxg; then
+            export GBM_BACKEND="nvidia-drm"
+        fi
         export __GL_GSYNC_ALLOWED=0
         export __GL_VRR_ALLOWED=0
         log_ok "NVIDIA Wayland optimizations applied"
     fi
 
     write_gpu_env
-    log_ok "NVIDIA GPU configured"
+    log_ok "NVIDIA GPU configured (OpenGL + Vulkan + EGL)"
 }
 
 setup_intel() {
@@ -326,9 +355,15 @@ setup_auto() {
         local detector="has_$key"
         if $detector; then
             # Special handling for hybrid graphics on Wayland
+            # Default to Intel for stability, BUT respect user preference if GPU_MODE is nvidia
             if [ "$key" = "nvidia" ] && has_intel_dri && [[ "$ds" == *"Wayland"* ]]; then
-                log_warn "Hybrid (Intel+NVIDIA) on Wayland detected. Defaulting to Intel for stability."
-                apply_gpu_setup setup_intel
+                if [ "${GPU_MODE:-auto}" = "nvidia" ]; then
+                    log_info "Hybrid on Wayland: GPU_MODE=nvidia detected. Prioritizing NVIDIA performance."
+                    apply_gpu_setup setup_nvidia
+                else
+                    log_warn "Hybrid on Wayland: Defaulting to Intel for stability. Use GPU_MODE=nvidia to override."
+                    apply_gpu_setup setup_intel
+                fi
             else
                 apply_gpu_setup "${GPU_STRATEGIES[$key]}"
             fi
@@ -341,10 +376,10 @@ setup_auto() {
     if [ "$detected" = true ]; then
         if [ "$ds" != "None" ] && command -v glxinfo &>/dev/null; then
             local renderer
-            renderer=$(glxinfo 2>/dev/null | grep "OpenGL renderer" | cut -d: -f2 | xargs || true)
-            if [[ "$renderer" == *"llvmpipe"* ]] || [ -z "$renderer" ]; then
+            renderer=$(glxinfo 2>/dev/null | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
+            if [[ "$renderer" =~ (llvmpipe|softpipe|swrast) ]] || [ -z "$renderer" ]; then
                 if has_dxg; then
-                    log_warn "Renderer is SOFTWARE (llvmpipe). This is common on WSL2 when host acceleration is not fully enabled."
+                    log_warn "Renderer is SOFTWARE ($renderer). This is common on WSL2 when host acceleration is not fully enabled."
                     log_warn "Proceeding with D3D12 configuration. GPU may still be used via D3D12/Dozen."
                 else
                     log_warn "!!! GPU detected but renderer is SOFTWARE ($renderer) !!!"
@@ -381,6 +416,12 @@ setup_auto() {
         setup_software
         log_warn "Auto-detected: No GPU device. Using software rendering."
     fi
+
+    # Final summary for NVIDIA environments
+    if has_nvidia; then
+        local cuda_v=$(get_cuda_metadata cuda_ver)
+        [ -n "$cuda_v" ] && log_info "Active Toolkit: CUDA $cuda_v"
+    fi
 }
 
 # =============================================================================
@@ -392,6 +433,12 @@ __gpu_status_impl() {
 
     if has_nvidia; then
         log_ok "NVIDIA: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
+
+        local cuda_v=$(get_cuda_metadata cuda_ver)
+        [ -n "$cuda_v" ] && log_ok "CUDA:   $cuda_v"
+
+        local cudnn_v=$(get_cuda_metadata cudnn_ver)
+        [ -n "$cudnn_v" ] && log_ok "cuDNN:  $cudnn_v"
     fi
     if has_intel_dri; then
         log_ok "Intel GPU: $(ls /dev/dri/renderD* 2>/dev/null | tr '\n' ' ')"

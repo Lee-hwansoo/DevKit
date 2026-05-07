@@ -45,6 +45,8 @@ HAS_DRI="false"
 
 if command -v nvidia-smi >/dev/null 2>&1; then
     HAS_NVIDIA="true"
+    # Extract maximum supported CUDA version from the host driver
+    HOST_CUDA_MAX=$(nvidia-smi 2>/dev/null | grep -o "CUDA Version: [0-9.]*" | cut -d: -f2 | xargs || echo "Unknown")
 fi
 
 if command -v nvidia-ctk >/dev/null 2>&1; then
@@ -208,4 +210,5 @@ echo "HOST_CACHE_DIR=${HOST_CACHE_DIR}"
 echo "HOST_X11_DIR=${HOST_X11_DIR}"
 echo "HOST_GITCONFIG=${HOST_GITCONFIG}"
 echo "HOST_SSH_AUTH_SOCK=${HOST_SSH_AUTH_SOCK}"
+echo "HOST_CUDA_MAX=${HOST_CUDA_MAX:-Unknown}"
 echo "WSL_LIB_DIR_MOUNT=${WSL_LIB_DIR_MOUNT}"

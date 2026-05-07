@@ -297,6 +297,13 @@ if command -v nvidia-smi &>/dev/null; then
     fi
 fi
 
+# NVIDIA CUDA & cuDNN (Diagnostic Extension via SSOT)
+CUDA_VER=$(get_cuda_metadata cuda_ver)
+[ -n "$CUDA_VER" ] && _hw_ok "CUDA:    $CUDA_VER"
+
+CUDNN_VER=$(get_cuda_metadata cudnn_ver)
+[ -n "$CUDNN_VER" ] && _hw_ok "cuDNN:   $CUDNN_VER"
+
 # AMD ROCm (P-2)
 if type has_rocm &>/dev/null && has_rocm; then
     if command -v rocm-smi &>/dev/null; then

@@ -16,6 +16,9 @@ ARG TARGETARCH=amd64
 ARG UV_SYNC_FLAGS=""
 ARG CMAKE_EXTRA_ARGS=""
 ARG COLCON_EXTRA_FLAGS=""
+ARG HAS_NVIDIA=false
+ARG CUDA_VERSION=""
+ARG CUDNN_VERSION=""
 
 # ── Stage: uv-binaries (Dependency Management Engine) ────────────────────────
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-binaries
@@ -26,6 +29,8 @@ ARG LANG
 ARG ROS_DISTRO
 ARG APT_SNAPSHOT_DATE
 ARG DEBIAN_FRONTEND
+ARG HAS_NVIDIA
+ARG CUDA_VERSION
 ENV LANG=${LANG} \
     LC_ALL=${LANG} \
     ROS_DISTRO=${ROS_DISTRO} \
@@ -38,7 +43,10 @@ COPY dependencies/ /opt/dependencies/
 
 RUN chmod +x /tmp/internal_apt_helper.sh && \
     /tmp/internal_apt_helper.sh init-apt && \
-    /tmp/internal_apt_helper.sh configure-snapshot ${APT_SNAPSHOT_DATE}
+    /tmp/internal_apt_helper.sh configure-snapshot ${APT_SNAPSHOT_DATE} && \
+    if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
+        /tmp/internal_apt_helper.sh setup-cuda-repo ${CUDA_VERSION}; \
+    fi
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -53,6 +61,26 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils
+
+# CUDA Runtime Libraries (Conditional - Minimal for Production)
+ARG CUDA_VERSION
+ARG CUDNN_VERSION
+ARG HAS_NVIDIA
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
+        major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
+        apt-get update && apt-get install -y --no-install-recommends \
+        cuda-libraries-${major_minor}; \
+        if [ -n "$CUDNN_VERSION" ]; then \
+            if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
+                cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
+                apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}-cuda-${cuda_major}; \
+            else \
+                apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}; \
+            fi; \
+        fi; \
+    fi
 
 # Note: entrypoint.sh is also copied in dev-core (inheritance tree differs so duplication is required)
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -72,6 +100,26 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev \
     # gui-tools
     clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils
+
+# CUDA Toolkit Installation (Conditional)
+ARG CUDA_VERSION
+ARG CUDNN_VERSION
+ARG HAS_NVIDIA
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
+        major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
+        apt-get update && apt-get install -y --no-install-recommends \
+        cuda-toolkit-${major_minor}; \
+        if [ -n "$CUDNN_VERSION" ]; then \
+            if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
+                cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
+                apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}-cuda-${cuda_major} libcudnn${CUDNN_VERSION}-dev-cuda-${cuda_major}; \
+            else \
+                apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION} libcudnn${CUDNN_VERSION}-dev; \
+            fi; \
+        fi; \
+    fi
 
 # Architecture-dependent packages (may not be installed on ARM64)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

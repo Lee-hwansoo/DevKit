@@ -104,6 +104,9 @@ services:
         UV_SYNC_FLAGS: ${UV_SYNC_FLAGS:-}
         CMAKE_EXTRA_ARGS: ${CMAKE_EXTRA_ARGS:-}
         COLCON_EXTRA_FLAGS: ${COLCON_EXTRA_FLAGS:-}
+        HAS_NVIDIA: ${HAS_NVIDIA:-false}
+        CUDA_VERSION: ${CUDA_VERSION:-}
+        CUDNN_VERSION: ${CUDNN_VERSION:-}
 
   # Pure Development Template
   base-dev:

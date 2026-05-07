@@ -100,6 +100,45 @@ setup_ros_repo() {
     log_info "ROS repository configured for: $distro ($codename)"
 }
 
+# 1-2. Configure NVIDIA CUDA Repository
+setup_cuda_repo() {
+    local cuda_version=$1
+    if [ -z "$cuda_version" ]; then return; fi
+
+    # Ensure minimal prerequisites for repository management (curl, gnupg2)
+    apt-get update && apt-get install -y --no-install-recommends curl gnupg2
+
+    # Get OS version ID (e.g., 22.04 -> 2204)
+    local os_version
+    os_version=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"' | tr -d '.')
+
+    local arch
+    arch=$(dpkg --print-architecture)
+    local cuda_repo_arch="x86_64"
+    [ "$arch" = "arm64" ] && cuda_repo_arch="sbsa"
+
+    log_info "Configuring NVIDIA CUDA repository for Ubuntu ${os_version} (${arch})..."
+
+    # 1. Download pinning (recommended by NVIDIA to prioritize their repo)
+    local pin_url="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${os_version}/${cuda_repo_arch}/cuda-ubuntu${os_version}.pin"
+    curl -sSL "$pin_url" -o /etc/apt/preferences.d/cuda-repository-pin-600
+
+    # 2. Setup repository URL
+    local repo_url="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${os_version}/${cuda_repo_arch}"
+
+    # 3. Add repository key
+    # Try current and legacy keys as NVIDIA rotated them recently
+    curl -sSL "${repo_url}/3bf863cc.pub" -o /tmp/cuda-key.pub 2>/dev/null || \
+    curl -sSL "${repo_url}/7fa2af80.pub" -o /tmp/cuda-key.pub
+
+    gpg --dearmor --yes -o /usr/share/keyrings/cuda-archive-keyring.gpg < /tmp/cuda-key.pub
+
+    # 4. Add to sources list
+    echo "deb [arch=${arch} signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] ${repo_url}/ /" > /etc/apt/sources.list.d/cuda.list
+
+    log_info "NVIDIA CUDA repository configured successfully."
+}
+
 # 2. Install user-defined packages with conditional tag-based filtering
 install_packages() {
     local filter=$1  # "all" (dev/builder) or "runtime" (production)
@@ -189,6 +228,9 @@ case "$COMMAND" in
         ;;
     "setup-ros-repo")
         setup_ros_repo "$2"
+        ;;
+    "setup-cuda-repo")
+        setup_cuda_repo "$2"
         ;;
     "install-packages")
         install_packages "$2" "$3" "$4"

@@ -120,7 +120,7 @@ persist_env_block() {
     local script="$2"
     local target="/etc/bash.bashrc"
     [ ! -f "$script" ] && return
-    
+
     local start_mark="# $marker"
     local end_mark="# ${marker/START/END}"
     local block_content="${start_mark}\n[ -f $script ] && . $script\n${end_mark}"
@@ -253,7 +253,23 @@ if [ -f "$HOME/.gpu_env.sh" ]; then
 fi
 
 # =============================================================================
-# [10] Automated Dependency Synchronization (On-Demand Development Only)
+# [10] Workspace Status Summary (Dev Only)
+# =============================================================================
+if [ "$IS_DEV" = true ]; then
+    printf "\n${BLUE}--- Workspace Status ---${NC}\n"
+    [ -n "$ROS_DISTRO" ] && printf "  %-12s %s\n" "ROS:" "${ROS_DISTRO}"
+
+    CUDA_V=$(get_cuda_metadata cuda_ver)
+    [ -n "$CUDA_V" ] && printf "  %-12s %s\n" "CUDA:" "$CUDA_V"
+
+    CUDNN_V=$(get_cuda_metadata cudnn_ver)
+    [ -n "$CUDNN_V" ] && printf "  %-12s %s\n" "cuDNN:" "$CUDNN_V"
+
+    printf "${BLUE}------------------------${NC}\n\n"
+fi
+
+# =============================================================================
+# [11] Automated Dependency Synchronization (On-Demand Development Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     # Keep src/thirdparty as default, but run only if dependencies file exists

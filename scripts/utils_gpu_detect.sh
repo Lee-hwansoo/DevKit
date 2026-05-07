@@ -52,7 +52,7 @@ has_dxg() {
 get_gpu_prescription() {
     local scenario="$1"
     local indent="${2:-}"
-    
+
     case "$scenario" in
         nvidia_wsl)
             echo "${indent}export MESA_LOADER_DRIVER_OVERRIDE=d3d12"
@@ -65,6 +65,32 @@ get_gpu_prescription() {
             ;;
         nvidia_optimize_wsl)
             echo "${indent}export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA"
+            ;;
+    esac
+}
+
+# =============================================================================
+# GPU Metadata Providers (SSOT: Single Source of Truth)
+# =============================================================================
+# Provides standardized version strings for CUDA-related components.
+# Usage: get_cuda_metadata <key>
+get_cuda_metadata() {
+    local key="$1"
+    case "$key" in
+        cuda_ver)
+            if command -v nvcc &>/dev/null; then
+                nvcc --version | grep "release" | awk '{print $NF}' | tr -d ','
+            elif [ -f /usr/local/cuda/version.json ]; then
+                grep '"version"' /usr/local/cuda/version.json | cut -d: -f2 | tr -d '" ,' | xargs
+            fi
+            ;;
+        cudnn_ver)
+            local header="/usr/include/cudnn_version.h"
+            [ ! -f "$header" ] && header="/usr/local/cuda/include/cudnn_version.h"
+            if [ -f "$header" ]; then
+                # Optimized awk parser for cuDNN version components
+                awk '/#define CUDNN_MAJOR/ {maj=$3} /#define CUDNN_MINOR/ {min=$3} /#define CUDNN_PATCHLEVEL/ {pat=$3} END {if(maj!="") printf "%s.%s.%s", maj, min, pat}' "$header" 2>/dev/null || true
+            fi
             ;;
     esac
 }
