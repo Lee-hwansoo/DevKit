@@ -277,32 +277,32 @@ check: check-host
 # Build
 # =============================================================================
 build-ros: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,ROS Development,,"Build finished! Please run 'make ros' to start the container.")
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,ROS Development,,Build finished! Please run 'make ros' to start the container.)
 
 build-dev: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Pure Development,,"Build finished! Please run 'make dev' to start the container.")
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Pure Development,,Build finished! Please run 'make dev' to start the container.)
 
 rebuild-ros: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,Rebuild ROS without cache,--no-cache,"Build finished! Please run 'make ros' to start the container.")
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,Rebuild ROS without cache,--no-cache,Build finished! Please run 'make ros' to start the container.)
 
 rebuild-dev: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Rebuild Pure Dev without cache,--no-cache,"Build finished! Please run 'make dev' to start the container.")
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Rebuild Pure Dev without cache,--no-cache,Build finished! Please run 'make dev' to start the container.)
 
 build-ros-prod: check
 	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Bake Production ROS,,"Production image baked! Extract with 'make save-ros' or run with 'make ros-prod'.")
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Bake Production ROS,,Production image baked! Extract with 'make save-ros' or run with 'make ros-prod'.)
 
 build-dev-prod: check
 	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Bake Production Pure Dev,,"Production image baked! Extract with 'make save-dev' or run with 'make dev-prod'.")
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Bake Production Pure Dev,,Production image baked! Extract with 'make save-dev' or run with 'make dev-prod'.)
 
 rebuild-ros-prod: check
 	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Rebuild Production ROS without cache,--no-cache,"Production image baked! Extract with 'make save-ros' or run with 'make ros-prod'.")
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Rebuild Production ROS without cache,--no-cache,Production image baked! Extract with 'make save-ros' or run with 'make ros-prod'.)
 
 rebuild-dev-prod: check
 	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Rebuild Production Pure Dev without cache,--no-cache,"Production image baked! Extract with 'make save-dev' or run with 'make dev-prod'.")
+	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Rebuild Production Pure Dev without cache,--no-cache,Production image baked! Extract with 'make save-dev' or run with 'make dev-prod'.)
 
 # =============================================================================
 # Execution and Shell Access (Dev) - Auto GPU Detection
