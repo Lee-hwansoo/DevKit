@@ -37,7 +37,7 @@ LOG_PREFIX="[Entrypoint]"
 # Prints the resolved path to stdout; all log messages go to stderr to prevent
 # stdout capture pollution when called as: export VAR="$(setup_xdg_runtime)"
 setup_xdg_runtime() {
-    local xdg_dir="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
+    local xdg_dir="${XDG_RUNTIME_DIR:-/tmp/.container_xdg}"
     local my_uid
     my_uid="$(id -u)"
 
@@ -70,9 +70,14 @@ verify_x11() {
     else
         log_warn "DISPLAY=${display} set but X11 socket not found."
     fi
-    if [ ! -f "${XAUTHORITY:-$HOME/.Xauthority}" ]; then
-        log_warn "Xauthority file not found. GUI apps may fail."
-        log_warn "On host: xhost +SI:localuser:root"
+
+    local xauth_path="${XAUTHORITY:-$HOME/.Xauthority}"
+    if [ -s "$xauth_path" ]; then
+        log_ok "Xauthority file verified: $xauth_path"
+        export XAUTHORITY="$xauth_path"
+    else
+        log_warn "Xauthority file missing or empty ($xauth_path). GUI may fail."
+        log_warn "Solution: Run 'make xauth' on host or 'xhost +SI:localuser:root'"
     fi
 }
 
@@ -94,13 +99,6 @@ for var in ROS_IP WAYLAND_DISPLAY HOST_WAYLAND_DISPLAY; do
     fi
 done
 
-# Move to workspace root
-[ -d "/workspace" ] && cd /workspace
-
-# Detect actual home directory of the current user (root in dev, devkit in prod)
-DEV_HOME=$(getent passwd "${SUDO_USER:-${USER:-root}}" | cut -d: -f6)
-[ -z "$DEV_HOME" ] && DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")
-
 # =============================================================================
 # [1] Environment Detection (Dev vs Prod)
 # =============================================================================
@@ -112,6 +110,23 @@ else
     IS_DEV=false
     log_info "Environment: Production"
 fi
+
+# Move to workspace root
+if [ -d "/workspace" ]; then
+    cd /workspace
+    # Clean up any conflicting libraries leaked from the host via bind mounts
+    if [ "$IS_DEV" = true ]; then
+        LEAKED_LIBS=$(find . -maxdepth 1 \( -name "libnvidia-*.so*" -o -name "libcuda.so*" \) 2>/dev/null)
+        if [ -n "$LEAKED_LIBS" ]; then
+            log_warn "Detected host-leaked libraries in workspace root. Cleaning up for driver stability:"
+            echo "$LEAKED_LIBS" | xargs rm -fv
+        fi
+    fi
+fi
+
+# Detect actual home directory of the current user (root in dev, devkit in prod)
+DEV_HOME=$(getent passwd "${SUDO_USER:-${USER:-root}}" | cut -d: -f6)
+[ -z "$DEV_HOME" ] && DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")
 
 # Helper to robustly inject environment bridge into /etc/bash.bashrc
 # Usage: persist_env_block <marker_name> <profile_script_path>

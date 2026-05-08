@@ -19,12 +19,12 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 if [ -d /opt/ros ]; then
     # --- Build (Unified Colcon) ----------------------------------------------
     # CMAKE_CXX_STANDARD is injected via .env -> docker-compose -> ENV
-    alias cb='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3)'
-    alias cbp='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3) --packages-select'
+    alias cb='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3 || echo /usr/bin/python3)'
+    alias cbp='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3 || echo /usr/bin/python3) --packages-select'
 
     # Release mode (Optimized)
-    alias cbr='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3)'
-    alias cbrp='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3) --packages-select'
+    alias cbr='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3 || echo /usr/bin/python3)'
+    alias cbrp='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3 || echo /usr/bin/python3) --packages-select'
     alias cbt='colcon test'
     alias cbm='colcon build --symlink-install --metas /docker_dev/config/colcon.meta'
     alias s='source /workspace/install/setup.bash'
@@ -78,7 +78,7 @@ alias uvp='uv pip install'
 alias uvl='uv pip list'
 
 # Project-specific venv creation (located in /workspace/install for artifact separation + root symlink for IDE compatibility)
-alias mkenv='mkdir -p /workspace/install && uv venv --python ${UV_PYTHON:-3.10} /workspace/install/.venv && ln -sf /workspace/install/.venv /workspace/.venv && echo "Created .venv in /workspace/install and linked to /workspace/.venv. Run: activate"'
+alias mkenv='mkdir -p /workspace/install && uv venv --system-site-packages --python ${UV_PYTHON:-3.10} /workspace/install/.venv && ln -sf /workspace/install/.venv /workspace/.venv && echo "Created .venv (system-aware) in /workspace/install and linked to /workspace/.venv. Run: activate"'
 alias activate='source /workspace/install/.venv/bin/activate'
 
 # Python environment verification
@@ -89,7 +89,7 @@ alias uvpython='uv python list'
 # Utils & Build
 # =============================================================================
 # Standard C++ build workflow (src -> build -> install)
-alias mbuild='mkdir -p /workspace/build && cd /workspace/build && cmake ../src -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} && make -j$(nproc) install && cd /workspace'
+alias mbuild='mkdir -p /workspace/build && cd /workspace/build && cmake ../src -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(which python3 || echo /usr/bin/python3) && make -j$(nproc) install && cd /workspace'
 
 alias k='killall'
 alias k9='killall -9'

@@ -10,8 +10,8 @@ include:
 # SSH uses agent forwarding for secure authentication (Socket mount is required)
 x-dev-volumes: &dev-volumes
   - ${HOST_X11_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix:rw
-  - ${HOST_XAUTHORITY:-/root/.Xauthority}:/root/.Xauthority:ro
-  - ${HOST_XDG_RUNTIME_DIR:-/tmp/runtime-root}:/tmp/runtime-root:rw
+  - ${HOST_XAUTHORITY:-/tmp/.container_xauth}:/tmp/.container_xauth:ro
+  - ${HOST_XDG_RUNTIME_DIR:-/tmp/.container_xdg}:/tmp/.container_xdg:rw
   - ${WORKSPACE_PATH:-.}:/workspace:rw
   - ${GIT_CONFIG_PATH:-${HOST_GITCONFIG:-/dev/null}}:/root/.gitconfig:ro
   - ${HOST_SSH_AUTH_SOCK:-/dev/null}:${HOST_SSH_AUTH_SOCK:-/tmp/ssh-auth.sock}:ro
@@ -23,8 +23,8 @@ x-dev-volumes: &dev-volumes
 
 x-ros-volumes: &ros-volumes
   - ${HOST_X11_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix:rw
-  - ${HOST_XAUTHORITY:-/root/.Xauthority}:/root/.Xauthority:ro
-  - ${HOST_XDG_RUNTIME_DIR:-/tmp/runtime-root}:/tmp/runtime-root:rw
+  - ${HOST_XAUTHORITY:-/tmp/.container_xauth}:/tmp/.container_xauth:ro
+  - ${HOST_XDG_RUNTIME_DIR:-/tmp/.container_xdg}:/tmp/.container_xdg:rw
   - ${WORKSPACE_PATH:-.}:/workspace:rw
   - ${GIT_CONFIG_PATH:-${HOST_GITCONFIG:-/dev/null}}:/root/.gitconfig:ro
   - ${HOST_SSH_AUTH_SOCK:-/dev/null}:${HOST_SSH_AUTH_SOCK:-/tmp/ssh-auth.sock}:ro

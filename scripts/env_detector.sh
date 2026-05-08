@@ -101,23 +101,31 @@ fi
 
 # Sudo support: Accurately locate the X11 authority file by referencing the real home directory of the SUDO_USER.
 if [ -n "${SUDO_USER}" ]; then
-    ORIGINAL_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
-    HOST_HOME="${ORIGINAL_HOME}"
-    HOST_XAUTHORITY="${XAUTHORITY:-${ORIGINAL_HOME}/.Xauthority}"
+    HOST_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
 else
     HOST_HOME="${HOME}"
-    HOST_XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 fi
+REAL_HOST_XAUTH="${XAUTHORITY:-${HOST_HOME}/.Xauthority}"
 
 # Generate container-scoped Xauthority (limits X11 cookie exposure)
+# This prevents permission issues when the host file is owned by a different user
+# and ensures that only the necessary display cookie is shared with the container.
 HOST_XAUTHORITY_SCOPED="${HOST_CACHE_DIR}/container_xauthority"
-if [ -f "${HOST_XAUTHORITY}" ] && command -v xauth >/dev/null 2>&1; then
+if [ -s "${REAL_HOST_XAUTH}" ] && command -v xauth >/dev/null 2>&1; then
     DISPLAY_NUM="${DISPLAY#:}"
     DISPLAY_NUM="${DISPLAY_NUM%%.*}"
-    xauth extract - ":${DISPLAY_NUM}" 2>/dev/null | xauth -f "${HOST_XAUTHORITY_SCOPED}" merge - 2>/dev/null
-    if [ -s "${HOST_XAUTHORITY_SCOPED}" ]; then
+    # Clean old scoped file and try to extract current display cookie
+    rm -f "${HOST_XAUTHORITY_SCOPED}"
+    if xauth -b -f "${REAL_HOST_XAUTH}" extract - ":${DISPLAY_NUM}" 2>/dev/null | xauth -b -f "${HOST_XAUTHORITY_SCOPED}" merge - 2>/dev/null; then
+        chmod 644 "${HOST_XAUTHORITY_SCOPED}"
         HOST_XAUTHORITY="${HOST_XAUTHORITY_SCOPED}"
     fi
+fi
+
+# Fallback: Ensure HOST_XAUTHORITY is set to a valid path
+if [ ! -f "${HOST_XAUTHORITY:-}" ]; then
+    HOST_XAUTHORITY="${HOST_CACHE_DIR}/dummy_xauthority"
+    touch "${HOST_XAUTHORITY}"
 fi
 
 # Detect SSH Agent Forwarding socket with robust fallback for sudo environments
@@ -176,11 +184,6 @@ if [ -f "${HOST_HOME}/.gitconfig" ]; then
 else
     touch "${HOST_CACHE_DIR}/dummy_gitconfig"
     HOST_GITCONFIG="${HOST_CACHE_DIR}/dummy_gitconfig"
-fi
-
-if [ ! -f "${HOST_XAUTHORITY}" ]; then
-    touch "${HOST_CACHE_DIR}/dummy_xauthority"
-    HOST_XAUTHORITY="${HOST_CACHE_DIR}/dummy_xauthority"
 fi
 
 # Validate that path variables do not contain spaces to prevent Makefile parsing issues

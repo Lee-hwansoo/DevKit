@@ -16,7 +16,8 @@ x-common-env: &common-env
   DISPLAY: ${DISPLAY:-:0}
   DISPLAY_TYPE: ${DISPLAY_TYPE:-X11}
   WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
-  XDG_RUNTIME_DIR: /tmp/runtime-root
+  XAUTHORITY: /tmp/.container_xauth
+  XDG_RUNTIME_DIR: /tmp/.container_xdg
   UV_PYTHON: ${UV_PYTHON:-3.10}
   UV_SYNC_FLAGS: ${UV_SYNC_FLAGS:-}
   ROS_DISTRO: ${ROS_DISTRO:-humble}
@@ -44,7 +45,7 @@ x-nvidia-deploy: &nvidia-deploy
       devices:
         - driver: nvidia
           count: ${NVIDIA_GPU_COUNT:-all}
-          capabilities: [gpu, graphics, utility]
+          capabilities: [gpu, compute, utility, graphics, video]
 
 # ── GPU Device Mounts (Intel/AMD) ──────────────────────────────────────────
 # (Anchors must be defined locally in each file to be compatible)
@@ -130,6 +131,7 @@ services:
     extends: base-common
     environment:
       <<: *nvidia-env
+    runtime: nvidia
     deploy:
       <<: *nvidia-deploy
     healthcheck: *dev-healthcheck
@@ -156,6 +158,7 @@ services:
     extends: base-common
     environment:
       <<: *nvidia-env
+    runtime: nvidia
     deploy:
       <<: *nvidia-deploy
     healthcheck: *ros-healthcheck

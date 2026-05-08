@@ -70,8 +70,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
         major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
+        # Install runtime-side CUDA userspace libraries only.
         apt-get update && apt-get install -y --no-install-recommends \
-        cuda-libraries-${major_minor}; \
+        cuda-cudart-${major_minor} \
+        cuda-nvtx-${major_minor} \
+        libcublas-${major_minor}; \
         if [ -n "$CUDNN_VERSION" ]; then \
             if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
                 cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
@@ -80,6 +83,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
                 apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}; \
             fi; \
         fi; \
+        # Purge container-side NVIDIA driver userspace packages if they were pulled transitively.
+        # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
+        apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
+        apt-get autoremove -y || true; \
+        apt-get clean; \
+        ldconfig; \
     fi
 
 # Note: entrypoint.sh is also copied in dev-core (inheritance tree differs so duplication is required)
@@ -109,8 +118,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
         major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
+        # Install development-side CUDA userspace libraries and toolchain.
         apt-get update && apt-get install -y --no-install-recommends \
-        cuda-toolkit-${major_minor}; \
+        cuda-nvcc-${major_minor} \
+        cuda-compiler-${major_minor} \
+        cuda-cudart-dev-${major_minor} \
+        libcublas-dev-${major_minor} \
+        cuda-nvml-dev-${major_minor} \
+        cuda-command-line-tools-${major_minor}; \
         if [ -n "$CUDNN_VERSION" ]; then \
             if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
                 cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
@@ -119,6 +134,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
                 apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION} libcudnn${CUDNN_VERSION}-dev; \
             fi; \
         fi; \
+        # Purge container-side NVIDIA driver userspace packages if they were pulled transitively.
+        # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
+        apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
+        apt-get autoremove -y || true; \
+        apt-get clean; \
+        ldconfig; \
     fi
 
 # Architecture-dependent packages (may not be installed on ARM64)
