@@ -401,45 +401,59 @@ nvidia-smi
 새 프로젝트를 시작하거나 템플릿을 처음 복사한 뒤 컨테이너 쉘에 들어왔다면, 아래 순서대로 1회 초기화를 진행하세요. (개발 환경은 On-Demand 방식이므로 수동 세팅이 필요합니다.)
 
 ```bash
+# 1. 🚀 원스텝 통합 초기화 (강력 권장)
+mksync            # mkenv + uvs + sync_deps + 지능형 빌드(cb/mbuild)를 한 번에 실행
+# mksync --share  # 시스템 패키지 공유가 필요한 경우(ROS/OpenCV 바인딩 등) 사용
+
+# --- 또는 단계별 수동 실행 ---
+
 # 1. 🐍 Python 가상환경 생성 및 의존성 다운로드
 mkenv             # /workspace/install/.venv 생성 및 루트 링킹
-uvs               # (권장) pyproject.toml 기반 의존성 초고속 설치 (uv sync)
-# uvp -r dependencies/requirements.txt  # (대안) requirements.txt 사용자용
+uvs               # pyproject.toml 기반 의존성 초고속 설치 (uv sync)
+# uvp -r dependencies/requirements.txt  # (대안) 기존 requirements.txt 사용자용
 
 # 2. 📦 ROS 및 C++ 서드파티 의존성 다운로드
 sync_deps         # dependencies.repos 클론 및 rosdep 의존성 자동 설치
 
 # 3. 🔨 소스 코드 빌드 시작
-cb                # ROS: colcon build 수행 (RelWithDebInfo 기본)
-# mbuild          # 순수 C++: cmake & make 수행
+cb                # ROS: colcon build 수행
+mbuild            # 순수 C++: cmake & make 수행
 ```
 
 ### 📋 통합 명령어 사전
 
-| 명령어           | 설명                     | 특징                                                                  |
-| :--------------- | :----------------------- | :-------------------------------------------------------------------- |
-| **`h` / `help`** | **단축키 가이드**        | 전체 Alias 및 유틸리티 사용법 일람 출력                               |
-| **`hw_check`**   | 하드웨어 상태 진단       | GPU 가속 여부 및 **XWayland/Wayland 상태**, 렌더러 진단               |
-| **`mbuild`**     | **일반 C++ 빌드**        | `src/` 소스를 빌드하여 `install/`에 설치                              |
-| **`mkenv`**      | **Python 가상환경 생성** | `install/.venv` 경로 및 **디렉토리 자동 생성**, 루트 심볼릭 링크 생성 |
-| **`cb`**         | **ROS 빌드**             | `src/` 소스를 빌드하여 `install/`에 설치                              |
-| **`sync_deps`**  | 의존성 동기화            | `.repos` 기반 소스 다운로드 및 `src/thirdparty` 병합                  |
-| **`check_deps`** | 런타임 의존성 검증       | `install/` 내 누락된 공유 라이브러리(`*.so`) 검사                     |
+| 명령어 | 설명 | 특징 |
+| :--- | :--- | :--- |
+| **`h` / `help`** | **단축키 가이드** | 전체 Alias 및 유틸리티 사용법 일람 출력 |
+| **`mksync`** | **통합 초기화** | **원스텝 자동화**: mkenv + uvs + sync_deps + 프로젝트별 빌드 |
+| **`hw_check`** | 하드웨어 상태 진단 | GPU 가속 여부 및 **XWayland/Wayland 상태**, 렌더러 진단 |
+| **`mbuild`** | **일반 C++ 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
+| **`mkenv`** | **Python 가상환경 생성** | `install/.venv` 경로 및 **디렉토리 자동 생성**, 루트 심볼릭 링크 생성 |
+| **`cb`** | **ROS 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
+| **`sync_deps`** | 의존성 동기화 | `.repos` 기반 소스 다운로드 및 `src/thirdparty` 병합 |
+| **`check_deps`** | 런타임 의존성 검증 | `install/` 내 누락된 공유 라이브러리(`*.so`) 검사 |
 
 ### 💡 유용한 약어 (Common Aliases)
 
-| 구분         | 약어           | 설명                 | 기능                                       |
-| :----------- | :------------- | :------------------- | :----------------------------------------- |
-| **ROS 빌드** | `cb` / `cbr`   | Colcon 빌드          | `RelWithDebInfo` / `Release` 프로필로 빌드 |
-|              | `cbp`, `cbt`   | 특정 패키지 / 테스트 | `--packages-select`, `colcon test`         |
-|              | `s`            | 워크스페이스 소싱    | `source install/setup.bash`                |
-| **Python**   | `activate`     | venv 활성화          | `source install/.venv/bin/activate`        |
-|              | `uvs`, `uvr`   | uv 명령어            | `uv sync`, `uv run`                        |
-| **GPU/HW**   | `gpu_status`   | GPU 상태 요약        | 현재 렌더러 및 가속 상태 확인              |
-|              | `gpu_setup`    | GPU 자동 감지/설정   | 하드웨어 재검색 및 환경 변수 초기화        |
-|              | `vulkan_check` | Vulkan API 확인      | `vulkaninfo` 요약 출력                     |
-| **Utils**    | `k` / `k9`     | 프로세스 종료        | 일반 종료(`killall`) / 강제 종료(`-9`)     |
-| **Nav**      | `cw`, `cs`     | 디렉토리 이동        | `/workspace`, `/workspace/src` 이동        |
+| 구분 | 약어 | 설명 | 기능 |
+| :--- | :--- | :--- | :--- |
+| **워크플로우** | `mksync` | 원스텝 초기화 | 프로젝트 타입을 자동 감지하여 전체 환경 구축 및 빌드 수행 |
+| | `mksync --share` | 공유 환경 초기화 | 시스템 패키지 공유 모드로 초기화 (ROS/OpenCV 바인딩용) |
+| **ROS 빌드** | `cb` / `cbr` | Colcon 빌드 | `RelWithDebInfo` / `Release` 프로필로 빌드 |
+| | `cbp`, `cbt` | 특정 패키지 / 테스트 | `--packages-select`, `colcon test` |
+| | `s` | 워크스페이스 소싱 | `source install/setup.bash` |
+| **Python** | `activate` | venv 활성화 | `source install/.venv/bin/activate` |
+| | `uvs`, `uvr` | uv 명령어 | `uv sync`, `uv run` |
+| | `pyv` / `pyt` | 심층 진단 | 상세 파이썬 환경 상태 / PyTorch 및 CUDA 동작 확인 |
+| **GPU/HW** | `gpu_status` | GPU 상태 요약 | 현재 렌더러 및 가속 상태 확인 |
+| | `gpu_setup` | GPU 자동 감지/설정 | 하드웨어 재검색 및 환경 변수 초기화 |
+| | `vulkan_check` | Check Vulkan API | `vulkaninfo` 요약 출력 |
+| **Utils** | `k` / `k9` | 프로세스 종료 | 일반 종료(`killall`) / 강제 종료(`-9`) |
+| **Nav** | `cw`, `cs`, `cc` | 디렉토리 이동 | `/workspace`, `/workspace/src`, `/docker_dev/config` 이동 |
+
+> 💡 **고급 팁: 자동 완성 및 자동화 지원**
+> - **Bash 자동 완성**: `mksync`, `mkenv`, `gpu_setup` 등 모든 커스텀 명령어와 ROS 패키지 이름(`cbp` 등)에 대한 강력한 Tab 자동 완성을 지원합니다.
+> - **CI/CD 통합**: 개발용 에일리어스들이 엔트리포인트에 통합되어 있어, `docker exec`나 CI 파이프라인 같은 비대화형 세션에서도 모든 도구를 즉시 사용할 수 있습니다.
 
 ---
 

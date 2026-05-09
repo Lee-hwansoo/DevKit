@@ -93,6 +93,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # Note: entrypoint.sh is also copied in dev-core (inheritance tree differs so duplication is required)
 COPY docker/entrypoint.sh /entrypoint.sh
+COPY config/aliases.sh /opt/scripts/aliases.sh
 COPY scripts/gpu_setup.sh /opt/scripts/gpu_setup.sh
 COPY scripts/utils_logging.sh /opt/scripts/utils_logging.sh
 COPY scripts/utils_gpu_detect.sh /opt/scripts/utils_gpu_detect.sh

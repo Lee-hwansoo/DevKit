@@ -249,6 +249,14 @@ if [ -f "/workspace/install/.venv/bin/activate" ]; then
     log_ok "Python virtualenv activated (/workspace/install/.venv)"
 fi
 
+# [8.5] Development Aliases & Tools (For Non-interactive support)
+ALIASES_SH="/docker_dev/config/aliases.sh"
+[ ! -f "$ALIASES_SH" ] && ALIASES_SH="/opt/scripts/aliases.sh"
+if [ -f "$ALIASES_SH" ]; then
+    source "$ALIASES_SH"
+    log_ok "Development aliases and tools integrated"
+fi
+
 # =============================================================================
 # [9] GPU Hardware Acceleration Orchestration
 # =============================================================================

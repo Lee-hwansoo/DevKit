@@ -400,17 +400,23 @@ Experience a consistent UX across any project using standard aliases and shortcu
 If you've entered the container shell for the first time, perform the following initialization. Since development environments are orchestrated on-demand, these initial setup steps are required.
 
 ```bash
+# 1. 🚀 One-step Unified Initialization (Highly Recommended)
+mksync            # Automatically runs mkenv + uvs + sync_deps + Intelligent Build (cb/mbuild)
+# mksync --share  # Use this if you need system-site-packages (e.g., for system ROS/OpenCV bindings)
+
+# --- OR manually perform step-by-step ---
+
 # 1. 🐍 Create Python virtual environment and download dependencies
 mkenv             # Create /workspace/install/.venv and root symlink
-uvs               # (Recommended) Lightning-fast dependency installation via pyproject.toml (uv sync)
-# uvp -r dependencies/requirements.txt  # (Alternative) For standard pip requirements
+uvs               # Lightning-fast dependency installation via pyproject.toml (uv sync)
+# uvp -r dependencies/requirements.txt  # (Alternative) For standard requirements.txt users
 
 # 2. 📦 Download ROS and C++ Third-party Dependencies
 sync_deps         # Clone dependencies.repos and auto-install rosdep system packages
 
 # 3. 🔨 Orchestrate Source Code Build
-cb                # ROS: Execute colcon build (RelWithDebInfo default)
-# mbuild          # Pure C++: Execute standard cmake & make
+cb                # ROS: Execute colcon build
+mbuild            # Pure C++: Execute standard cmake & make
 ```
 
 ### 📋 Unified Command Dictionary
@@ -418,6 +424,7 @@ cb                # ROS: Execute colcon build (RelWithDebInfo default)
 | Command | Description | Action |
 | :--- | :--- | :--- |
 | **`h` / `help`** | **Shortcut Guide** | Print a full list of available Aliases and Utility usages |
+| **`mksync`** | **Unified Init** | **One-step automation**: mkenv + uvs + sync_deps + Build |
 | **`hw_check`** | Hardware Diagnostics | Check GPU acceleration, **XWayland/Wayland availability**, and detailed renderer diagnostics |
 | **`mbuild`** | **Standard C++ Build** | Build `src/` source code and install it to the `install/` directory |
 | **`mkenv`** | **Create Python venv** | **Auto-create directory** and attach a root symlink for the `install/.venv` path |
@@ -428,17 +435,24 @@ cb                # ROS: Execute colcon build (RelWithDebInfo default)
 ### 💡 Common Aliases
 
 | Category | Alias | Description | Function |
-| :--- | :--- | :--- | :--- |
+| :--- | :--- | :--- |
+| **Workflow** | `mksync` | One-step Init | Automatically detects project type and orchestrates full setup |
+| | `mksync --share` | Shared Env Init | Init with system-site-packages enabled (for ROS/OpenCV bindings) |
 | **ROS Build** | `cb` / `cbr` | Colcon Build | Build with `RelWithDebInfo` / `Release` profile |
 | | `cbp`, `cbt` | Target Package / Test | `--packages-select`, `colcon test` |
 | | `s` | Source Workspace | `source install/setup.bash` |
 | **Python** | `activate` | Activate venv | `source install/.venv/bin/activate` |
 | | `uvs`, `uvr` | uv commands | `uv sync`, `uv run` |
+| | `pyv` / `pyt` | Deep Diagnostic | Detailed Python env status / PyTorch & CUDA check |
 | **GPU/HW** | `gpu_status` | GPU Status Summary | Check current renderer and hardware acceleration status |
 | | `gpu_setup` | Auto-detect GPU | Rescan hardware layout and reset system environment variables |
 | | `vulkan_check` | Check Vulkan API | Print `vulkaninfo` hardware summary |
 | **Utils** | `k` / `k9` | Terminate Process | Graceful kill (`killall`) / Force kill (`-9`) |
-| **Nav** | `cw`, `cs` | Move Directory | Traverse to `/workspace`, `/workspace/src` |
+| **Nav** | `cw`, `cs`, `cc` | Move Directory | Traverse to `/workspace`, `/workspace/src`, or `/docker_dev/config` |
+
+> 💡 **Advanced Tip: Bash Completion & Automation**
+> - **Tab Completion**: All custom commands (`mksync`, `mkenv`, `gpu_setup`, etc.) and ROS packages (for `cbp`) support rich Bash tab-completion.
+> - **CI/CD Integration**: Development aliases are integrated into the entrypoint, making them available in non-interactive sessions like `docker exec` and CI pipelines.
 
 ---
 
