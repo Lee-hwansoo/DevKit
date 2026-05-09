@@ -6,7 +6,13 @@
 # Loaded via ~/.bashrc using: source /docker_dev/config/aliases.sh
 # Note: ROS-specific aliases are only defined if the ros2 command is available,
 # ensuring compatibility with non-ROS dev targets.
+# Note: This file should only be loaded inside the container environment.
 # =============================================================================
+
+# Container Environment Guard: Prevent loading on the host machine
+if [ ! -f /.dockerenv ] && [ "$FORCE_LOAD_ALIASES" != "true" ]; then
+    return 0
+fi
 
 # Load logging utility for shared color variables & branding
 SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"

@@ -275,7 +275,7 @@ xauth:
 
 check: check-host
 	@if [ ! -f .env ]; then echo -e "  $(ERROR) .env not found. Please run 'make setup' first."; exit 1; fi
-	@if [ ! -d "$(WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) WORKSPACE_PATH ($(WORKSPACE_PATH)) does not exist."; exit 1; fi
+	@if [ ! -d "$(HOST_WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) HOST_WORKSPACE_PATH ($(HOST_WORKSPACE_PATH)) does not exist."; exit 1; fi
 	@if [ "$(IS_WSL)" = "true" ]; then \
 		bash scripts/wsl_auditor.sh; \
 		if [[ "$(CURDIR)" == /mnt/* ]]; then \
@@ -521,7 +521,7 @@ clean:
 		read ans || true; \
 	fi; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
-		$(call SUDO_FREE_RM,$(WORKSPACE_PATH),build install log .venv); \
+		$(call SUDO_FREE_RM,$(HOST_WORKSPACE_PATH),build install log .venv); \
 	else \
 		echo -e "  $(INFO) Safely skipped deleting host folders."; \
 	fi
@@ -533,7 +533,7 @@ clean-cache:
 		echo -e "  $(ERROR) Cache directory ($$CACHE_DIR) is invalid or unsafe."; \
 		exit 1; \
 	fi; \
-	if ! (echo "$$CACHE_DIR" | grep -q "$(COMPOSE_PROJECT_NAME)" || echo "$$CACHE_DIR" | grep -q "$(WORKSPACE_PATH)"); then \
+	if ! (echo "$$CACHE_DIR" | grep -q "$(COMPOSE_PROJECT_NAME)" || echo "$$CACHE_DIR" | grep -q "$(HOST_WORKSPACE_PATH)"); then \
 		echo -e "  $(WARN) This cache string ($$CACHE_DIR) points to a shared global cache. Proceeding here affects all projects."; \
 	fi; \
 	if [ -d "$$CACHE_DIR" ]; then \

@@ -13,7 +13,7 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
 print_banner WELCOME
-echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC}"
+echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | WS: ${GREEN}${WORKSPACE_PATH}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC}"
 
 print_section "Quick Start"
 echo -e "    ${GREEN}mksync${NC}          : Fully initialize workspace (venv + deps + build)"
