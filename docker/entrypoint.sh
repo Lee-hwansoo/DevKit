@@ -112,8 +112,8 @@ else
 fi
 
 # Move to workspace root
-if [ -d "/workspace" ]; then
-    cd /workspace
+if [ -d "${WORKSPACE_PATH:-/workspace}" ]; then
+    cd "${WORKSPACE_PATH:-/workspace}"
     # Clean up any conflicting libraries leaked from the host via bind mounts
     if [ "$IS_DEV" = true ]; then
         LEAKED_LIBS=$(find . -maxdepth 1 \( -name "libnvidia-*.so*" -o -name "libcuda.so*" \) 2>/dev/null)
@@ -185,7 +185,7 @@ fi
 # [4] Git safe.directory Setup (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ] && command -v git &>/dev/null; then
-    git config --global --add safe.directory /workspace 2>/dev/null || true
+    git config --global --add safe.directory "${WORKSPACE_PATH:-/workspace}" 2>/dev/null || true
     log_ok "Git safe.directory configured"
 fi
 
@@ -206,7 +206,7 @@ fi
 # [6] Workspace Status Guide (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
-    if [ ! -f /workspace/install/setup.bash ] && [ ! -d /workspace/install/.venv ]; then
+    if [ ! -f "${WORKSPACE_PATH:-/workspace}/install/setup.bash" ] && [ ! -d "${WORKSPACE_PATH:-/workspace}/install/.venv" ]; then
         log_warn "Workspace not yet built or environment not set up."
         if [ -f "$ROS_SETUP" ]; then
             log_warn "  Run: cb     (colcon build for ROS)"
@@ -232,8 +232,8 @@ if [ -f "$ROS_SETUP" ]; then
     source "$ROS_SETUP"
     log_ok "ROS ${ROS_DISTRO:-humble} sourced"
 
-    if [ -f /workspace/install/setup.bash ]; then
-        source /workspace/install/setup.bash
+    if [ -f "${WORKSPACE_PATH:-/workspace}/install/setup.bash" ]; then
+        source "${WORKSPACE_PATH:-/workspace}/install/setup.bash"
         log_ok "Workspace overlay sourced"
     fi
 else
@@ -241,12 +241,12 @@ else
 fi
 
 # Auto-activate Python virtual environment
-if [ -f "/workspace/install/.venv/bin/activate" ]; then
+if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
     if [ "$IS_DEV" = true ]; then
-        ln -sf /workspace/install/.venv /workspace/.venv
+        ln -sf "${WORKSPACE_PATH:-/workspace}/install/.venv" "${WORKSPACE_PATH:-/workspace}/.venv"
     fi
-    source "/workspace/install/.venv/bin/activate"
-    log_ok "Python virtualenv activated (/workspace/install/.venv)"
+    source "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate"
+    log_ok "Python virtualenv activated (${WORKSPACE_PATH:-/workspace}/install/.venv)"
 fi
 
 # [8.5] Development Aliases & Tools (For Non-interactive support)
@@ -297,7 +297,7 @@ fi
 if [ "$IS_DEV" = true ]; then
     # Keep src/thirdparty as default, but run only if dependencies file exists
     TARGET_DIR="${SYNC_TARGET_DIR:-src/thirdparty}"
-    if [ "$PWD" == "/workspace" ] && [ -f "dependencies/dependencies.repos" ]; then
+    if [ "$PWD" == "${WORKSPACE_PATH:-/workspace}" ] && [ -f "dependencies/dependencies.repos" ]; then
         if [ ! -d "$TARGET_DIR" ] || [ -z "$(ls -A $TARGET_DIR 2>/dev/null)" ]; then
             log_info "Dependency directory ($TARGET_DIR) is empty. Running sync_deps.sh..."
             bash /docker_dev/scripts/sync_deps.sh

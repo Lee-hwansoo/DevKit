@@ -9,29 +9,29 @@ include:
 # Xauthority uses container-scoped version from env_detector.sh when available
 # SSH uses agent forwarding for secure authentication (Socket mount is required)
 x-dev-volumes: &dev-volumes
+  - ${HOST_WORKSPACE_PATH:-.}:${WORKSPACE_PATH:-/workspace}:rw
   - ${HOST_X11_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix:rw
   - ${HOST_XAUTHORITY:-/tmp/.container_xauth}:/tmp/.container_xauth:ro
   - ${HOST_XDG_RUNTIME_DIR:-/tmp/.container_xdg}:/tmp/.container_xdg:rw
-  - ${WORKSPACE_PATH:-.}:/workspace:rw
   - ${GIT_CONFIG_PATH:-${HOST_GITCONFIG:-/dev/null}}:/root/.gitconfig:ro
   - ${HOST_SSH_AUTH_SOCK:-/dev/null}:${HOST_SSH_AUTH_SOCK:-/tmp/ssh-auth.sock}:ro
-  - ${HOST_CACHE_DIR:-${WORKSPACE_PATH:-.}/.docker_cache}:/cache:rw
-  - ${DEV_BUILD_VOL:-dev_build_data}:/workspace/build
-  - ${DEV_INSTALL_VOL:-dev_install_data}:/workspace/install
-  - ${DEV_LOG_VOL:-dev_log_data}:/workspace/log
+  - ${HOST_CACHE_DIR:-${HOST_WORKSPACE_PATH:-.}/.docker_cache}:/cache:rw
+  - ${DEV_BUILD_VOL:-dev_build_data}:${WORKSPACE_PATH:-/workspace}/build
+  - ${DEV_INSTALL_VOL:-dev_install_data}:${WORKSPACE_PATH:-/workspace}/install
+  - ${DEV_LOG_VOL:-dev_log_data}:${WORKSPACE_PATH:-/workspace}/log
   - ${WSL_LIB_DIR_MOUNT:-/tmp}:/usr/lib/wsl:ro
 
 x-ros-volumes: &ros-volumes
+  - ${HOST_WORKSPACE_PATH:-.}:${WORKSPACE_PATH:-/workspace}:rw
   - ${HOST_X11_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix:rw
   - ${HOST_XAUTHORITY:-/tmp/.container_xauth}:/tmp/.container_xauth:ro
   - ${HOST_XDG_RUNTIME_DIR:-/tmp/.container_xdg}:/tmp/.container_xdg:rw
-  - ${WORKSPACE_PATH:-.}:/workspace:rw
   - ${GIT_CONFIG_PATH:-${HOST_GITCONFIG:-/dev/null}}:/root/.gitconfig:ro
   - ${HOST_SSH_AUTH_SOCK:-/dev/null}:${HOST_SSH_AUTH_SOCK:-/tmp/ssh-auth.sock}:ro
-  - ${HOST_CACHE_DIR:-${WORKSPACE_PATH:-.}/.docker_cache}:/cache:rw
-  - ${ROS_BUILD_VOL:-ros_build_data}:/workspace/build
-  - ${ROS_INSTALL_VOL:-ros_install_data}:/workspace/install
-  - ${ROS_LOG_VOL:-ros_log_data}:/workspace/log
+  - ${HOST_CACHE_DIR:-${HOST_WORKSPACE_PATH:-.}/.docker_cache}:/cache:rw
+  - ${ROS_BUILD_VOL:-ros_build_data}:${WORKSPACE_PATH:-/workspace}/build
+  - ${ROS_INSTALL_VOL:-ros_install_data}:${WORKSPACE_PATH:-/workspace}/install
+  - ${ROS_LOG_VOL:-ros_log_data}:${WORKSPACE_PATH:-/workspace}/log
   - ${WSL_LIB_DIR_MOUNT:-/tmp}:/usr/lib/wsl:ro
 
 # SSH Agent Forwarding environment (shared across dev services)

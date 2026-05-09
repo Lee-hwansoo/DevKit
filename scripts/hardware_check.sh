@@ -138,7 +138,7 @@ while IFS= read -r line; do
     else
         _hw_printf "      %-10s %s used (%s free)\n" "$mount:" "$used" "$free_space"
     fi
-done < <(df -h / /workspace 2>/dev/null | awk 'NR>1' | sort -u)
+done < <(df -h / "${WORKSPACE_PATH:-/workspace}" 2>/dev/null | awk 'NR>1' | sort -u)
 
 # =============================================================================
 # [2/5] Network & Time Sync
@@ -385,9 +385,18 @@ else
     _hw_detail "    CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD}"
 fi
 [ -n "${GPU_MODE:-}" ]   && _hw_detail "    GPU_MODE:           ${GPU_MODE}"
-[ -n "${UV_PYTHON:-}" ]  && _hw_detail "    UV_PYTHON:          ${UV_PYTHON}"
+
+# Python
+local sys_py="${SYS_PYTHON_EXE}"
+if [[ -x "$sys_py" ]]; then
+    local sys_ver=$($sys_py --version 2>&1 | cut -d' ' -f2)
+    _hw_ok "System Python:     $sys_ver ($sys_py)"
+else
+    _hw_err "System Python:     Not found at $sys_py"
+fi
 
 # uv + active venv
+[ -n "${UV_PYTHON:-}" ]  && _hw_detail "    UV_PYTHON:          ${UV_PYTHON}"
 if command -v uv &>/dev/null; then
     _hw_ok "uv:      $(uv --version)"
     ACTIVE_VENV="${VIRTUAL_ENV:-${UV_PROJECT_ENVIRONMENT:-}}"
@@ -403,9 +412,6 @@ if command -v uv &>/dev/null; then
 else
     _hw_err "uv: Not found"
 fi
-
-# System Python
-command -v python3 &>/dev/null && _hw_detail "    Python3: $(python3 --version)"
 
 # ccache with hit rate calculation (P-7: JSON-first with whitespace tolerance)
 # Parsing strategy: try JSON format first (ccache ≥4.0, stable schema),

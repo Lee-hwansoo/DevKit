@@ -37,6 +37,5 @@ echo -e "    ${GREEN}gpu_status${NC}      : Show detailed GPU & Display info"
 
 echo -e ""
 echo -e "  Type ${CYAN}h${NC} or ${CYAN}help${NC} to see the full alias & shortcut guide."
-echo -e "  Workspace: ${CYAN}/workspace${NC} (mapped from host)"
+echo -e "  Workspace: ${CYAN}${WORKSPACE_PATH:-/workspace}${NC} (mapped from host)"
 echo -e ""
-

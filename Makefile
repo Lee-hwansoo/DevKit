@@ -20,17 +20,23 @@ ERROR  := $(RED)[ERROR]$(NC)
 # Load Environment Variables
 -include .env
 
+# Workspace Path Architecture (Separation of Host and Container)
+# HOST_WORKSPACE_PATH: Physical path on the host machine (Source)
+# WORKSPACE_PATH: Logical path inside the container (Target/SSOT)
+HOST_WORKSPACE_PATH ?= $(CURDIR)
+WORKSPACE_PATH      ?= /workspace
+
+# Auto-match TARGETARCH
+TARGETARCH ?= $(HOST_ARCH)
+
+export
+
 # Environment Detection Engine (Auto-detection — triggered by relevant targets)
 # Applied to Docker-related operations to ensure hardware and display compatibility
 NEEDS_DETECTOR := $(filter-out help setup env-check%,$(MAKECMDGOALS))
 ifneq ($(NEEDS_DETECTOR),)
 $(foreach line,$(shell bash scripts/env_detector.sh),$(eval $(line)))
 endif
-
-# Auto-match TARGETARCH
-TARGETARCH ?= $(HOST_ARCH)
-WORKSPACE_PATH ?= $(CURDIR)
-export
 
 COMPOSE := docker compose
 COMPOSE_DEV := -f docker-compose.dev.yml
@@ -135,7 +141,11 @@ endef
 
 # $1: MOUNT_DIR (Absolute Path), $2: Targets to delete
 define SUDO_FREE_RM
-	echo -e "  $(INFO) Performing sudo-free deletion: $2"; \
+	if [ "$1" = "/" ] || [ -z "$1" ]; then \
+		echo -e "  $(ERROR) Critical Safety: Refusing to delete from root directory!"; \
+		exit 1; \
+	fi; \
+	echo -e "  $(INFO) Performing sudo-free deletion: $2 in $1"; \
 	docker run --rm -v "$1:/mnt" alpine sh -c "cd /mnt && rm -rf $2" 2>/dev/null || true; \
 	if [ "$(SKIP_ALPINE_RM)" != "1" ]; then \
 		echo -e "  $(INFO) Cleaning up the temporary alpine image used for sudo-free deletion..."; \
@@ -144,7 +154,7 @@ define SUDO_FREE_RM
 endef
 
 # Core Infrastructure Variables Export
-export IS_WSL HOST_DXG_MOUNT HOST_ARCH HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_DRI_MOUNT TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_SSH_AUTH_SOCK WSL_LIB_DIR_MOUNT CUDA_VERSION CUDNN_VERSION
+export IS_WSL HOST_DXG_MOUNT HOST_ARCH HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_DRI_MOUNT TARGETARCH DISPLAY_TYPE HOST_XDG_RUNTIME_DIR HOST_WAYLAND_DISPLAY HOST_XAUTHORITY HOST_HOME NVIDIA_VISIBLE_DEVICES NVIDIA_DRIVER_CAPABILITIES NVIDIA_GPU_COUNT HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_SSH_AUTH_SOCK WSL_LIB_DIR_MOUNT CUDA_VERSION CUDNN_VERSION PYTHON_EXECUTABLE
 
 # Centralized UI Sub-Header Macro
 define PRINT_SECTION
@@ -221,11 +231,14 @@ setup:
 status: check
 	$(call PRINT_SECTION,Project Configuration Summary)
 	@echo "  Project Name:      $(COMPOSE_PROJECT_NAME)"
+	@echo "  Workspace(Host):   $(HOST_WORKSPACE_PATH)"
+	@echo "  Workspace(Docker): $(WORKSPACE_PATH)"
 	@echo "  OS Environment:    $(if $(filter true,$(IS_WSL)),WSL 2 (Windows Subsystem for Linux),Linux Native)"
 	@echo "  Architecture:      $(HOST_ARCH) (Target: $(TARGETARCH))"
 	@echo "  Display:           $(DISPLAY) ($(DISPLAY_TYPE))"
 	@echo "  GPU Mode (Set):    $(GPU_MODE)"
 	@echo "  ROS Version:       $(ROS_DISTRO)"
+	@echo "  Python Interpreter: $(PYTHON_EXECUTABLE)"
 	$(call PRINT_SECTION,Running Containers)
 	@docker ps --filter "name=$(COMPOSE_PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | sed 's/^/  /'
 	$(call PRINT_SECTION,Created Docker Volumes)

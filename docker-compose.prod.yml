@@ -10,7 +10,7 @@ x-prod-svc: &prod-svc
   restart: always
 
 x-prod-volumes: &prod-volumes
-  - ${PROD_LOG_VOL:-prod_log_data}:/workspace/log
+  - ${PROD_LOG_VOL:-prod_log_data}:${WORKSPACE_PATH:-/workspace}/log
   - ${WSL_LIB_DIR_MOUNT:-/tmp}:/usr/lib/wsl:ro
 
 # ── Production Runtime Service Shared Configuration (Switch Strategy) ─────────

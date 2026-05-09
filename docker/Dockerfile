@@ -5,6 +5,7 @@
 
 # ── Global Build Arguments (Single Source of Truth) ──────────────────────────
 ARG BASE_IMAGE=ubuntu:22.04
+ARG WORKSPACE_PATH=/workspace
 ARG ROS_DISTRO=humble
 ARG APT_SNAPSHOT_DATE=latest
 ARG UV_VERSION=0.10.10
@@ -19,6 +20,7 @@ ARG COLCON_EXTRA_FLAGS=""
 ARG HAS_NVIDIA=false
 ARG CUDA_VERSION=""
 ARG CUDNN_VERSION=""
+ARG SYS_PYTHON_EXE=""
 
 # ── Stage: uv-binaries (Dependency Management Engine) ────────────────────────
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-binaries
@@ -159,6 +161,8 @@ RUN if [ -f /opt/dependencies/D2Coding.zip ]; then \
 
 # ── Stage: dev-core (Python Runtime & Environment Orchestration) ─────────────
 FROM dev-base-tools AS dev-core
+ARG WORKSPACE_PATH
+ARG SYS_PYTHON_EXE
 ARG UV_VERSION
 ARG UV_PYTHON
 ARG CMAKE_CXX_STANDARD
@@ -167,17 +171,18 @@ ARG CMAKE_CXX_STANDARD
 COPY --from=uv-binaries /uv /uvx /usr/local/bin/
 RUN uv python install ${UV_PYTHON}
 
-ENV PATH="/usr/lib/ccache:/workspace/install/.venv/bin:$PATH" \
+ENV PATH="/usr/lib/ccache:${WORKSPACE_PATH}/install/.venv/bin:$PATH" \
     CCACHE_DIR=/cache/ccache \
     UV_CACHE_DIR=/cache/uv \
     UV_PYTHON=${UV_PYTHON} \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    VIRTUAL_ENV=/workspace/install/.venv \
+    VIRTUAL_ENV=${WORKSPACE_PATH}/install/.venv \
     CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} \
+    SYS_PYTHON_EXE=${SYS_PYTHON_EXE} \
     BASH_ENV=/root/.bashrc
 
-RUN mkdir -p /cache/ccache /cache/uv /workspace/install
+RUN mkdir -p /cache/ccache /cache/uv /${WORKSPACE_PATH}/install
 
 COPY config/  /docker_dev/config/
 COPY scripts/ /docker_dev/scripts/
@@ -192,12 +197,13 @@ CMD ["bash"]
 
 # ── Stage: dev targets (Interactive Developer Environments) ─────────────────
 FROM dev-core AS dev
+ARG WORKSPACE_PATH
 ARG ROS_DISTRO
-ENV COLCON_HOME=/workspace
+ENV COLCON_HOME=${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh install-packages all
-WORKDIR /workspace
+WORKDIR ${WORKSPACE_PATH}
 
 FROM dev-core AS ros-base
 ARG ROS_DISTRO
@@ -212,19 +218,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rosdep update --rosdistro ${ROS_DISTRO}
 
 FROM ros-base AS ros
-ENV COLCON_HOME=/workspace
-RUN mkdir -p /workspace/src && \
-    ln -sf /docker_dev/config/colcon.meta /workspace/colcon.meta
+ARG WORKSPACE_PATH
+ENV COLCON_HOME=${WORKSPACE_PATH}
+RUN mkdir -p ${WORKSPACE_PATH}/src && \
+    ln -sf /docker_dev/config/colcon.meta ${WORKSPACE_PATH}/colcon.meta
 RUN SYNC_TARGET_DIR=/tmp/staging /docker_dev/scripts/sync_deps.sh --rosdep && \
     rm -rf /tmp/staging
-WORKDIR /workspace
+WORKDIR ${WORKSPACE_PATH}
 
 # ── Stage: python-deps (Python Dependency Caching Layer) ────────────────────
 FROM dev-core AS python-deps
+ARG WORKSPACE_PATH
 ARG UV_SYNC_FLAGS
-WORKDIR /workspace
+WORKDIR ${WORKSPACE_PATH}
 COPY pyproject.toml* uv.lock* ./
-ENV UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
+ENV UV_PROJECT_ENVIRONMENT="${WORKSPACE_PATH}/install/.venv"
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     uv venv ${UV_PROJECT_ENVIRONMENT} && \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then \
@@ -235,6 +243,7 @@ RUN --mount=type=cache,target=/cache/uv,sharing=locked \
 
 # ── Stage: builder-dev (C++ & Pure Python Build Orchestration) ──────────────
 FROM python-deps AS builder-dev
+ARG WORKSPACE_PATH
 ARG ROS_DISTRO
 ARG UV_SYNC_FLAGS
 ARG CMAKE_EXTRA_ARGS
@@ -246,47 +255,50 @@ RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
     mkdir -p build && cd build && \
-    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} ${CMAKE_EXTRA_ARGS} && \
+    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash /docker_dev/scripts/get_python_exe.sh) ${CMAKE_EXTRA_ARGS} && \
     make -j$(nproc) && make install && \
-    bash /docker_dev/scripts/check_deps.sh /workspace/install
+    bash /docker_dev/scripts/check_deps.sh ${WORKSPACE_PATH}/install
 
 # ── Stage: builder-ros (ROS Workspace Orchestration) ─────────────────────────
 FROM ros-base AS builder-ros
+ARG WORKSPACE_PATH
 ARG UV_SYNC_FLAGS
 ARG CMAKE_EXTRA_ARGS
 ARG COLCON_EXTRA_FLAGS
-WORKDIR /workspace
-COPY --from=python-deps /workspace/install/.venv /workspace/install/.venv
+WORKDIR ${WORKSPACE_PATH}
+COPY --from=python-deps ${WORKSPACE_PATH}/install/.venv ${WORKSPACE_PATH}/install/.venv
 COPY pyproject.toml* uv.lock* ./
 COPY s[r]c/ src/
-ENV UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
+ENV UV_PROJECT_ENVIRONMENT="${WORKSPACE_PATH}/install/.venv"
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     rosdep update --rosdistro ${ROS_DISTRO} && \
-    ln -s /opt/dependencies /workspace/dependencies && \
+    ln -s /opt/dependencies ${WORKSPACE_PATH}/dependencies && \
     SYNC_TARGET_DIR=src/thirdparty /docker_dev/scripts/sync_deps.sh --rosdep
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
     . /opt/ros/${ROS_DISTRO}/setup.sh && \
-    colcon build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} ${CMAKE_EXTRA_ARGS} --install-base /workspace/install && \
-    bash /docker_dev/scripts/check_deps.sh /workspace/install
+    colcon build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash /docker_dev/scripts/get_python_exe.sh) ${CMAKE_EXTRA_ARGS} --install-base ${WORKSPACE_PATH}/install && \
+    bash /docker_dev/scripts/check_deps.sh ${WORKSPACE_PATH}/install
 
 # ── Final Production Runtime Images (Switch Strategy) ────────────────────────
 FROM runtime-common AS dev-runtime
-WORKDIR /workspace
+ARG WORKSPACE_PATH
+WORKDIR ${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh install-packages runtime && \
     rm -rf /var/lib/apt/lists/*
-COPY --from=builder-dev /workspace/install /workspace/install
-ENV PATH="/workspace/install/.venv/bin:/workspace/install/bin:$PATH" VIRTUAL_ENV="/workspace/install/.venv"
+COPY --from=builder-dev ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
+ENV PATH="${WORKSPACE_PATH}/install/.venv/bin:${WORKSPACE_PATH}/install/bin:$PATH" VIRTUAL_ENV="${WORKSPACE_PATH}/install/.venv"
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]
 
 FROM runtime-common AS ros-runtime
-WORKDIR /workspace
+ARG WORKSPACE_PATH
+WORKDIR ${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/internal_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
@@ -296,6 +308,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-ros-base \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=builder-ros /workspace/install /workspace/install
+COPY --from=builder-ros ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]

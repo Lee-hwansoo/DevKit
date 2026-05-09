@@ -15,25 +15,25 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[Sync Deps]"
 
-# 1. Root Directory Detection (Hierarchical)
-# Container volume (/workspace) takes priority, otherwise uses script location as base
-if [ -d "/workspace/dependencies" ]; then
-    PROJECT_ROOT="/workspace"
-else
-    # Consider the parent folder of scripts/sync_deps.sh as the root
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-fi
+# 0. Argument Parsing (Enterprise Standard)
+FORCE_MODE=false
+DO_ROSDEP=false
 
-# 2. Path Configuration (Single Source of Truth)
-# Use SYNC_TARGET_DIR if injected as an environment variable, otherwise default to src/thirdparty
+for arg in "$@"; do
+    case "$arg" in
+        --force)  FORCE_MODE=true ;;
+        --rosdep) DO_ROSDEP=true ;;
+    esac
+done
+
+PROJECT_ROOT="${WORKSPACE_PATH:-/workspace}"
 REPOS_FILE="${PROJECT_ROOT}/dependencies/dependencies.repos"
 OVERLAY_DIR="${PROJECT_ROOT}/dependencies/overlay"
 TARGET_DIR="${PROJECT_ROOT}/${SYNC_TARGET_DIR:-src/thirdparty}"
 
 mkdir -p "$TARGET_DIR"
 
-# 3. vcstool Integration
+# 1. vcstool Integration
 print_section "VCS Repository Import"
 if ! command -v vcs &>/dev/null; then
     log_warn "vcstool (vcs) not found. Skipping repository import."
@@ -41,25 +41,15 @@ elif [ -f "$REPOS_FILE" ]; then
     log_info "Running vcs import to $TARGET_DIR ..."
     vcs import "$TARGET_DIR" < "$REPOS_FILE" || log_warn "vcs import completed with some warnings."
 
-    # Protect local patches — only hard reset with explicit --force flag
-    FORCE_RESET=false
-    for arg in "$@"; do [ "$arg" == "--force" ] && FORCE_RESET=true; done
-
-    if [ "$FORCE_RESET" = true ]; then
-        log_warn "Force mode: resetting all third-party repos to HEAD (local patches will be lost)..."
+    # Force mode check
+    if [ "$FORCE_MODE" = true ]; then
+        log_warn "Force mode: resetting all third-party repos to HEAD..."
         find "$TARGET_DIR" -type d -name ".git" -prune -execdir git reset --hard HEAD \; -execdir git clean -fd \; &>/dev/null || true
     else
-        # Check for dirty repos and warn instead of destroying
-        DIRTY_REPOS=""
-        while IFS= read -r git_dir; do
-            repo_dir="$(dirname "$git_dir")"
-            if [ -n "$(cd "$repo_dir" && git status --porcelain 2>/dev/null)" ]; then
-                DIRTY_REPOS="${DIRTY_REPOS}\n  - ${repo_dir}"
-            fi
-        done < <(find "$TARGET_DIR" -type d -name ".git" 2>/dev/null)
+        # Check for dirty repos and warn
+        DIRTY_REPOS=$(find "$TARGET_DIR" -type d -name ".git" -execdir git status --porcelain \; 2>/dev/null)
         if [ -n "$DIRTY_REPOS" ]; then
-            log_warn "Repos with uncommitted changes (skipping reset):${DIRTY_REPOS}"
-            log_warn "Use --force to discard all local changes."
+            log_warn "Some repositories have uncommitted changes. Use --force to discard them."
         fi
     fi
 
@@ -70,7 +60,7 @@ else
     log_info "No .repos file found at $REPOS_FILE."
 fi
 
-# 4. Package Overlay Application
+# 2. Package Overlay Application
 print_section "Overlay Application"
 if [ -d "$OVERLAY_DIR" ]; then
     HAS_FILES=$(find "$OVERLAY_DIR" -mindepth 1 -not -name "*.md" | wc -l)
@@ -85,17 +75,8 @@ else
     log_info "Overlay directory not found."
 fi
 
-# 5. System Dependency Resolution (rosdep)
+# 3. System Dependency Resolution (rosdep)
 print_section "System Dependencies (rosdep)"
-# Skipped by default; runs only when --rosdep flag is present
-DO_ROSDEP=false
-for arg in "$@"; do
-    if [ "$arg" == "--rosdep" ]; then
-        DO_ROSDEP=true
-        break
-    fi
-done
-
 if [ "$DO_ROSDEP" = true ] && command -v rosdep &>/dev/null && [ -n "${ROS_DISTRO}" ]; then
     log_info "Gathering dependencies for ${ROS_DISTRO}..."
     # Ensure apt is updated for fresh dependency resolution

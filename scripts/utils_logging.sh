@@ -21,44 +21,36 @@ LOG_SHOW_TIME="${LOG_SHOW_TIME:-false}"
 DEBUG_MODE="${DEBUG_MODE:-false}"
 
 _log_base() {
-    local type="$1"
-    local color="$2"
-    local symbol="$3"
-    local msg="$4"
+    local type="$1" color="$2" symbol="$3" msg="$4"
 
-    local time_str=""
-    if [ "${LOG_SHOW_TIME}" = "true" ]; then
-        time_str="${CYAN}[$(date '+%H:%M:%S')]${NC} "
+    # 1. Resolve Log Path & Ensure Directory (Once per function call)
+    local log_out=""
+    if [[ -n "${LOG_FILE}" ]]; then
+        log_out="${LOG_FILE}"
+        [[ "${log_out}" != /* ]] && log_out="${WORKSPACE_PATH:-/workspace}/${log_out}"
+        mkdir -p "$(dirname "$log_out")"
     fi
 
-    local prefix="${LOG_PREFIX:+${CYAN}${LOG_PREFIX}${NC} }"
+    # 2. Metadata Pre-calculation
+    local timestamp="" prefix=""
+    [[ "${LOG_SHOW_TIME}" == "true" ]] && timestamp="${CYAN}[$(date '+%H:%M:%S')]${NC} "
+    [[ -n "${LOG_PREFIX}" ]] && prefix="${CYAN}${LOG_PREFIX}${NC} "
 
-    # Create log file directory if it doesn't exist (only once for disk I/O optimization)
-    if [ -n "${LOG_FILE}" ]; then
-        local log_dir
-        log_dir=$(dirname "${LOG_FILE}")
-        [ ! -d "$log_dir" ] && mkdir -p "$log_dir"
-    fi
+    # 3. Stream Processing (Clean & Fast)
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        local content="${color}[${type}]${NC}${symbol:+ ${symbol}}${line:+ $line}"
+        local full_msg="${timestamp}${prefix}${content}"
 
-    # Process multi-line messages (prevents missing the last newline)
-    while IFS= read -r line || [ -n "$line" ]; do
-        # Only add prefix to the line if it's not empty, otherwise just print the prefix
-        if [ -z "$line" ]; then
-            local full_msg="${time_str}${prefix}${color}[${type}]${NC}"
-        else
-            local full_msg="${time_str}${prefix}${color}[${type}]${NC} ${symbol:+${symbol} }$line"
-        fi
-
-        # Output ERROR/WARN to standard error (stderr, >&2) for shell pipe compatibility
-        if [ "$type" = "ERROR" ] || [ "$type" = "WARN" ]; then
+        # Output to Console
+        if [[ "$type" == "ERROR" || "$type" == "WARN" ]]; then
             echo -e "$full_msg" >&2
         else
             echo -e "$full_msg"
         fi
 
-        # File logging (record after removing colors)
-        if [ -n "${LOG_FILE}" ]; then
-            echo -e "$full_msg" | sed 's/\x1b\[[0-9;]*m//g' >> "${LOG_FILE}"
+        # Robust File Logging (ANSI Strip)
+        if [[ -n "$log_out" ]]; then
+            echo -e "$full_msg" | sed 's/\x1b\[[0-9;]*m//g' >> "$log_out"
         fi
     done <<< "$msg"
 }
@@ -156,7 +148,7 @@ print_section() {
     local title_len=${#title}
     local pad_len=$(( (total_len - title_len) / 2 ))
     local padding=$(printf '%*s' "$pad_len" "" | tr ' ' '=')
-    
+
     echo -e ""
     echo -e "${CYAN}${padding}${title}${padding}${NC}"
 }

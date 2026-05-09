@@ -17,19 +17,22 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 [[ $- == *i* ]] && INTERACTIVE=true || INTERACTIVE=false
 
 # Environment Defaults & Paths
-VENV_PATH="/workspace/install/.venv"
+VENV_PATH="${WORKSPACE_PATH:-/workspace}/install/.venv"
 SYS_PYTHON_EXE="/usr/bin/python3"
 
 # Smart Python Detection for Builds
 # Returns venv python ONLY if --share (system-site-packages) is enabled; otherwise defaults to system python.
 function __get_build_py_exe() {
-    local cfg_file="${VIRTUAL_ENV}/pyvenv.cfg"
-    # Returns venv python ONLY if --share (system-site-packages) is enabled; 
-    # This ensures consistency between system libraries and Python bindings.
-    if [ -f "$cfg_file" ] && grep -q "include-system-site-packages = true" "$cfg_file" 2>/dev/null; then
-        echo "${VENV_PATH}/bin/python3"
+    local script_live="${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh"
+    local script_static="/docker_dev/scripts/get_python_exe.sh"
+
+    # 1. Prefer central detection script (Single Source of Truth)
+    if [ -f "$script_live" ]; then
+        bash "$script_live"
+    elif [ -f "$script_static" ]; then
+        bash "$script_static"
     else
-        # Default to system python for maximum stability in isolated environments
+        # 2. Minimal fallback to system python (avoiding logic duplication)
         echo "${SYS_PYTHON_EXE:-/usr/bin/python3}"
     fi
 }
@@ -40,20 +43,32 @@ function __get_build_py_exe() {
 if [ -n "${ROS_DISTRO}" ]; then
     # --- Build (Unified Colcon) ----------------------------------------------
     # CMAKE_CXX_STANDARD is injected via .env -> docker-compose -> ENV
-    alias cb='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe)'
-    alias cbp='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --packages-select'
-    alias cbm='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --metas'
+    alias cb='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe)'
+    alias cbp='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --packages-select'
+    alias cbm='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --metas'
 
     # Release mode (Optimized)
-    alias cbr='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe)'
-    alias cbrp='colcon build --symlink-install --install-base /workspace/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --packages-select'
+    alias cbr='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe)'
+    alias cbrp='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --packages-select'
     alias cbt='colcon test'
-    alias s='source /workspace/install/setup.bash'
+    # Smart Sourcing: Auto-detects (devel/) or (install/)
+    function __smart_source() {
+        if [ -f "${WORKSPACE_PATH:-/workspace}/install/setup.bash" ]; then
+            source "${WORKSPACE_PATH:-/workspace}/install/setup.bash"
+            echo -e "${GREEN}✓${NC} Sourced install/"
+        elif [ -f "${WORKSPACE_PATH:-/workspace}/devel/setup.bash" ]; then
+            source "${WORKSPACE_PATH:-/workspace}/devel/setup.bash"
+            echo -e "${GREEN}✓${NC} Sourced devel/"
+        else
+            echo -e "${YELLOW}⚠${NC} No setup.bash found in install/ or devel/"
+        fi
+    }
+    alias s='__smart_source'
     alias sb='source ~/.bashrc'
 
     # --- Navigation ----------------------------------------------------------
-    alias cw='cd /workspace'
-    alias cs='cd /workspace/src'
+    alias cw='cd ${WORKSPACE_PATH:-/workspace}'
+    alias cs='cd ${WORKSPACE_PATH:-/workspace}/src'
 
     # --- ROS Commands --------------------------------------------------------
     # ROS 2 (Default)
@@ -93,7 +108,7 @@ alias cc='cd /docker_dev/config'
 # =============================================================================
 # Python / uv
 # =============================================================================
-alias uvs='uv sync --project /workspace/src --extra ${UV_EXTRA:-cpu}'
+alias uvs='uv sync --project ${WORKSPACE_PATH:-/workspace}/src --extra ${UV_EXTRA:-cpu}'
 alias uvr='uv run'
 alias uvp='uv pip install'
 alias uvl='uv pip list'
@@ -111,8 +126,8 @@ function mkenv() {
     fi
     mkdir -p "$(dirname "$VENV_PATH")" && \
     uv venv "$VENV_PATH" --python "$py_exe" $share_flag --seed --prompt "${COMPOSE_PROJECT_NAME:-.venv}" && \
-    ln -sf "$VENV_PATH" /workspace/.venv && \
-    echo -e "Created ${GREEN}${msg}${NC} in $(dirname "$VENV_PATH") and linked to /workspace/.venv. Run: ${CYAN}activate${NC}"
+    ln -sf "$VENV_PATH" "${WORKSPACE_PATH:-/workspace}/.venv" && \
+    echo -e "Created ${GREEN}${msg}${NC} in $(dirname "$VENV_PATH") and linked to ${WORKSPACE_PATH:-/workspace}/.venv. Run: ${CYAN}activate${NC}"
 }
 
 # Internal helper for environment state management (State Provider Pattern)
@@ -124,7 +139,7 @@ function __env_sync_state() {
     if [ "$action" == "lock" ]; then
         # 1. Backup existing state
         export _OLD_UV_PYTHON="$UV_PYTHON"
-        
+
         # 2. Detect identity and decide locking strategy
         if grep -q "include-system-site-packages = true" "$cfg_file" 2>/dev/null; then
             export ENVIRONMENT_TYPE="SHARED"
@@ -166,14 +181,14 @@ function activate() {
         if [ -n "$(type -t deactivate)" ]; then
             # Capture the body of the original deactivate function safely
             local original_body=$(declare -f deactivate | sed '1,/^[{ ]/d; $d')
-            
+
             function deactivate() {
                 # 1. Execute original logic (restores PATH, PS1, etc.)
                 eval "$original_body"
-                
+
                 # 2. Execute our custom state restoration
                 __env_sync_state "restore"
-                
+
                 # 3. Final cleanup
                 unset -f deactivate 2>/dev/null
                 echo -e "${BLUE}ℹ${NC} Environment deactivated. State restored."
@@ -269,7 +284,7 @@ function syspython() {
 # Utils & Build
 # =============================================================================
 # Standard C++ build workflow (src -> build -> install)
-alias mbuild='mkdir -p /workspace/build && cd /workspace/build && cmake ../src -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) && make -j$(nproc) install && cd /workspace'
+alias mbuild='mkdir -p ${WORKSPACE_PATH:-/workspace}/build && cd ${WORKSPACE_PATH:-/workspace}/build && cmake ../src -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH:-/workspace}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) && make -j$(nproc) install && cd ${WORKSPACE_PATH:-/workspace}'
 
 alias k='killall'
 alias k9='killall -9'
@@ -285,13 +300,13 @@ alias check_deps='bash /docker_dev/scripts/check_deps.sh'
 function __detect_project_type() {
     if [ -n "${ROS_DISTRO}" ] && command -v colcon &>/dev/null; then
         # Check for ROS-specific markers
-        if [ -f "/workspace/src/CMakeLists.txt" ] || find /workspace/src -maxdepth 2 -name "package.xml" | grep -q .; then
+        if [ -f "${WORKSPACE_PATH:-/workspace}/src/CMakeLists.txt" ] || find "${WORKSPACE_PATH:-/workspace}/src" -maxdepth 2 -name "package.xml" | grep -q .; then
             echo "ROS"
             return
         fi
     fi
 
-    if find /workspace/src -maxdepth 2 -name "CMakeLists.txt" | grep -q .; then
+    if find "${WORKSPACE_PATH:-/workspace}/src" -maxdepth 2 -name "CMakeLists.txt" | grep -q .; then
         echo "CPP"
     else
         echo "PYTHON"
@@ -344,7 +359,7 @@ alias use_cpu='source /docker_dev/scripts/gpu_setup.sh cpu && __gpu_status_impl'
 function __print_help() {
     [ "$INTERACTIVE" = false ] && return
     print_banner GUIDE
-    echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC}"
+    echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | WS: ${GREEN}${WORKSPACE_PATH}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC}"
     echo -e ""
     echo -e "  ${PURPLE}🚀 Essential Workflow:${NC}"
     echo -e "    ${GREEN}mksync [--share]${NC}  : One-step init (mkenv + uvs + sync_deps + cb + s)"
@@ -376,14 +391,14 @@ function __print_help() {
     echo -e "    ${GREEN}gpu_setup ${NC}        : Auto-detect and configure optimal GPU mode"
     echo -e "    ${GREEN}use_nvidia${NC} / ${GREEN}cpu${NC} : Force NVIDIA Hardware / Software rendering"
     echo -e "    ${GREEN}use_intel${NC} / ${GREEN}amd${NC}  : Force Intel or AMD (Mesa) acceleration"
-    echo -e "    ${GREEN}gpu_check${NC} / ${GREEN}test${NC}  : glxinfo check / glxgears performance test"
+    echo -e "    ${GREEN}gpu_check${NC} / ${GREEN}test${NC} : glxinfo check / glxgears performance test"
     echo -e ""
     echo -e "  ${BLUE}🛠️  System Utilities:${NC}"
-    echo -e "    ${GREEN}cw${NC} / ${GREEN}cs${NC} / ${GREEN}cc${NC}     : cd to /workspace, /workspace/src, or /docker_dev/config"
+    echo -e "    ${GREEN}cw${NC} / ${GREEN}cs${NC} / ${GREEN}cc${NC}     : cd to ${WORKSPACE_PATH:-/workspace}, ${WORKSPACE_PATH:-/workspace}/src, or /docker_dev/config"
     echo -e "    ${GREEN}sync_deps${NC}        : Sync external repos from .repos file"
-    echo -e "    ${GREEN}check_deps${NC}       : Verify missing runtime libraries in install/"
-    echo -e "    ${GREEN}g${NC}                 : git (e.g., g status, g pull)"
-    echo -e "    ${GREEN}ll${NC} / ${GREEN}la${NC}           : Detailed ls (long format / all)"
+    echo -e "    ${GREEN}check_deps${NC}       : Verify missing runtime libraries in ${WORKSPACE_PATH:-/workspace}/install/"
+    echo -e "    ${GREEN}g${NC}                : git (e.g., g status, g pull)"
+    echo -e "    ${GREEN}ll${NC} / ${GREEN}la${NC}          : Detailed ls (long format / all)"
     echo -e "    ${GREEN}k${NC} / ${GREEN}k9${NC}           : killall / killall -9"
     echo -e ""
     echo -e "  Type ${CYAN}h${NC} or ${CYAN}help${NC} to see this guide again. Stay agile!"

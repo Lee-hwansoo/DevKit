@@ -35,30 +35,38 @@ _ini_has() {
     ' "$file" 2>/dev/null
 }
 
-# Guard: IS_WSL is the authoritative source (set by env_detector.sh → Makefile export).
-# This script is only invoked from `make check` after IS_WSL=true is confirmed.
-# When run standalone without IS_WSL set, exits cleanly (safe fallback).
 if [ "${IS_WSL}" != "true" ]; then
     exit 0
 fi
 
 # 1. Locate .wslconfig on Windows Host
-# timeout 3: prevents hanging if Windows process bridge is unresponsive.
-# || true: prevents set -e from aborting if powershell.exe is unavailable.
 WIN_USERPROFILE=""
+
+# Method A: powershell.exe (Most reliable)
 if command -v powershell.exe >/dev/null 2>&1; then
-    WIN_USERPROFILE=$(timeout 3 powershell.exe -NoProfile -Command \
-        'Write-Host $env:USERPROFILE -NoNewline' 2>/dev/null | tr -d '\r') || true
+    _raw_profile=$(timeout 3 powershell.exe -NoProfile -Command 'Write-Host $env:USERPROFILE -NoNewline' 2>/dev/null | tr -d '\r') || true
+    if [ -n "${_raw_profile}" ]; then
+        WIN_USERPROFILE=$(wslpath "${_raw_profile}" 2>/dev/null) || true
+    fi
 fi
 
-if [ -z "${WIN_USERPROFILE}" ]; then
-    # Zero-cost fallback: infer path from /mnt/c/Users using the Windows username.
-    _win_user=$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r') || true
-    if [ -n "${_win_user}" ] && [ -d "/mnt/c/Users/${_win_user}" ]; then
-        WIN_USERPROFILE="/mnt/c/Users/${_win_user}"
+# Method B: cmd.exe fallback
+if [ -z "${WIN_USERPROFILE}" ] && command -v cmd.exe >/dev/null 2>&1; then
+    _raw_profile=$(timeout 3 cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r') || true
+    if [ -n "${_raw_profile}" ]; then
+        WIN_USERPROFILE=$(wslpath "${_raw_profile}" 2>/dev/null) || true
     fi
-else
-    WIN_USERPROFILE=$(wslpath "${WIN_USERPROFILE}" 2>/dev/null) || true
+fi
+
+# Method C: Hardcoded inference from /mnt/c/Users (Last resort)
+if [ -z "${WIN_USERPROFILE}" ]; then
+    _win_user=$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r' 2>/dev/null || whoami)
+    for _drive in /mnt/*; do
+        if [ -d "${_drive}/Users/${_win_user}" ]; then
+            WIN_USERPROFILE="${_drive}/Users/${_win_user}"
+            break
+        fi
+    done
 fi
 
 WSL_CONFIG_PATH="${WIN_USERPROFILE}/.wslconfig"
@@ -68,9 +76,7 @@ LOCAL_WSL_CONF="/etc/wsl.conf"
 HAS_SYSTEMD="false"
 HAS_MIRRORED="false"
 
-# 2. Audit Systemd (Check both /etc/wsl.conf and .wslconfig)
-# _ini_has() validates section context, rejecting commented lines and other-section keys.
-# Check local distro config first ([boot] section)
+# 2. Audit Systemd
 if _ini_has "${LOCAL_WSL_CONF}" "boot" "systemd" "true"; then
     HAS_SYSTEMD="true"
 fi
@@ -80,12 +86,12 @@ if [ "${HAS_SYSTEMD}" = "false" ] && _ini_has "${WSL_CONFIG_PATH}" "boot" "syste
     HAS_SYSTEMD="true"
 fi
 
-# 3. Audit Mirrored Networking ([wsl2] section)
+# 3. Audit Mirrored Networking
 if _ini_has "${WSL_CONFIG_PATH}" "wsl2" "networkingMode" "mirrored"; then
     HAS_MIRRORED="true"
 fi
 
-# 4. Reporting (System Configuration)
+# 4. Reporting
 if [ "${HAS_SYSTEMD}" = "false" ] || [ "${HAS_MIRRORED}" = "false" ]; then
     print_section "WSL Environment Audit"
 
@@ -104,27 +110,22 @@ if [ "${HAS_SYSTEMD}" = "false" ] || [ "${HAS_MIRRORED}" = "false" ]; then
     echo ""
 fi
 
-# 5. GPU Acceleration Audit (Intelligent Hardware Alignment)
-# Runs independently to ensure graphics health regardless of other system settings.
-# Load shared GPU detection helpers
+# 5. GPU Acceleration Audit
 SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/utils_gpu_detect.sh"
 if [ -f "$SOURCE_GPU" ]; then
     source "$SOURCE_GPU"
 else
-    exit 0 # Silent exit if helper is missing in auditor context
+    exit 0
 fi
 
 if [ "${IS_WSL}" = "true" ] && command -v glxinfo &>/dev/null; then
-    # Capture renderer name (handling potential multi-line output)
     host_renderer=$(glxinfo -B 2>/dev/null | grep -Ei "OpenGL renderer string" | head -n 1 | sed -E 's/.*:[[:space:]]*(.*)/\1/' | xargs || true)
-    
+
     if [ -n "$host_renderer" ]; then
         # Scenario A: Software Rendering Fallback (Critical performance impact)
         if [[ "$host_renderer" == *"llvmpipe"* ]]; then
             print_section "WSL GPU Acceleration Audit"
             log_warn "Host OpenGL is stuck on Software Rendering (llvmpipe)."
-            log_detail "Rationale: WSL 2 found hardware but Mesa is not utilizing it."
-            
             if has_nvidia; then
                 log_info "Fix (NVIDIA): Add the following to your HOST(WSL) ~/.bashrc:"
                 get_gpu_prescription "nvidia_wsl" "    "
@@ -133,7 +134,7 @@ if [ "${IS_WSL}" = "true" ] && command -v glxinfo &>/dev/null; then
                 get_gpu_prescription "igpu_wsl" "    "
             fi
             echo ""
-        
+
         # Scenario B: Sub-optimal GPU selection (e.g. using iGPU while NVIDIA dGPU is available)
         elif [[ "$host_renderer" == *"D3D12"* ]] && has_nvidia && [[ "$host_renderer" != *"NVIDIA"* ]]; then
             print_section "WSL GPU Acceleration Audit"

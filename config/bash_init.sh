@@ -14,7 +14,7 @@ export CCACHE_DIR=/cache/ccache
 # uv (Python)
 export UV_CACHE_DIR=/cache/uv
 export UV_PYTHON=${UV_PYTHON:-3.10}
-export UV_PROJECT_ENVIRONMENT="/workspace/install/.venv"
+export UV_PROJECT_ENVIRONMENT="${WORKSPACE_PATH:-/workspace}/install/.venv"
 
 # C++ Standard
 export CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}
@@ -35,8 +35,8 @@ if [ -f "/opt/ros/${ROS_DISTRO:-humble}/setup.bash" ]; then
 fi
 
 # Workspace Overlay (Automatically sourced after colcon build)
-if [ -f /workspace/install/setup.bash ]; then
-    source /workspace/install/setup.bash
+if [ -f "${WORKSPACE_PATH:-/workspace}/install/setup.bash" ]; then
+    source "${WORKSPACE_PATH:-/workspace}/install/setup.bash"
 fi
 
 # Colcon Argument Completion
@@ -63,8 +63,8 @@ else
 fi
 
 # Auto-activate uv Virtual Environment (.venv)
-if [ -f "/workspace/install/.venv/bin/activate" ]; then
-    source "/workspace/install/.venv/bin/activate"
+if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
+    source "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate"
 fi
 
 # GPU Environment Variables (Sourced after ROS to maintain LD_LIBRARY_PATH priority)

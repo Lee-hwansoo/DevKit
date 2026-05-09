@@ -31,11 +31,7 @@
 
     // ── Search & Explorer Exclusions ─────────────────────────────────────────
     "files.exclude": {
-        "**/build": true,
-        "**/install": true,
-        "**/log": true,
         "**/.docker_cache": true,
-        "**/src/thirdparty": true,
         "**/__pycache__": true,
         "**/*.pyc": true
     },

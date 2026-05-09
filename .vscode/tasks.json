@@ -3,7 +3,7 @@
   // .vscode/tasks.json
   // Build, test, and utility tasks for DevKit projects
   //
-  // Supports both ROS 2 (colcon) and ROS 1 (catkin) build systems.
+  // Supports ROS 1/2 (colcon) & cmake build system.
   // ROS version is auto-detected via the ROS_DISTRO environment variable.
   //
   // Execution Strategy:
@@ -25,14 +25,14 @@
   ],
   "tasks": [
     // =====================================================================
-    // ROS 2 Build Tasks (colcon)
+    // ROS Build Tasks (colcon)
     // =====================================================================
     {
       "label": "🔨 colcon: Build (Debug)",
       "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && colcon build --symlink-install --install-base /workspace/install --build-base /workspace/build --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_C_STANDARD=${CMAKE_C_STANDARD:-11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --build-base ${WORKSPACE_PATH:-/workspace}/build --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh) && ([ -f ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ] && ln -sf ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ${WORKSPACE_PATH:-/workspace}/compile_commands.json || true)",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "build",
       "problemMatcher": [
@@ -43,9 +43,9 @@
     {
       "label": "🔨 colcon: Build (RelWithDebInfo)",
       "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && colcon build --symlink-install --install-base /workspace/install --build-base /workspace/build --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --build-base ${WORKSPACE_PATH:-/workspace}/build --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh) && ([ -f ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ] && ln -sf ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ${WORKSPACE_PATH:-/workspace}/compile_commands.json || true)",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": {
         "kind": "build",
@@ -59,9 +59,9 @@
     {
       "label": "🔨 colcon: Build Package",
       "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && colcon build --symlink-install --install-base /workspace/install --build-base /workspace/build --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON --packages-select ${input:packageName}",
+      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --build-base ${WORKSPACE_PATH:-/workspace}/build --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh) --packages-select ${input:packageName} && (PKG_BUILD_DIR=${WORKSPACE_PATH:-/workspace}/build/${input:packageName}; [ -f $PKG_BUILD_DIR/compile_commands.json ] && ln -sf $PKG_BUILD_DIR/compile_commands.json ${WORKSPACE_PATH:-/workspace}/compile_commands.json || true)",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "build",
       "problemMatcher": [
@@ -72,9 +72,9 @@
     {
       "label": "🔨 colcon: Build (Release)",
       "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && colcon build --symlink-install --install-base /workspace/install --build-base /workspace/build --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --build-base ${WORKSPACE_PATH:-/workspace}/build --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh) && ([ -f ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ] && ln -sf ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ${WORKSPACE_PATH:-/workspace}/compile_commands.json || true)",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "build",
       "problemMatcher": [
@@ -82,80 +82,38 @@
       ],
       "detail": "Production-optimized build — maximum performance, no debug symbols"
     },
-    // ── ROS 2 Test Tasks ─────────────────────────────────────────────────
+    // ── ROS Test Tasks ─────────────────────────────────────────────────
     {
       "label": "🧪 colcon: Test",
       "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && source /workspace/install/setup.bash && colcon test --build-base /workspace/build --install-base /workspace/install --event-handlers console_direct+",
+      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && source ${WORKSPACE_PATH:-/workspace}/install/setup.bash && colcon test --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --event-handlers console_direct+",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "test",
       "problemMatcher": [],
-      "detail": "Run all ROS 2 package tests with console output"
+      "detail": "Run all ROS package tests with console output"
     },
     {
       "label": "🧪 colcon: Test Results",
       "type": "shell",
-      "command": "colcon test-result --build-base /workspace/build --verbose",
+      "command": "colcon test-result --build-base ${WORKSPACE_PATH:-/workspace}/build --verbose",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "test",
       "problemMatcher": [],
       "detail": "Display detailed test results summary"
     },
-    // =====================================================================
-    // ROS 1 Build Tasks (catkin)
-    // =====================================================================
-    {
-      "label": "🐢 catkin: Build (Debug)",
-      "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-noetic}/setup.bash && catkin build --workspace /workspace -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-      "options": {
-        "cwd": "/workspace"
-      },
-      "group": "build",
-      "problemMatcher": [
-        "$gcc"
-      ],
-      "detail": "Build all ROS 1 packages with Debug symbols (catkin)"
-    },
-    {
-      "label": "🐢 catkin: Build (Release)",
-      "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-noetic}/setup.bash && catkin build --workspace /workspace -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-      "options": {
-        "cwd": "/workspace"
-      },
-      "group": "build",
-      "problemMatcher": [
-        "$gcc"
-      ],
-      "detail": "Build all ROS 1 packages with Release optimization (catkin)"
-    },
-    {
-      "label": "🐢 catkin: Build Package",
-      "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-noetic}/setup.bash && catkin build --workspace /workspace --packages-select ${input:packageName} -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-      "options": {
-        "cwd": "/workspace"
-      },
-      "group": "build",
-      "problemMatcher": [
-        "$gcc"
-      ],
-      "detail": "Build a single specific ROS 1 package with Debug symbols"
-    },
-    // =====================================================================
+ 
     // Pure C++ Build Tasks
     // =====================================================================
     {
       "label": "🔨 cmake: Build (Debug)",
       "type": "shell",
-      "command": "mkdir -p /workspace/build && cd /workspace/build && cmake ../src -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_C_STANDARD=${CMAKE_C_STANDARD:-11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && make -j$(nproc) install",
+      "command": "mkdir -p ${WORKSPACE_PATH:-/workspace}/build && cd ${WORKSPACE_PATH:-/workspace}/build && cmake ../src -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH:-/workspace}/install -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh) && make -j$(nproc) install && ([ -f ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ] && ln -sf ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ${WORKSPACE_PATH:-/workspace}/compile_commands.json || true)",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "build",
       "problemMatcher": [
@@ -166,9 +124,9 @@
     {
       "label": "🔨 cmake: Build (Release)",
       "type": "shell",
-      "command": "mkdir -p /workspace/build && cd /workspace/build && cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/workspace/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && make -j$(nproc) install",
+      "command": "mkdir -p ${WORKSPACE_PATH:-/workspace}/build && cd ${WORKSPACE_PATH:-/workspace}/build && cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH:-/workspace}/install -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh) && make -j$(nproc) install && ([ -f ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ] && ln -sf ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ${WORKSPACE_PATH:-/workspace}/compile_commands.json || true)",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "build",
       "problemMatcher": [
@@ -182,9 +140,9 @@
     {
       "label": "🐍 Python: uv sync",
       "type": "shell",
-      "command": "uv sync --project /workspace/src --extra ${UV_EXTRA:-cpu}",
+      "command": "uv sync --project ${WORKSPACE_PATH:-/workspace}/src --extra ${UV_EXTRA:-cpu}",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "problemMatcher": [],
       "detail": "Synchronize Python dependencies from pyproject.toml via uv"
@@ -192,9 +150,9 @@
     {
       "label": "🐍 Python: Create venv",
       "type": "shell",
-      "command": "mkdir -p /workspace/install && uv venv --python ${UV_PYTHON:-3.10} /workspace/install/.venv && ln -sf /workspace/install/.venv /workspace/.venv",
+      "command": "mkdir -p ${WORKSPACE_PATH:-/workspace}/install && uv venv \"${WORKSPACE_PATH:-/workspace}/install/.venv\" --python ${env:UV_PYTHON:3.10} --seed --prompt \"${env:COMPOSE_PROJECT_NAME:-.venv}\" && ln -sf ${WORKSPACE_PATH:-/workspace}/install/.venv ${WORKSPACE_PATH:-/workspace}/.venv",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "problemMatcher": [],
       "detail": "Create Python virtual environment in install/.venv (artifact separation)"
@@ -207,7 +165,7 @@
       "type": "shell",
       "command": "bash /docker_dev/scripts/sync_deps.sh",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "problemMatcher": [],
       "detail": "Clone external repos from dependencies.repos and install rosdep packages"
@@ -215,9 +173,9 @@
     {
       "label": "🔍 Check Dependencies (Sanity)",
       "type": "shell",
-      "command": "bash /docker_dev/scripts/check_deps.sh /workspace/install",
+      "command": "bash ${WORKSPACE_PATH:-/workspace}/scripts/check_deps.sh ${WORKSPACE_PATH:-/workspace}/install",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "problemMatcher": [],
       "detail": "Verify no missing shared libraries in install/ directory"
@@ -228,19 +186,59 @@
     {
       "label": "📋 Source ROS Workspace",
       "type": "shell",
-      "command": "echo '⚠️  Use the terminal directly: source install/setup.bash'",
+      "command": "echo '⚠️  Use the terminal directly: source install/setup.bash (or use alias \"s\")'",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "problemMatcher": [],
-      "detail": "Note: 'source' must be run in an interactive terminal, not as a task"
+      "detail": "Note: 'source' must be run in an interactive terminal to affect your shell session"
+    },
+    {
+      "label": "🚀 Full Hardware & GPU Check",
+      "type": "shell",
+      "command": "bash ${WORKSPACE_PATH:-/workspace}/scripts/hardware_check.sh",
+      "options": {
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
+      },
+      "problemMatcher": [],
+      "detail": "Comprehensive diagnostic for GPU, CUDA, Display, and WSL2 configuration"
+    },
+    {
+      "label": "📦 Sync Workspace Dependencies",
+      "type": "shell",
+      "command": "bash ${WORKSPACE_PATH:-/workspace}/scripts/sync_deps.sh --rosdep",
+      "options": {
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
+      },
+      "problemMatcher": [],
+      "detail": "Pull external repositories and install missing rosdep dependencies"
+    },
+    {
+      "label": "⚡ GPU Status & Diagnostics",
+      "type": "shell",
+      "command": "bash ${WORKSPACE_PATH:-/workspace}/scripts/gpu_setup.sh status",
+      "options": {
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
+      },
+      "problemMatcher": [],
+      "detail": "Quick check of the active rendering mode and GPU driver visibility"
+    },
+    {
+      "label": "📊 Build Cache Statistics (ccache)",
+      "type": "shell",
+      "command": "ccache -s",
+      "options": {
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
+      },
+      "problemMatcher": [],
+      "detail": "Show ccache hit/miss statistics and cache size usage"
     },
     {
       "label": "🧹 Clean Workspace",
       "type": "shell",
-      "command": "rm -rf /workspace/build /workspace/install /workspace/log && echo '✅ Workspace cleaned (build, install, log removed)'",
+      "command": "rm -rf ${WORKSPACE_PATH:-/workspace}/build ${WORKSPACE_PATH:-/workspace}/install ${WORKSPACE_PATH:-/workspace}/log && echo '✅ Workspace cleaned (build, install, log removed)'",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "problemMatcher": [],
       "detail": "⚠️ WARNING: Removes all build artifacts — use with caution"
@@ -250,7 +248,7 @@
       "type": "shell",
       "command": "bash /docker_dev/scripts/hardware_check.sh",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "problemMatcher": [],
       "detail": "Run full GPU/Display hardware diagnostics inside the container"
@@ -261,9 +259,9 @@
     {
       "label": "⚙️ Source & Build (Debug, pre-launch)",
       "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; if command -v colcon &>/dev/null; then colcon build --symlink-install --install-base /workspace/install --build-base /workspace/build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_C_STANDARD=${CMAKE_C_STANDARD:-11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_EXTRA_ARGS}; elif command -v catkin &>/dev/null; then catkin build --workspace /workspace -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_C_STANDARD=${CMAKE_C_STANDARD:-11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_EXTRA_ARGS}; fi && source /workspace/install/setup.bash 2>/dev/null || source /workspace/devel/setup.bash 2>/dev/null || true",
+      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; if command -v colcon &>/dev/null; then colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --build-base ${WORKSPACE_PATH:-/workspace}/build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh) ${CMAKE_EXTRA_ARGS}; elif command -v catkin &>/dev/null; then catkin build --workspace ${WORKSPACE_PATH:-/workspace} -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh) ${CMAKE_EXTRA_ARGS}; fi && ([ -f ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ] && ln -sf ${WORKSPACE_PATH:-/workspace}/build/compile_commands.json ${WORKSPACE_PATH:-/workspace}/compile_commands.json || true) && source ${WORKSPACE_PATH:-/workspace}/install/setup.bash 2>/dev/null || source ${WORKSPACE_PATH:-/workspace}/devel/setup.bash 2>/dev/null || true",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "build",
       "problemMatcher": [
@@ -278,9 +276,9 @@
     {
       "label": "⚡ Source & Build Package (Debug, pre-launch)",
       "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; if command -v colcon &>/dev/null; then colcon build --symlink-install --install-base /workspace/install --build-base /workspace/build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_C_STANDARD=${CMAKE_C_STANDARD:-11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_EXTRA_ARGS} --packages-select ${input:packageName}; elif command -v catkin &>/dev/null; then catkin build --workspace /workspace --packages-select ${input:packageName} -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DCMAKE_C_STANDARD=${CMAKE_C_STANDARD:-11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_EXTRA_ARGS}; fi && source /workspace/install/setup.bash 2>/dev/null || source /workspace/devel/setup.bash 2>/dev/null || true",
+      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; if command -v colcon &>/dev/null; then colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --build-base ${WORKSPACE_PATH:-/workspace}/build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_EXTRA_ARGS} --packages-select ${input:packageName}; elif command -v catkin &>/dev/null; then catkin build --workspace ${WORKSPACE_PATH:-/workspace} --packages-select ${input:packageName} -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_EXTRA_ARGS}; fi && source ${WORKSPACE_PATH:-/workspace}/install/setup.bash 2>/dev/null || source ${WORKSPACE_PATH:-/workspace}/devel/setup.bash 2>/dev/null || true",
       "options": {
-        "cwd": "/workspace"
+        "cwd": "${env:WORKSPACE_PATH:/workspace}"
       },
       "group": "build",
       "problemMatcher": [

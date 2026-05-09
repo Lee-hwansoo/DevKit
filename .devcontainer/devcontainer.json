@@ -28,7 +28,7 @@
     // Use the ROS CPU service as the default target (GPU variants auto-detected by Makefile)
     // Change to "basic-cpu" for pure C++/Python development without ROS
     "service": "ros-cpu",
-    "workspaceFolder": "/workspace",
+    "workspaceFolder": "${containerEnv:WORKSPACE_PATH:/workspace}",
     "shutdownAction": "none",
 
     // ── Extensions (Installed inside the container) ──────────────────────────
@@ -49,8 +49,8 @@
             "settings": {
                 // Inherit project settings from .vscode/settings.json automatically
                 // These overrides ensure container-specific paths work correctly
-                "python.defaultInterpreterPath": "/workspace/install/.venv/bin/python",
-                "C_Cpp.default.compileCommands": "/workspace/build/compile_commands.json",
+                "python.defaultInterpreterPath": "${containerEnv:WORKSPACE_PATH:/workspace}/install/.venv/bin/python",
+                "C_Cpp.default.compileCommands": "${containerEnv:WORKSPACE_PATH:/workspace}/build/compile_commands.json",
                 "terminal.integrated.defaultProfile.linux": "bash"
             }
         }
@@ -62,18 +62,20 @@
     // can resolve ROS paths without relying on shell-level `source`.
     "remoteEnv": {
         "ROS_DISTRO": "${containerEnv:ROS_DISTRO}",
-        "AMENT_PREFIX_PATH": "/workspace/install:/opt/ros/${containerEnv:ROS_DISTRO}",
-        "CMAKE_PREFIX_PATH": "/workspace/install:/opt/ros/${containerEnv:ROS_DISTRO}",
-        "LD_LIBRARY_PATH": "/workspace/install/lib:/opt/ros/${containerEnv:ROS_DISTRO}/lib:${containerEnv:LD_LIBRARY_PATH}",
-        "PYTHONPATH": "/workspace/install/lib/python3/dist-packages:/opt/ros/${containerEnv:ROS_DISTRO}/lib/python3/dist-packages:${containerEnv:PYTHONPATH}",
-        "PATH": "/workspace/install/.venv/bin:/workspace/install/bin:${containerEnv:PATH}",
-        "ROS_PACKAGE_PATH": "/workspace/src:/opt/ros/${containerEnv:ROS_DISTRO}/share"
+        "CMAKE_CXX_STANDARD": "${localEnv:CMAKE_CXX_STANDARD:17}",
+        "CMAKE_C_STANDARD": "${localEnv:CMAKE_C_STANDARD:11}",
+        "AMENT_PREFIX_PATH": "${containerEnv:WORKSPACE_PATH:/workspace}/install:/opt/ros/${containerEnv:ROS_DISTRO}",
+        "CMAKE_PREFIX_PATH": "${containerEnv:WORKSPACE_PATH:/workspace}/install:/opt/ros/${containerEnv:ROS_DISTRO}",
+        "LD_LIBRARY_PATH": "${containerEnv:WORKSPACE_PATH:/workspace}/install/lib:/opt/ros/${containerEnv:ROS_DISTRO}/lib:${containerEnv:LD_LIBRARY_PATH}",
+        "PYTHONPATH": "${containerEnv:WORKSPACE_PATH:/workspace}/install/.venv/lib/python${localEnv:UV_PYTHON:3.10}/site-packages:${containerEnv:WORKSPACE_PATH:/workspace}/install/lib/python3/dist-packages:/opt/ros/${containerEnv:ROS_DISTRO}/lib/python3/dist-packages:${containerEnv:PYTHONPATH}",
+        "PATH": "${containerEnv:WORKSPACE_PATH:/workspace}/install/.venv/bin:${containerEnv:WORKSPACE_PATH:/workspace}/install/bin:${containerEnv:PATH}",
+        "ROS_PACKAGE_PATH": "${containerEnv:WORKSPACE_PATH:/workspace}/src:/opt/ros/${containerEnv:ROS_DISTRO}/share"
     },
 
     // ── Lifecycle Commands ───────────────────────────────────────────────────
     // Source the ROS and workspace environments after VSCode attaches
     // Auto-detects ROS 1 (devel/setup.bash) vs ROS 2 (install/setup.bash)
-    "postAttachCommand": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; source /workspace/install/setup.bash 2>/dev/null || source /workspace/devel/setup.bash 2>/dev/null; echo '✅ DevKit environment ready (ROS ${ROS_DISTRO:-humble})'",
+    "postAttachCommand": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; source ${WORKSPACE_PATH:-/workspace}/install/setup.bash 2>/dev/null || source ${WORKSPACE_PATH:-/workspace}/devel/setup.bash 2>/dev/null; echo '✅ DevKit environment ready (ROS ${ROS_DISTRO:-humble})'",
 
     // ── Features ─────────────────────────────────────────────────────────────
     "remoteUser": "root"
