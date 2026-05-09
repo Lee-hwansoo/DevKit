@@ -18,7 +18,7 @@ SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
 
 # Environment Defaults & Paths
 VENV_PATH="${WORKSPACE_PATH:-/workspace}/install/.venv"
-SYS_PYTHON_EXE="/usr/bin/python3"
+SYS_PYTHON_EXE=${SYS_PYTHON_EXE:-/usr/bin/python3}
 
 # Smart Python Detection for Builds
 # Returns venv python ONLY if --share (system-site-packages) is enabled; otherwise defaults to system python.

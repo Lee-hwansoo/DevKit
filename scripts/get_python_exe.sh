@@ -8,8 +8,7 @@
 WS_ROOT="${WORKSPACE_PATH:-/workspace}"
 VENV_PATH="${VENV_PATH:-${WS_ROOT}/install/.venv}"
 VENV_CFG="${VENV_PATH}/pyvenv.cfg"
-DEFAULT_SYS_PYTHON="/usr/bin/python3"
-SYS_EXE="${SYS_PYTHON_EXE:-$DEFAULT_SYS_PYTHON}"
+SYS_EXE="${SYS_PYTHON_EXE:-/usr/bin/python3}"
 
 # Logic:
 # 1. If venv exists AND has 'include-system-site-packages = true' AND the binary is executable
@@ -41,6 +40,6 @@ else
         echo "$AUTO_DETECTED_PY"
     else
         # Last resort: returning a string is better than empty for build systems
-        echo "$DEFAULT_SYS_PYTHON"
+        echo "${SYS_PYTHON_EXE:-/usr/bin/python3}"
     fi
 fi
