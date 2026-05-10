@@ -7,6 +7,11 @@
 # to ensure a consistent developer experience across ROS1 and ROS2 targets.
 # =============================================================================
 
+# Force UTF-8 locale for terminal emoji and ASCII art support
+export LANG=${LANG:-C.UTF-8}
+export LC_ALL=${LANG:-C.UTF-8}
+export LANGUAGE=${LANG:-en_US.UTF-8}
+
 # ccache
 export PATH="/usr/lib/ccache:$PATH"
 export CCACHE_DIR=/cache/ccache

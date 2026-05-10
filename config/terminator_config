@@ -48,6 +48,7 @@
         use_system_font = False
         font = D2Coding 12
         title_font = D2Coding 12
+        encoding = UTF-8
 
         background_color = "#1e1e1e"
         foreground_color = "#f8fafc"

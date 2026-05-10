@@ -28,15 +28,17 @@ FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-binaries
 # ── Stage: base (Canonical OS Foundation) ────────────────────────────────────
 FROM ${BASE_IMAGE} AS base
 ARG LANG
+ARG TZ
+ARG DEBIAN_FRONTEND
 ARG ROS_DISTRO
 ARG APT_SNAPSHOT_DATE
-ARG DEBIAN_FRONTEND
 ARG HAS_NVIDIA
 ARG CUDA_VERSION
 ENV LANG=${LANG} \
     LC_ALL=${LANG} \
-    ROS_DISTRO=${ROS_DISTRO} \
-    DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
+    TZ=${TZ} \
+    DEBIAN_FRONTEND=${DEBIAN_FRONTEND} \
+    ROS_DISTRO=${ROS_DISTRO}
 
 # Inject build-time helpers and dependency definitions
 COPY scripts/util_apt_helper.sh /tmp/util_apt_helper.sh
@@ -52,10 +54,16 @@ RUN chmod +x /tmp/util_apt_helper.sh && \
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update \
-    && apt-get install -y --no-install-recommends locales tzdata \
-    && (locale-gen ${LANG} || [ "${LANG}" = "C.UTF-8" ]) \
-    && update-locale LANG=${LANG}
+    apt-get update && apt-get install -y --no-install-recommends \
+    locales tzdata && \
+    (locale-gen ${LANG} || [ "${LANG}" = "C.UTF-8" ]) && \
+    update-locale LANG=${LANG} && \
+    ln -snf /usr/share/zoneinfo/${TZ:-UTC} /etc/localtime && echo ${TZ:-UTC} > /etc/timezone
+ENV LANG=${LANG} \
+    LC_ALL=${LANG} \
+    TZ=${TZ} \
+    DEBIAN_FRONTEND=${DEBIAN_FRONTEND} \
+    ROS_DISTRO=${ROS_DISTRO}
 
 # ── Stage: runtime-common (Optimized Execution Context) ──────────────────────
 FROM base AS runtime-common
@@ -113,10 +121,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     # base-tools
     bash-completion ca-certificates curl file gnupg2 htop iproute2 jq lsb-release net-tools nvtop software-properties-common tree unzip wget \
+    fonts-noto-color-emoji fonts-font-awesome \
     # build-tools
     build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev \
     # gui-tools
-    clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils
+    dbus-x11 clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils
 
 # CUDA Toolkit Installation (Conditional)
 ARG CUDA_VERSION
