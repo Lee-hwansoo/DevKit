@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# config/ros_env_init.sh
+# config/init_ros_env.sh
 # Centralized ROS environment orchestration for ROS1 (Noetic) and ROS2 (Humble)
 # =============================================================================
 

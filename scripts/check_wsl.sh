@@ -1,13 +1,13 @@
 #!/bin/bash
 # =============================================================================
-# scripts/wsl_auditor.sh
+# scripts/check_wsl.sh
 # Diagnostic tool to verify WSL 2 host configurations (.wslconfig)
 # =============================================================================
 
 set -e
 
 # Load logging utilities
-source "$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh" 2>/dev/null || true
+source "$(dirname "${BASH_SOURCE[0]}")/util_logging.sh" 2>/dev/null || true
 
 # Section-aware INI value checker (local utility).
 # Usage: _ini_has <file> <section> <key> <value>
@@ -111,7 +111,7 @@ if [ "${HAS_SYSTEMD}" = "false" ] || [ "${HAS_MIRRORED}" = "false" ]; then
 fi
 
 # 5. GPU Acceleration Audit
-SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/utils_gpu_detect.sh"
+SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
 if [ -f "$SOURCE_GPU" ]; then
     source "$SOURCE_GPU"
 else

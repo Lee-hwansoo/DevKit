@@ -39,15 +39,15 @@ ENV LANG=${LANG} \
     DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 
 # Inject build-time helpers and dependency definitions
-COPY scripts/internal_apt_helper.sh /tmp/internal_apt_helper.sh
-COPY scripts/utils_logging.sh /tmp/utils_logging.sh
+COPY scripts/util_apt_helper.sh /tmp/util_apt_helper.sh
+COPY scripts/util_logging.sh /tmp/util_logging.sh
 COPY dependencies/ /opt/dependencies/
 
-RUN chmod +x /tmp/internal_apt_helper.sh && \
-    /tmp/internal_apt_helper.sh init-apt && \
-    /tmp/internal_apt_helper.sh configure-snapshot ${APT_SNAPSHOT_DATE} && \
+RUN chmod +x /tmp/util_apt_helper.sh && \
+    /tmp/util_apt_helper.sh init-apt && \
+    /tmp/util_apt_helper.sh configure-snapshot ${APT_SNAPSHOT_DATE} && \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
-        /tmp/internal_apt_helper.sh setup-cuda-repo ${CUDA_VERSION}; \
+    /tmp/util_apt_helper.sh setup-cuda-repo ${CUDA_VERSION}; \
     fi
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -71,39 +71,39 @@ ARG HAS_NVIDIA
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
-        major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
-        # Install runtime-side CUDA userspace libraries only.
-        apt-get update && apt-get install -y --no-install-recommends \
-        cuda-cudart-${major_minor} \
-        cuda-nvtx-${major_minor} \
-        libcublas-${major_minor}; \
-        if [ -n "$CUDNN_VERSION" ]; then \
-            if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
-                cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
-                apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}-cuda-${cuda_major}; \
-            else \
-                apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}; \
-            fi; \
-        fi; \
-        # Purge container-side NVIDIA driver userspace packages if they were pulled transitively.
-        # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
-        apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
-        apt-get autoremove -y || true; \
-        apt-get clean; \
-        ldconfig; \
+    major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
+    # Install runtime-side CUDA userspace libraries only.
+    apt-get update && apt-get install -y --no-install-recommends \
+    cuda-cudart-${major_minor} \
+    cuda-nvtx-${major_minor} \
+    libcublas-${major_minor}; \
+    if [ -n "$CUDNN_VERSION" ]; then \
+    if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
+    cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
+    apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}-cuda-${cuda_major}; \
+    else \
+    apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}; \
+    fi; \
+    fi; \
+    # Purge container-side NVIDIA driver userspace packages if they were pulled transitively.
+    # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
+    apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
+    apt-get autoremove -y || true; \
+    apt-get clean; \
+    ldconfig; \
     fi
 
 # Note: entrypoint.sh is also copied in dev-core (inheritance tree differs so duplication is required)
 COPY docker/entrypoint.sh /entrypoint.sh
-COPY config/aliases.sh /opt/scripts/aliases.sh
-COPY config/ros_env_init.sh /opt/scripts/ros_env_init.sh
-COPY scripts/gpu_setup.sh /opt/scripts/gpu_setup.sh
-COPY scripts/utils_logging.sh /opt/scripts/utils_logging.sh
-COPY scripts/utils_gpu_detect.sh /opt/scripts/utils_gpu_detect.sh
-COPY scripts/env_detector.sh /opt/scripts/env_detector.sh
-COPY scripts/hardware_check.sh /opt/scripts/hardware_check.sh
-COPY scripts/get_python_exe.sh /opt/scripts/get_python_exe.sh
-COPY scripts/welcome.sh /opt/scripts/welcome.sh
+COPY config/util_aliases.sh /opt/scripts/util_aliases.sh
+COPY config/init_ros_env.sh /opt/scripts/init_ros_env.sh
+COPY scripts/setup_gpu.sh /opt/scripts/setup_gpu.sh
+COPY scripts/util_logging.sh /opt/scripts/util_logging.sh
+COPY scripts/util_gpu_detect.sh /opt/scripts/util_gpu_detect.sh
+COPY scripts/check_env.sh /opt/scripts/check_env.sh
+COPY scripts/check_hardware.sh /opt/scripts/check_hardware.sh
+COPY scripts/util_get_python.sh /opt/scripts/util_get_python.sh
+COPY scripts/show_welcome.sh /opt/scripts/show_welcome.sh
 RUN chmod +x /entrypoint.sh /opt/scripts/*.sh
 
 # ── Stage: dev-base-tools (Compilers, GUI & Diagnostics) ─────────────────────
@@ -125,29 +125,29 @@ ARG HAS_NVIDIA
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
-        major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
-        # Install development-side CUDA userspace libraries and toolchain.
-        apt-get update && apt-get install -y --no-install-recommends \
-        cuda-nvcc-${major_minor} \
-        cuda-compiler-${major_minor} \
-        cuda-cudart-dev-${major_minor} \
-        libcublas-dev-${major_minor} \
-        cuda-nvml-dev-${major_minor} \
-        cuda-command-line-tools-${major_minor}; \
-        if [ -n "$CUDNN_VERSION" ]; then \
-            if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
-                cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
-                apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}-cuda-${cuda_major} libcudnn${CUDNN_VERSION}-dev-cuda-${cuda_major}; \
-            else \
-                apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION} libcudnn${CUDNN_VERSION}-dev; \
-            fi; \
-        fi; \
-        # Purge container-side NVIDIA driver userspace packages if they were pulled transitively.
-        # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
-        apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
-        apt-get autoremove -y || true; \
-        apt-get clean; \
-        ldconfig; \
+    major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
+    # Install development-side CUDA userspace libraries and toolchain.
+    apt-get update && apt-get install -y --no-install-recommends \
+    cuda-nvcc-${major_minor} \
+    cuda-compiler-${major_minor} \
+    cuda-cudart-dev-${major_minor} \
+    libcublas-dev-${major_minor} \
+    cuda-nvml-dev-${major_minor} \
+    cuda-command-line-tools-${major_minor}; \
+    if [ -n "$CUDNN_VERSION" ]; then \
+    if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
+    cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
+    apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}-cuda-${cuda_major} libcudnn${CUDNN_VERSION}-dev-cuda-${cuda_major}; \
+    else \
+    apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION} libcudnn${CUDNN_VERSION}-dev; \
+    fi; \
+    fi; \
+    # Purge container-side NVIDIA driver userspace packages if they were pulled transitively.
+    # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
+    apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
+    apt-get autoremove -y || true; \
+    apt-get clean; \
+    ldconfig; \
     fi
 
 # Architecture-dependent packages (may not be installed on ARM64)
@@ -157,10 +157,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # D2Coding Font
 RUN if [ -f /opt/dependencies/D2Coding.zip ]; then \
-        unzip -q /opt/dependencies/D2Coding.zip -d /usr/share/fonts/truetype/d2coding; \
+    unzip -q /opt/dependencies/D2Coding.zip -d /usr/share/fonts/truetype/d2coding; \
     else \
-        curl -sfL https://github.com/naver/d2codingfont/releases/download/VER1.3.2/D2Coding-Ver1.3.2-20180524.zip -o /tmp/d2coding.zip && \
-        unzip -q /tmp/d2coding.zip -d /usr/share/fonts/truetype/d2coding && rm -f /tmp/d2coding.zip; \
+    curl -sfL https://github.com/naver/d2codingfont/releases/download/VER1.3.2/D2Coding-Ver1.3.2-20180524.zip -o /tmp/d2coding.zip && \
+    unzip -q /tmp/d2coding.zip -d /usr/share/fonts/truetype/d2coding && rm -f /tmp/d2coding.zip; \
     fi; \
     fc-cache -f || true
 
@@ -192,7 +192,7 @@ RUN mkdir -p /cache/ccache /cache/uv /${WORKSPACE_PATH}/install
 COPY config/  /docker_dev/config/
 COPY scripts/ /docker_dev/scripts/
 RUN chmod +x /docker_dev/scripts/*.sh && \
-    cat /docker_dev/config/bash_init.sh >> /root/.bashrc && \
+    cat /docker_dev/config/init_bash.sh >> /root/.bashrc && \
     mkdir -p /root/.config/terminator && cp /docker_dev/config/terminator_config /root/.config/terminator/config 2>/dev/null || true
 
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -207,7 +207,7 @@ ARG ROS_DISTRO
 ENV COLCON_HOME=${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh install-packages all
+    /tmp/util_apt_helper.sh install-packages all
 WORKDIR ${WORKSPACE_PATH}
 
 FROM dev-core AS ros-base
@@ -215,10 +215,10 @@ ARG ROS_DISTRO
 ENV ROS_DISTRO=${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
+    /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh install-packages all ${ROS_DISTRO} && \
+    /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     (rosdep init || true) && \
     rosdep update --rosdistro ${ROS_DISTRO}
 
@@ -227,7 +227,7 @@ ARG WORKSPACE_PATH
 ENV COLCON_HOME=${WORKSPACE_PATH}
 RUN mkdir -p ${WORKSPACE_PATH}/src && \
     ln -sf /docker_dev/config/colcon.meta ${WORKSPACE_PATH}/colcon.meta
-RUN SYNC_TARGET_DIR=/tmp/staging /docker_dev/scripts/sync_deps.sh --rosdep && \
+RUN SYNC_TARGET_DIR=/tmp/staging /docker_dev/scripts/setup_sync_deps.sh --rosdep && \
     rm -rf /tmp/staging
 WORKDIR ${WORKSPACE_PATH}
 
@@ -241,9 +241,9 @@ ENV UV_PROJECT_ENVIRONMENT="${WORKSPACE_PATH}/install/.venv"
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     uv venv ${UV_PROJECT_ENVIRONMENT} && \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then \
-        uv sync --frozen --no-install-project ${UV_SYNC_FLAGS}; \
+    uv sync --frozen --no-install-project ${UV_SYNC_FLAGS}; \
     elif [ -f /opt/dependencies/requirements.txt ]; then \
-        uv pip install -r /opt/dependencies/requirements.txt; \
+    uv pip install -r /opt/dependencies/requirements.txt; \
     fi
 
 # ── Stage: builder-dev (C++ & Pure Python Build Orchestration) ──────────────
@@ -254,13 +254,13 @@ ARG UV_SYNC_FLAGS
 ARG CMAKE_EXTRA_ARGS
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh install-packages all
+    /tmp/util_apt_helper.sh install-packages all
 COPY s[r]c/ src/
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
     mkdir -p build && cd build && \
-    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash /docker_dev/scripts/get_python_exe.sh) ${CMAKE_EXTRA_ARGS} && \
+    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash /docker_dev/scripts/util_get_python.sh) ${CMAKE_EXTRA_ARGS} && \
     make -j$(nproc) && make install && \
     bash /docker_dev/scripts/check_deps.sh ${WORKSPACE_PATH}/install
 
@@ -277,15 +277,15 @@ COPY s[r]c/ src/
 ENV UV_PROJECT_ENVIRONMENT="${WORKSPACE_PATH}/install/.venv"
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh install-packages all ${ROS_DISTRO} && \
+    /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     rosdep update --rosdistro ${ROS_DISTRO} && \
     ln -s /opt/dependencies ${WORKSPACE_PATH}/dependencies && \
-    SYNC_TARGET_DIR=src/thirdparty /docker_dev/scripts/sync_deps.sh --rosdep
+    SYNC_TARGET_DIR=src/thirdparty /docker_dev/scripts/setup_sync_deps.sh --rosdep
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
     . /opt/ros/${ROS_DISTRO}/setup.sh && \
-    colcon build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash /docker_dev/scripts/get_python_exe.sh) ${CMAKE_EXTRA_ARGS} --install-base ${WORKSPACE_PATH}/install && \
+    colcon build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash /docker_dev/scripts/util_get_python.sh) ${CMAKE_EXTRA_ARGS} --install-base ${WORKSPACE_PATH}/install && \
     bash /docker_dev/scripts/check_deps.sh ${WORKSPACE_PATH}/install
 
 # ── Final Production Runtime Images (Switch Strategy) ────────────────────────
@@ -294,7 +294,7 @@ ARG WORKSPACE_PATH
 WORKDIR ${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh install-packages runtime && \
+    /tmp/util_apt_helper.sh install-packages runtime && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=builder-dev ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
 ENV PATH="${WORKSPACE_PATH}/install/.venv/bin:${WORKSPACE_PATH}/install/bin:$PATH" VIRTUAL_ENV="${WORKSPACE_PATH}/install/.venv"
@@ -306,10 +306,10 @@ ARG WORKSPACE_PATH
 WORKDIR ${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
+    /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/internal_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
+    /tmp/util_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
     apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-ros-base \
     && rm -rf /var/lib/apt/lists/*

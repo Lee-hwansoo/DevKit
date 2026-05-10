@@ -6,7 +6,7 @@ include:
   - path: docker-compose.common.yml
 
 # ── Development Volume Mounting Anchors (Source Code & Persistence) ──────────
-# Xauthority uses container-scoped version from env_detector.sh when available
+# Xauthority uses container-scoped version from check_env.sh when available
 # SSH uses agent forwarding for secure authentication (Socket mount is required)
 x-dev-volumes: &dev-volumes
   - ${HOST_WORKSPACE_PATH:-.}:${WORKSPACE_PATH:-/workspace}:rw

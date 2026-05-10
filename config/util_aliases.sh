@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================================
-# config/aliases.sh
+# config/util_aliases.sh
 # Comprehensive alias collection for ROS2, C++, Python (uv), and Diagnostics
 #
-# Loaded via ~/.bashrc using: source /docker_dev/config/aliases.sh
+# Loaded via ~/.bashrc using: source /docker_dev/config/util_aliases.sh
 # Note: ROS-specific aliases are only defined if the ros2 command is available,
 # ensuring compatibility with non-ROS dev targets.
 # Note: This file should only be loaded inside the container environment.
@@ -15,8 +15,8 @@ if [ ! -f /.dockerenv ] && [ "$FORCE_LOAD_ALIASES" != "true" ]; then
 fi
 
 # Load logging utility for shared color variables & branding
-SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/../scripts/utils_logging.sh"
+SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/../scripts/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
 # Non-interactive shell detection
@@ -29,8 +29,8 @@ SYS_PYTHON_EXE=${SYS_PYTHON_EXE:-/usr/bin/python3}
 # Smart Python Detection for Builds
 # Returns venv python ONLY if --share (system-site-packages) is enabled; otherwise defaults to system python.
 function __get_build_py_exe() {
-    local script_live="${WORKSPACE_PATH:-/workspace}/scripts/get_python_exe.sh"
-    local script_static="/docker_dev/scripts/get_python_exe.sh"
+    local script_live="${WORKSPACE_PATH:-/workspace}/scripts/util_get_python.sh"
+    local script_static="/docker_dev/scripts/util_get_python.sh"
 
     # 1. Prefer central detection script (Single Source of Truth)
     if [ -f "$script_live" ]; then
@@ -299,7 +299,7 @@ alias ll='ls -alF'
 alias la='ls -A'
 alias ccache-stat='ccache -s'
 alias ccache-clear='ccache -C'
-alias sync_deps='bash /docker_dev/scripts/sync_deps.sh'
+alias sync_deps='bash /docker_dev/scripts/setup_sync_deps.sh'
 alias check_deps='bash /docker_dev/scripts/check_deps.sh'
 
 # Internal helper to categorize the current workspace for intelligent automation
@@ -348,16 +348,19 @@ function mksync() {
 # =============================================================================
 # Hardware Diagnostics
 # =============================================================================
-alias hw_check='bash /docker_dev/scripts/hardware_check.sh'
+alias hw_check='bash /docker_dev/scripts/check_hardware.sh'
 alias gpu_check='glxinfo 2>&1 | grep -E "OpenGL (vendor|renderer|version)" || echo "Error: glxinfo failed (no display?)"'
-alias vulkan_check='vulkaninfo --summary 2>/dev/null | head -20 || echo "Vulkan not available"'
-alias gpu_status='source /docker_dev/scripts/gpu_setup.sh status'
 alias gpu_test='timeout 5 glxgears -info 2>&1 | head -10 || echo "GPU test failed (no display?)"'
-alias gpu_setup='source /docker_dev/scripts/gpu_setup.sh auto && __gpu_status_impl'
-alias use_intel='source /docker_dev/scripts/gpu_setup.sh intel && __gpu_status_impl'
-alias use_amd='source /docker_dev/scripts/gpu_setup.sh amd && __gpu_status_impl'
-alias use_nvidia='source /docker_dev/scripts/gpu_setup.sh nvidia && __gpu_status_impl'
-alias use_cpu='source /docker_dev/scripts/gpu_setup.sh cpu && __gpu_status_impl'
+alias vulkan_check='vulkaninfo --summary 2>/dev/null | head -20 || echo "Vulkan not available"'
+
+# --- GPU Control & Status ---
+alias gpu_status='source /docker_dev/scripts/setup_gpu.sh status'
+alias __gpu_status_impl='source /docker_dev/scripts/setup_gpu.sh status'
+alias gpu_setup='source /docker_dev/scripts/setup_gpu.sh auto && __gpu_status_impl'
+alias use_intel='source /docker_dev/scripts/setup_gpu.sh intel && __gpu_status_impl'
+alias use_amd='source /docker_dev/scripts/setup_gpu.sh amd && __gpu_status_impl'
+alias use_nvidia='source /docker_dev/scripts/setup_gpu.sh nvidia && __gpu_status_impl'
+alias use_cpu='source /docker_dev/scripts/setup_gpu.sh cpu && __gpu_status_impl'
 
 # =============================================================================
 # Help / Documentation
@@ -398,6 +401,7 @@ function __print_help() {
     echo -e "    ${GREEN}use_nvidia${NC} / ${GREEN}cpu${NC} : Force NVIDIA Hardware / Software rendering"
     echo -e "    ${GREEN}use_intel${NC} / ${GREEN}amd${NC}  : Force Intel or AMD (Mesa) acceleration"
     echo -e "    ${GREEN}gpu_check${NC} / ${GREEN}test${NC} : glxinfo check / glxgears performance test"
+    echo -e "    ${GREEN}vulkan_check${NC}      : Vulkan availability & driver check"
     echo -e ""
     echo -e "  ${BLUE}🛠️  System Utilities:${NC}"
     echo -e "    ${GREEN}cw${NC} / ${GREEN}cs${NC} / ${GREEN}cc${NC}     : cd to ${WORKSPACE_PATH:-/workspace}, ${WORKSPACE_PATH:-/workspace}/src, or /docker_dev/config"

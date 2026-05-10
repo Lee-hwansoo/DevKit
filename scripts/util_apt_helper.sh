@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# scripts/internal_apt_helper.sh
+# scripts/util_apt_helper.sh
 # Build-time APT management utility for automated package installation
 #
 # Handles APT initialization, snapshot configuration, ROS repository setup,
@@ -12,9 +12,9 @@ set -eo pipefail
 COMMAND=$1
 
 # Load logging utility (path may vary during docker build)
-SOURCE_LOG="/tmp/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
+SOURCE_LOG="/tmp/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[APT Helper]"
 

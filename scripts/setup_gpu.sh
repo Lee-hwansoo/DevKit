@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# scripts/gpu_setup.sh
+# scripts/setup_gpu.sh
 # Automatic detection and setup switching for GPU hardware acceleration environment
 #
 # Supported devices: NVIDIA, Intel, AMD, CPU (Software)
@@ -11,26 +11,26 @@
 # =============================================================================
 
 # Load logging utility
-SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
+SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[GPU]"
 
-# Load shared GPU detection helpers (P-2: SSOT for GPU detection functions)
-SOURCE_GPU="/docker_dev/scripts/utils_gpu_detect.sh"
-[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/utils_gpu_detect.sh"
-[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="/opt/scripts/utils_gpu_detect.sh"
+# Load shared GPU detection helpers (SSOT for GPU detection functions)
+SOURCE_GPU="/docker_dev/scripts/util_gpu_detect.sh"
+[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
+[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="/opt/scripts/util_gpu_detect.sh"
 if [ -f "$SOURCE_GPU" ]; then
     source "$SOURCE_GPU"
 else
-    echo "${LOG_PREFIX:-[GPU]} FATAL: utils_gpu_detect.sh not found. GPU detection unavailable." >&2
+    echo "${LOG_PREFIX:-[GPU]} FATAL: util_gpu_detect.sh not found. GPU detection unavailable." >&2
     exit 1
 fi
 
 # =============================================================================
 # Global Constants & Environment Management
 # =============================================================================
-# List of environment variables managed by this script (P-2: centralized management)
+# List of environment variables managed by this script (centralized management)
 readonly GPU_ENV_VARS=(
     MESA_LOADER_DRIVER_OVERRIDE
     GALLIUM_DRIVER
@@ -49,7 +49,7 @@ readonly GPU_ENV_VARS=(
 # Detection Helpers
 # =============================================================================
 # GPU vendor detection functions (has_nvidia, has_intel_dri, has_amd_dri,
-# has_any_dri, has_tegra, has_rocm) are provided by utils_gpu_detect.sh above.
+# has_any_dri, has_tegra, has_rocm) are provided by util_gpu_detect.sh above.
 
 # Detects the active display server (Wayland vs X11) with fallback logic
 detect_display_server() {
@@ -79,7 +79,7 @@ path_prepend() {
     fi
 }
 
-# Check if a specific GPU setup is already active (P-2: idempotency helper)
+# Check if a specific GPU setup is already active (idempotency helper)
 is_setup_active() {
     local target_vendor="$1"
     local active_vendor="${__GLX_VENDOR_LIBRARY_NAME:-}"
@@ -401,7 +401,7 @@ setup_auto() {
         else
             if [ "$ds" != "None" ]; then
                 log_warn "Validation tools (glxinfo/vulkaninfo/vainfo) not found."
-                # Low-level fallback for senior architect standard (P-10)
+                # Low-level fallback for senior architect standard
                 local sys_vendor=$(get_gpu_vendor_sysfs)
                 if [ "$sys_vendor" != "Unknown" ]; then
                     log_ok "Fallback Verification: Found $sys_vendor GPU via sysfs."
@@ -524,6 +524,6 @@ case "${1:-auto}" in
     status)             __gpu_status_impl ;;
     auto|"")            setup_auto ;;
     *)
-        echo "Usage: source gpu_setup.sh {auto|intel|amd|nvidia|igpu|cpu|status}"
+        echo "Usage: source setup_gpu.sh {auto|intel|amd|nvidia|igpu|cpu|status}"
         ;;
 esac

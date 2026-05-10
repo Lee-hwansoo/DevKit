@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# scripts/sync_deps.sh
+# scripts/setup_sync_deps.sh
 # Third-party dependency source code synchronization and overlay merge tool
 #
 # Features:
@@ -10,8 +10,8 @@
 # =============================================================================
 
 # Load logging utility
-SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
+SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[Sync Deps]"
 

@@ -1,15 +1,15 @@
 #!/bin/bash
 # =============================================================================
-# scripts/hardware_check.sh
+# scripts/check_hardware.sh
 # In-container hardware acceleration and environment diagnostic tool
 #
-# Usage: hardware_check.sh [--brief]
+# Usage: check_hardware.sh [--brief]
 #   --brief   Compact output (warnings/errors only) for CI/CD pipelines.
 #             Exit code: 0 = all pass, 1 = warnings, 2 = errors
 #
 # Output Strategy:
 #   This script intentionally uses direct echo/printf for output rather than
-#   the log_* API from utils_logging.sh. Diagnostic output requires section
+#   the log_* API from util_logging.sh. Diagnostic output requires section
 #   headers, indented sub-items, and mixed inline coloring that don't conform
 #   to the structured [TYPE] message format of log_*(). Only ANSI color
 #   variables (RED, GREEN, YELLOW, BLUE, CYAN, NC) are imported.
@@ -27,8 +27,8 @@ BRIEF_MODE=false
 [ "${1:-}" = "--brief" ] && BRIEF_MODE=true
 
 # Load logging utility (color variables only — see Output Strategy above)
-SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
+SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
 # Load GPU environment variables if available (crucial for non-interactive shells)
@@ -40,12 +40,12 @@ for env_file in "${GPU_ENV_FILES[@]}"; do
     [ -f "$env_file" ] && source "$env_file"
 done
 
-# Load shared GPU detection helpers (P-2)
-SOURCE_GPU="/docker_dev/scripts/utils_gpu_detect.sh"
-[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/utils_gpu_detect.sh"
+# Load shared GPU detection helpers
+SOURCE_GPU="/docker_dev/scripts/util_gpu_detect.sh"
+[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
 [ -f "$SOURCE_GPU" ] && source "$SOURCE_GPU"
 
-# --- Brief-mode output helpers & diagnostic counters (P-5) -------------------
+# --- Brief-mode output helpers & diagnostic counters -------------------
 DIAG_WARNINGS=0
 DIAG_ERRORS=0
 _hw_hdr()      { $BRIEF_MODE || echo -e "\n${BLUE}$1${NC}"; }
@@ -90,7 +90,7 @@ CPU_MODEL=$(lscpu 2>/dev/null | grep "Model name" | cut -d: -f2 | xargs \
 CPU_CORES=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo)
 _hw_detail "    CPU:    $CPU_MODEL ($CPU_CORES cores)"
 
-# SIMD Features (P-4: architecture-aware detection)
+# SIMD Features (architecture-aware detection)
 ARCH=$(uname -m)
 if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "armv8l" ]; then
     # ARM: Features field with NEON/SVE/crypto extensions
@@ -244,7 +244,7 @@ print_section "3/5 GPU Acceleration"
 
 GPU_FOUND=false
 
-# NVIDIA — kernel device node (P-2: prefer shared helper)
+# NVIDIA — kernel device node (prefer shared helper)
 if type has_nvidia &>/dev/null && has_nvidia; then
     GPU_FOUND=true
     _hw_ok "/dev/nvidiactl (NVIDIA)"
@@ -262,7 +262,7 @@ if [ -d "/dev/dri" ]; then
     fi
 fi
 
-# Jetson / Tegra — embedded NVIDIA without nvidiactl (P-2)
+# Jetson / Tegra — embedded NVIDIA without nvidiactl
 if type has_tegra &>/dev/null && has_tegra; then
     GPU_FOUND=true
     TEGRA_DEVS=$(ls /dev/nvhost-* 2>/dev/null | xargs -n1 basename | tr '\n' ' ')
@@ -303,7 +303,7 @@ CUDA_VER=$(get_cuda_metadata cuda_ver)
 CUDNN_VER=$(get_cuda_metadata cudnn_ver)
 [ -n "$CUDNN_VER" ] && _hw_ok "cuDNN:   $CUDNN_VER"
 
-# AMD ROCm (P-2)
+# AMD ROCm
 if type has_rocm &>/dev/null && has_rocm; then
     if command -v rocm-smi &>/dev/null; then
         AMD_GPU=$(rocm-smi --showproductname 2>/dev/null | grep -i "card\|gpu" | head -1 | xargs)
@@ -321,7 +321,7 @@ elif [ -d "/opt/rocm" ]; then
     _hw_ok "AMD:    ROCm $ROCM_VER (/opt/rocm)"
 fi
 
-# OpenGL — GPU_MODE-aware interpretation (P-6: added else branch for missing glxinfo)
+# OpenGL — GPU_MODE-aware interpretation (added else branch for missing glxinfo)
 if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
     _hw_skip "OpenGL: No display set (DISPLAY/WAYLAND_DISPLAY)"
 elif command -v glxinfo &>/dev/null; then
@@ -349,7 +349,7 @@ elif command -v glxinfo &>/dev/null; then
         log_detail "On host: xhost +SI:localuser:root"
     fi
 else
-    # P-6: Explicit message when glxinfo is not installed but display is set
+    # Explicit message when glxinfo is not installed but display is set
     local sys_vendor=$(get_gpu_vendor_sysfs)
     if [ "$sys_vendor" != "Unknown" ]; then
         _hw_ok "OpenGL: $sys_vendor GPU detected via sysfs (glxinfo missing)"
@@ -413,7 +413,7 @@ else
     _hw_err "uv: Not found"
 fi
 
-# ccache with hit rate calculation (P-7: JSON-first with whitespace tolerance)
+# ccache with hit rate calculation (JSON-first with whitespace tolerance)
 # Parsing strategy: try JSON format first (ccache ≥4.0, stable schema),
 # then fall back to legacy text parsing for older versions.
 if command -v ccache &>/dev/null; then
@@ -424,7 +424,7 @@ if command -v ccache &>/dev/null; then
     # JSON-first: ccache ≥4.0 supports --show-stats --format=json
     if ccache --show-stats --format=json &>/dev/null 2>&1; then
         JSON_STATS=$(ccache --show-stats --format=json 2>/dev/null)
-        # P-7: whitespace-tolerant parsing for pretty-printed JSON
+        # whitespace-tolerant parsing for pretty-printed JSON
         HITS=$(echo "$JSON_STATS" | grep -oP '"direct_cache_hit"\s*:\s*\K[0-9]+' || true)
         MISSES=$(echo "$JSON_STATS" | grep -oP '"cache_miss"\s*:\s*\K[0-9]+' || true)
     fi
@@ -485,7 +485,7 @@ fi
 INPUT_DEVICES=$(ls /dev/input/js* 2>/dev/null | xargs 2>/dev/null)
 [ -n "$INPUT_DEVICES" ] && _hw_ok "Input:  $INPUT_DEVICES"
 
-# SocketCAN — detect interface and check link state (P-8: use `ip link show type can`)
+# SocketCAN — detect interface and check link state (use `ip link show type can`)
 CAN_FOUND=false
 if ip link show type can 2>/dev/null | grep -q .; then
     while IFS= read -r can_iface; do
@@ -503,7 +503,7 @@ if ! $CAN_FOUND; then
 fi
 
 # =============================================================================
-# Summary (P-5: exit code support for --brief mode)
+# Summary (exit code support for --brief mode)
 # =============================================================================
 if $BRIEF_MODE; then
     echo ""

@@ -13,7 +13,7 @@
 set -eo pipefail
 
 # Load logging utility (Simplicity First)
-source "$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh" 2>/dev/null || true
+source "$(dirname "${BASH_SOURCE[0]}")/util_logging.sh" 2>/dev/null || true
 LOG_PREFIX="[Sanity Check]"
 
 WS_ROOT="${WORKSPACE_PATH:-/workspace}"
@@ -51,7 +51,7 @@ function verify_package() {
 
 function check_python_integrity() {
     local script_dir="$(dirname "${BASH_SOURCE[0]}")"
-    local get_py_script="${script_dir}/get_python_exe.sh"
+    local get_py_script="${script_dir}/util_get_python.sh"
 
     if [ ! -f "$get_py_script" ]; then
         log_warn "Python detector script not found. Skipping Python integrity check."

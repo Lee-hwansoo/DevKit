@@ -1,10 +1,10 @@
 #!/bin/bash
 # =============================================================================
-# scripts/utils_gpu_detect.sh
+# scripts/util_gpu_detect.sh
 # Shared GPU hardware detection helpers
 #
 # Provides portable detection functions for GPU vendors and device nodes.
-# Sourced by: gpu_setup.sh, hardware_check.sh
+# Sourced by: setup_gpu.sh, check_hardware.sh
 # =============================================================================
 
 # NVIDIA: kernel device node + driver tool

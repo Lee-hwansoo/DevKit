@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# scripts/utils_logging.sh
+# scripts/util_logging.sh
 # Centralized logging utility for standardized shell output
 #
 # Provides color-coded logging functions (INFO, OK, WARN, ERROR, DEBUG)

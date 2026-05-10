@@ -15,8 +15,8 @@ set -e
 # =============================================================================
 # Bootstrap: Logging (must precede helper function definitions)
 # =============================================================================
-SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/opt/scripts/utils_logging.sh"
+SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/opt/scripts/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
 # Fallback: Define logging stubs if utility functions are unavailable (Safety net for production)
@@ -250,16 +250,16 @@ if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
 fi
 
 # [8.1] Development Aliases & Tools (For Non-interactive support)
-ALIASES_SH="/docker_dev/config/aliases.sh"
-[ ! -f "$ALIASES_SH" ] && ALIASES_SH="/opt/scripts/aliases.sh"
+ALIASES_SH="/docker_dev/config/util_aliases.sh"
+[ ! -f "$ALIASES_SH" ] && ALIASES_SH="/opt/scripts/util_aliases.sh"
 if [ -f "$ALIASES_SH" ]; then
     source "$ALIASES_SH"
     log_ok "Development aliases and tools integrated"
 fi
 
 # [8.2] ROS Version-specific Configuration
-ROS_ENV_INIT="/docker_dev/config/ros_env_init.sh"
-[ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/ros_env_init.sh"
+ROS_ENV_INIT="/docker_dev/config/init_ros_env.sh"
+[ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/init_ros_env.sh"
 if [ -f "$ROS_ENV_INIT" ]; then
     source "$ROS_ENV_INIT"
 fi
@@ -269,10 +269,10 @@ fi
 # =============================================================================
 # Sourced after ROS to ensure LD_LIBRARY_PATH priority for GPU drivers
 log_info "GPU mode: ${GPU_MODE:-auto}"
-if [ -f "/docker_dev/scripts/gpu_setup.sh" ]; then
-    source /docker_dev/scripts/gpu_setup.sh "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
-elif [ -f "/opt/scripts/gpu_setup.sh" ]; then
-    source /opt/scripts/gpu_setup.sh "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
+if [ -f "/docker_dev/scripts/setup_gpu.sh" ]; then
+    source /docker_dev/scripts/setup_gpu.sh "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
+elif [ -f "/opt/scripts/setup_gpu.sh" ]; then
+    source /opt/scripts/setup_gpu.sh "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
 fi
 
 # Persist GPU environment for non-interactive shells (docker exec)
@@ -306,8 +306,8 @@ if [ "$IS_DEV" = true ]; then
     TARGET_DIR="${SYNC_TARGET_DIR:-src/thirdparty}"
     if [ "$PWD" == "${WORKSPACE_PATH:-/workspace}" ] && [ -f "dependencies/dependencies.repos" ]; then
         if [ ! -d "$TARGET_DIR" ] || [ -z "$(ls -A $TARGET_DIR 2>/dev/null)" ]; then
-            log_info "Dependency directory ($TARGET_DIR) is empty. Running sync_deps.sh..."
-            bash /docker_dev/scripts/sync_deps.sh
+            log_info "Dependency directory ($TARGET_DIR) is empty. Running setup_sync_deps.sh..."
+            bash /docker_dev/scripts/setup_sync_deps.sh
         fi
     fi
 fi

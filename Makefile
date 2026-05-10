@@ -35,7 +35,7 @@ export
 # Applied to Docker-related operations to ensure hardware and display compatibility
 NEEDS_DETECTOR := $(filter-out help setup env-check%,$(MAKECMDGOALS))
 ifneq ($(NEEDS_DETECTOR),)
-$(foreach line,$(shell bash scripts/env_detector.sh),$(eval $(line)))
+$(foreach line,$(shell bash scripts/check_env.sh),$(eval $(line)))
 endif
 
 COMPOSE := docker compose
@@ -158,7 +158,7 @@ export IS_WSL HOST_DXG_MOUNT HOST_ARCH HAS_NVIDIA HAS_TOOLKIT HAS_DRI HOST_DRI_M
 
 # Centralized UI Sub-Header Macro
 define PRINT_SECTION
-	@bash -c "source scripts/utils_logging.sh && print_section \"$1\""
+	@bash -c "source scripts/util_logging.sh && print_section \"$1\""
 endef
 
 .PHONY: help setup check check-host xauth status \
@@ -173,7 +173,7 @@ endef
 # Default & Help
 # =============================================================================
 help:
-	@bash -c "source scripts/utils_logging.sh && print_banner WELCOME"
+	@bash -c "source scripts/util_logging.sh && print_banner WELCOME"
 	@echo -e ""
 	@echo -e "  ${BLUE}🛠️   Setup & Infrastructure:${NC}"
 	@echo -e "    ${GREEN}make setup${NC}            : Initialize .env and host prerequisites"
@@ -244,7 +244,7 @@ status: check
 	$(call PRINT_SECTION,Created Docker Volumes)
 	@docker volume ls --filter "name=$(COMPOSE_PROJECT_NAME)" --format "table {{.Name}}\t{{.Driver}}" | sed 's/^/  /'
 	@if [ "$(HAS_NVIDIA)" = "true" ]; then \
-		bash -c "source scripts/utils_logging.sh && print_section 'NVIDIA GPU Details'"; \
+		bash -c "source scripts/util_logging.sh && print_section 'NVIDIA GPU Details'"; \
 		nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader,nounits | sed 's/^/  /'; \
 	fi
 
@@ -277,7 +277,7 @@ check: check-host
 	@if [ ! -f .env ]; then echo -e "  $(ERROR) .env not found. Please run 'make setup' first."; exit 1; fi
 	@if [ ! -d "$(HOST_WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) HOST_WORKSPACE_PATH ($(HOST_WORKSPACE_PATH)) does not exist."; exit 1; fi
 	@if [ "$(IS_WSL)" = "true" ]; then \
-		bash scripts/wsl_auditor.sh; \
+		bash scripts/check_wsl.sh; \
 		if [[ "$(CURDIR)" == /mnt/* ]]; then \
 			echo -e "  $(WARN) You are running from a Windows mount path ($(CURDIR))."; \
 			echo -e "  $(INFO) IO performance will be significantly degraded in WSL 2."; \
@@ -410,13 +410,13 @@ load-dev:
 # Maintenance
 # =============================================================================
 update-gpg:
-	@bash scripts/update_ros_gpg.sh
+	@bash scripts/setup_ros_gpg.sh
 
 # Real-time Monitoring (CPU, MEM, NVIDIA/Intel/AMD GPU)
 stats:
 	@echo -e "  $(INFO) Initiating real-time resource monitoring (Ctrl+C to terminate)..."
 	@watch -t -n 1 "bash -c ' \
-		source scripts/utils_logging.sh; \
+		source scripts/util_logging.sh; \
 		print_section \"All Containers Status (CPU/Mem/PIDs)\"; echo \"\"; \
 		docker stats --no-stream --format \"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.PIDs}}\" | sed \"s/^/  /\"; \
 		if [ \"$(HAS_NVIDIA)\" = \"true\" ]; then \

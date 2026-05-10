@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# config/bash_init.sh
+# config/init_bash.sh
 # Common shell initialization for Docker development environment
 #
 # Sets up core environment variables and sources dependent configuration files
@@ -20,7 +20,7 @@ export UV_PROJECT_ENVIRONMENT="${WORKSPACE_PATH:-/workspace}/install/.venv"
 export CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}
 
 # Custom Aliases
-source /docker_dev/config/aliases.sh
+source /docker_dev/config/util_aliases.sh
 
 # Shell Prompt
 export PS1="\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "
@@ -45,8 +45,8 @@ if [ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash ]; then
 fi
 
 # ROS Version-specific Configuration
-ROS_ENV_INIT="/docker_dev/config/ros_env_init.sh"
-[ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/ros_env_init.sh"
+ROS_ENV_INIT="/docker_dev/config/init_ros_env.sh"
+[ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/init_ros_env.sh"
 if [ -f "$ROS_ENV_INIT" ]; then
     source "$ROS_ENV_INIT"
 fi
@@ -62,8 +62,8 @@ if [ -f /root/.gpu_env.sh ]; then
 fi
 
 # Welcome Message (MOTD)
-WELCOME_SH="/docker_dev/scripts/welcome.sh"
-[ ! -f "$WELCOME_SH" ] && WELCOME_SH="/opt/scripts/welcome.sh"
+WELCOME_SH="/docker_dev/scripts/show_welcome.sh"
+[ ! -f "$WELCOME_SH" ] && WELCOME_SH="/opt/scripts/show_welcome.sh"
 if [ -f "$WELCOME_SH" ]; then
     bash "$WELCOME_SH"
 fi

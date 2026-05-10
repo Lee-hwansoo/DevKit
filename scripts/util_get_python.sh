@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# scripts/get_python_exe.sh
+# scripts/util_get_python.sh
 # Centralized Python Interpreter Detector (Enterprise Grade)
 # Features: Dynamic path resolution, execution bit safety, and SSOT integration.
 # =============================================================================

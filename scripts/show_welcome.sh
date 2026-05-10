@@ -1,15 +1,15 @@
 #!/bin/bash
 # =============================================================================
-# scripts/welcome.sh
+# scripts/show_welcome.sh
 # Container Welcome Message (MOTD) and quick-start guide
 #
 # Displays project metadata (ROS version, GPU mode) and a summarized list
 # of core helper commands and shortcuts for a better onboarding experience.
 # =============================================================================
 
-# Load logging utility for shared color variables (P-3: unified color source)
-SOURCE_LOG="/docker_dev/scripts/utils_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh"
+# Load logging utility for shared color variables (unified color source)
+SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
 print_banner WELCOME

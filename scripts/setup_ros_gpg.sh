@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# scripts/update_ros_gpg.sh
+# scripts/setup_ros_gpg.sh
 # Utility to verify and update ROS GPG repository fingerprints.
 # =============================================================================
 
@@ -8,11 +8,11 @@ set -eo pipefail
 
 # Load logging utility
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_LOG="${SCRIPT_DIR}/utils_logging.sh"
+SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[GPG Update]"
 
-TARGET_FILE="${SCRIPT_DIR}/internal_apt_helper.sh"
+TARGET_FILE="${SCRIPT_DIR}/util_apt_helper.sh"
 ROS_KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
 ROS_ASC_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc"
 
@@ -87,7 +87,7 @@ fi
 if [ "$AUTO_UPDATE" != "true" ]; then
     echo ""
     echo -e "  ${YELLOW}WARNING: This will modify your source code to trust the new GPG key.${NC}"
-    echo -n "  Do you want to update the fingerprint in internal_apt_helper.sh? [y/N]: "
+    echo -n "  Do you want to update the fingerprint in util_apt_helper.sh? [y/N]: "
     read -r ans
     if [[ ! "$ans" =~ ^[yY]$ ]]; then
         log_info "Update cancelled by user."

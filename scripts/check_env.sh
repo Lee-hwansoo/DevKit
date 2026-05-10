@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# scripts/env_detector.sh
+# scripts/check_env.sh
 # Diagnostic engine for host environment detection
 #
 # Precisely detects GPU availability, hardware architecture, container toolkits,
@@ -9,7 +9,7 @@
 # =============================================================================
 
 # Load logging utility
-source "$(dirname "${BASH_SOURCE[0]}")/utils_logging.sh" 2>/dev/null || true
+source "$(dirname "${BASH_SOURCE[0]}")/util_logging.sh" 2>/dev/null || true
 LOG_PREFIX="[Env Detector]"
 
 # 0. Detect Workspace Paths (Host & Container Separation)
@@ -201,7 +201,7 @@ done
 
 # 4. Python Interpreter Detection (SSOT Integration)
 # Detects the best python executable for the current project context.
-GET_PY_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/get_python_exe.sh"
+GET_PY_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/util_get_python.sh"
 if [ -f "$GET_PY_SCRIPT" ]; then
     PYTHON_EXECUTABLE=$(bash "$GET_PY_SCRIPT")
 else
