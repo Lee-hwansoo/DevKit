@@ -231,6 +231,15 @@ fi
 # =============================================================================
 # [8] Environment Sourcing (ROS and Python venv)
 # =============================================================================
+
+# [8.1] Development Aliases & Tools (For Non-interactive support)
+ALIASES_SH="/docker_dev/config/util_aliases.sh"
+[ ! -f "$ALIASES_SH" ] && ALIASES_SH="/opt/scripts/util_aliases.sh"
+if [ -f "$ALIASES_SH" ]; then
+    source "$ALIASES_SH"
+    log_ok "Development aliases and tools integrated"
+fi
+
 # ROS environment source
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
 if [ -f "$ROS_SETUP" ]; then
@@ -245,28 +254,16 @@ else
     log_info "ROS2 not installed or not in /opt/ros, skipping ROS2 setup"
 fi
 
-# Auto-activate Python virtual environment
-if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
-    if [ "$IS_DEV" = true ]; then
-        ln -sf "${WORKSPACE_PATH:-/workspace}/install/.venv" "${WORKSPACE_PATH:-/workspace}/.venv"
-    fi
-    source "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate"
-    log_ok "Python virtualenv activated (${WORKSPACE_PATH:-/workspace}/install/.venv)"
-fi
-
-# [8.1] Development Aliases & Tools (For Non-interactive support)
-ALIASES_SH="/docker_dev/config/util_aliases.sh"
-[ ! -f "$ALIASES_SH" ] && ALIASES_SH="/opt/scripts/util_aliases.sh"
-if [ -f "$ALIASES_SH" ]; then
-    source "$ALIASES_SH"
-    log_ok "Development aliases and tools integrated"
-fi
-
 # [8.2] ROS Version-specific Configuration
 ROS_ENV_INIT="/docker_dev/config/init_ros_env.sh"
 [ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/init_ros_env.sh"
 if [ -f "$ROS_ENV_INIT" ]; then
     source "$ROS_ENV_INIT"
+fi
+
+# [8.3] Auto-activate Python virtual environment
+if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
+    activate
 fi
 
 # =============================================================================

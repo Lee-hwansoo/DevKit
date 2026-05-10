@@ -540,7 +540,7 @@ clean-cache:
 		if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
 			ans="y"; \
 		else \
-			echo -e "  $(WARN) Are you sure you want to delete the host cache directory ($$CACHE_DIR)? [Y/N]"; \
+			echo -en "  $(WARN) Are you sure you want to delete the host cache directory ($$CACHE_DIR)? [Y/N]: "; \
 			read ans || true; \
 		fi; \
 		if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) Deletion cancelled."; exit 1; fi; \
@@ -569,7 +569,7 @@ docker-clean:
 	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
 		ans="y"; \
 	else \
-		echo -e "  $(WARN) Do you want to globally clean Docker on this host? (Deletes all build cache and unused images) [Y/N]"; \
+		echo -en "  $(WARN) Do you want to globally clean Docker on this host? (Deletes all build cache and unused images) [Y/N]: "; \
 		read ans || true; \
 	fi; \
 	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) Operation cancelled."; exit 1; fi

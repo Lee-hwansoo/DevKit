@@ -58,7 +58,7 @@ fi
 
 # Auto-activate uv Virtual Environment (.venv)
 if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
-    source "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate"
+    activate
 fi
 
 # GPU Environment Variables (Sourced after ROS to maintain LD_LIBRARY_PATH priority)
