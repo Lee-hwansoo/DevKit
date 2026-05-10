@@ -249,12 +249,19 @@ if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
     log_ok "Python virtualenv activated (${WORKSPACE_PATH:-/workspace}/install/.venv)"
 fi
 
-# [8.5] Development Aliases & Tools (For Non-interactive support)
+# [8.1] Development Aliases & Tools (For Non-interactive support)
 ALIASES_SH="/docker_dev/config/aliases.sh"
 [ ! -f "$ALIASES_SH" ] && ALIASES_SH="/opt/scripts/aliases.sh"
 if [ -f "$ALIASES_SH" ]; then
     source "$ALIASES_SH"
     log_ok "Development aliases and tools integrated"
+fi
+
+# [8.2] ROS Version-specific Configuration
+ROS_ENV_INIT="/docker_dev/config/ros_env_init.sh"
+[ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/ros_env_init.sh"
+if [ -f "$ROS_ENV_INIT" ]; then
+    source "$ROS_ENV_INIT"
 fi
 
 # =============================================================================

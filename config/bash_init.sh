@@ -45,21 +45,10 @@ if [ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash ]; then
 fi
 
 # ROS Version-specific Configuration
-if [ "${ROS_DISTRO}" = "noetic" ]; then
-    # Prioritize environment variables injected by Docker Compose, fallback to defaults
-    export ROS_MASTER_URI=${ROS_MASTER_URI:-http://localhost:11311}
-    export ROS_HOSTNAME=${ROS_HOSTNAME:-localhost}
-else
-    # ROS 2 (Humble) Specifics
-    export RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
-    export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
-
-    # Auto-configure CycloneDDS defaults using the external config file (Unicast Fallback for Bridge Networks)
-    if [ "$RMW_IMPLEMENTATION" = "rmw_cyclonedds_cpp" ] && [ -z "$CYCLONEDDS_URI" ]; then
-        if [ -f /docker_dev/config/cyclonedds.xml ]; then
-            export CYCLONEDDS_URI=file:///docker_dev/config/cyclonedds.xml
-        fi
-    fi
+ROS_ENV_INIT="/docker_dev/config/ros_env_init.sh"
+[ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/ros_env_init.sh"
+if [ -f "$ROS_ENV_INIT" ]; then
+    source "$ROS_ENV_INIT"
 fi
 
 # Auto-activate uv Virtual Environment (.venv)
@@ -73,6 +62,8 @@ if [ -f /root/.gpu_env.sh ]; then
 fi
 
 # Welcome Message (MOTD)
-if [ -f /docker_dev/scripts/welcome.sh ]; then
-    bash /docker_dev/scripts/welcome.sh
+WELCOME_SH="/docker_dev/scripts/welcome.sh"
+[ ! -f "$WELCOME_SH" ] && WELCOME_SH="/opt/scripts/welcome.sh"
+if [ -f "$WELCOME_SH" ]; then
+    bash "$WELCOME_SH"
 fi

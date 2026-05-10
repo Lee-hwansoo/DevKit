@@ -96,10 +96,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Note: entrypoint.sh is also copied in dev-core (inheritance tree differs so duplication is required)
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY config/aliases.sh /opt/scripts/aliases.sh
+COPY config/ros_env_init.sh /opt/scripts/ros_env_init.sh
 COPY scripts/gpu_setup.sh /opt/scripts/gpu_setup.sh
 COPY scripts/utils_logging.sh /opt/scripts/utils_logging.sh
 COPY scripts/utils_gpu_detect.sh /opt/scripts/utils_gpu_detect.sh
-RUN chmod +x /entrypoint.sh /opt/scripts/gpu_setup.sh /opt/scripts/utils_gpu_detect.sh
+COPY scripts/env_detector.sh /opt/scripts/env_detector.sh
+COPY scripts/hardware_check.sh /opt/scripts/hardware_check.sh
+COPY scripts/get_python_exe.sh /opt/scripts/get_python_exe.sh
+COPY scripts/welcome.sh /opt/scripts/welcome.sh
+RUN chmod +x /entrypoint.sh /opt/scripts/*.sh
 
 # ── Stage: dev-base-tools (Compilers, GUI & Diagnostics) ─────────────────────
 FROM base AS dev-base-tools
