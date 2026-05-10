@@ -1,35 +1,80 @@
 # =============================================================================
 # .editorconfig
-# Universal editor configuration
+# All-in-One DevKit Universal Style Configuration
 # =============================================================================
 
 root = true
 
 # =============================================================================
-# Default: All files
+# [Default] Global Core Standards
 # =============================================================================
 [*]
 charset = utf-8
 end_of_line = lf
-trim_trailing_whitespace = true
 insert_final_newline = true
+trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
+max_line_length = 120
 
 # =============================================================================
-# C / C++
+# [C/C++] Logic & Hardware Layer
 # =============================================================================
-[*.{c,cpp,h,hpp,cc,hh,cxx,hxx}]
+[*.{c,cpp,cc,cxx,h,hpp,hh,hxx}]
 indent_size = 4
+max_line_length = 120
+
+# [*.{h,hpp}] - Specific header alignment
+cpp_indent_access_specifiers = true
+cpp_indent_braces = false
 
 # =============================================================================
-# Python / ROS2 launch files
+# [Python] Scripting & AI Layer (PEP8 Standard)
 # =============================================================================
 [*.{py,launch.py}]
 indent_size = 4
+max_line_length = 100
 
 # =============================================================================
-# CMake
+# [Shell] Automation & Infrastructure
+# =============================================================================
+[*.{sh,bash,zsh}]
+indent_size = 4
+shell_variant = bash
+binary_next_line = true
+
+# =============================================================================
+# [Config & Data] Serialization Formats
+# =============================================================================
+[*.{yaml,yml}]
+indent_size = 2
+
+[*.{json,json5}]
+indent_size = 2
+
+[*.{toml,lock}]
+indent_size = 2
+
+[*.xml]
+indent_size = 2
+
+# =============================================================================
+# [ROS / Robotics] Specialized Formats
+# =============================================================================
+# URDF, XACRO, SDF, World, Launch (XML based)
+[*.{urdf,xacro,world,sdf,launch}]
+indent_size = 2
+
+# ROS Message / Service / Action definitions
+[*.{msg,srv,action}]
+indent_size = 2
+
+# Visualization & Config
+[*.{rviz,perspective,config}]
+indent_size = 2
+
+# =============================================================================
+# [Build Systems] Environment Orchestration
 # =============================================================================
 [CMakeLists.txt]
 indent_size = 2
@@ -37,35 +82,23 @@ indent_size = 2
 [*.cmake]
 indent_size = 2
 
-# =============================================================================
-# Configuration / Markup
-# =============================================================================
-[*.{yaml,yml}]
-indent_size = 2
-
-[*.{json,toml}]
-indent_size = 2
-
-[*.xml]
-indent_size = 2
-
-# =============================================================================
-# ROS2 Robot formats
-# =============================================================================
-[*.{urdf,xacro,world,sdf,launch}]
-indent_size = 2
-
-[*.rviz]
-indent_size = 2
-
-# =============================================================================
-# Shell scripts
-# =============================================================================
-[*.sh]
-indent_size = 4
-
-# =============================================================================
-# Makefile (tab)
-# =============================================================================
 [Makefile]
 indent_style = tab
+indent_size = 8
+
+# =============================================================================
+# [Docker / Git] DevOps Metadata
+# =============================================================================
+[{Dockerfile,Dockerfile.*}]
+indent_size = 4
+
+[*.{dockerignore,gitignore,gitattributes}]
+indent_size = 2
+
+# =============================================================================
+# [Documentation] Markdown
+# =============================================================================
+[*.md]
+indent_size = 2
+max_line_length = off
+trim_trailing_whitespace = false

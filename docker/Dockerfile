@@ -196,7 +196,7 @@ ENV PATH="/usr/lib/ccache:${WORKSPACE_PATH}/install/.venv/bin:$PATH" \
     SYS_PYTHON_EXE=${SYS_PYTHON_EXE} \
     BASH_ENV=/root/.bashrc
 
-RUN mkdir -p /cache/ccache /cache/uv /${WORKSPACE_PATH}/install
+RUN mkdir -p ${CCACHE_DIR} ${UV_CACHE_DIR} ${WORKSPACE_PATH}/install
 
 COPY config/  /docker_dev/config/
 COPY scripts/ /docker_dev/scripts/
