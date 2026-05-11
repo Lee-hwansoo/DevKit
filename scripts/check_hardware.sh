@@ -350,7 +350,7 @@ elif command -v glxinfo &>/dev/null; then
     fi
 else
     # Explicit message when glxinfo is not installed but display is set
-    local sys_vendor=$(get_gpu_vendor_sysfs)
+    sys_vendor=$(get_gpu_vendor_sysfs)
     if [ "$sys_vendor" != "Unknown" ]; then
         _hw_ok "OpenGL: $sys_vendor GPU detected via sysfs (glxinfo missing)"
     else
@@ -387,10 +387,10 @@ fi
 [ -n "${GPU_MODE:-}" ]   && _hw_detail "    GPU_MODE:           ${GPU_MODE}"
 
 # Python
-local sys_py="${SYS_PYTHON_EXE}"
+sys_py="${SYS_PYTHON_EXE:-/usr/bin/python3}"
 if [[ -x "$sys_py" ]]; then
-    local sys_ver=$($sys_py --version 2>&1 | cut -d' ' -f2)
-    _hw_ok "System Python:     $sys_ver ($sys_py)"
+    sys_ver=$($sys_py --version 2>&1 | cut -d' ' -f2)
+    _hw_ok "System Python:      $sys_ver ($sys_py)"
 else
     _hw_err "System Python:     Not found at $sys_py"
 fi

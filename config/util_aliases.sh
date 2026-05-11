@@ -24,7 +24,7 @@ SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
 
 # Environment Defaults & Paths
 VENV_PATH="${WORKSPACE_PATH:-/workspace}/install/.venv"
-SYS_PYTHON_EXE=${SYS_PYTHON_EXE:-/usr/bin/python3}
+export SYS_PYTHON_EXE=${SYS_PYTHON_EXE:-/usr/bin/python3}
 
 # Smart Python Detection for Builds
 # Returns venv python ONLY if --share (system-site-packages) is enabled; otherwise defaults to system python.
@@ -356,12 +356,11 @@ alias vulkan_check='vulkaninfo --summary 2>/dev/null | head -20 || echo "Vulkan 
 
 # --- GPU Control & Status ---
 alias gpu_status='source /docker_dev/scripts/setup_gpu.sh status'
-alias __gpu_status_impl='source /docker_dev/scripts/setup_gpu.sh status'
-alias gpu_setup='source /docker_dev/scripts/setup_gpu.sh auto && __gpu_status_impl'
-alias use_intel='source /docker_dev/scripts/setup_gpu.sh intel && __gpu_status_impl'
-alias use_amd='source /docker_dev/scripts/setup_gpu.sh amd && __gpu_status_impl'
-alias use_nvidia='source /docker_dev/scripts/setup_gpu.sh nvidia && __gpu_status_impl'
-alias use_cpu='source /docker_dev/scripts/setup_gpu.sh cpu && __gpu_status_impl'
+alias gpu_setup='source /docker_dev/scripts/setup_gpu.sh auto && gpu_status'
+alias use_intel='source /docker_dev/scripts/setup_gpu.sh intel && gpu_status'
+alias use_amd='source /docker_dev/scripts/setup_gpu.sh amd && gpu_status'
+alias use_nvidia='source /docker_dev/scripts/setup_gpu.sh nvidia && gpu_status'
+alias use_cpu='source /docker_dev/scripts/setup_gpu.sh cpu && gpu_status'
 
 # =============================================================================
 # Help / Documentation

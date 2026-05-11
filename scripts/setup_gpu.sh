@@ -31,7 +31,7 @@ fi
 # Global Constants & Environment Management
 # =============================================================================
 # List of environment variables managed by this script (centralized management)
-readonly GPU_ENV_VARS=(
+GPU_ENV_VARS=(
     MESA_LOADER_DRIVER_OVERRIDE
     GALLIUM_DRIVER
     LIBGL_ALWAYS_SOFTWARE
@@ -332,7 +332,7 @@ declare -A GPU_STRATEGIES=(
     ["rocm"]="setup_rocm"
     ["any_dri"]="setup_igpu"
 )
-readonly GPU_STRATEGY_ORDER=("dxg" "nvidia" "intel_dri" "amd_dri" "tegra" "rocm" "any_dri")
+GPU_STRATEGY_ORDER=("dxg" "nvidia" "intel_dri" "amd_dri" "tegra" "rocm" "any_dri")
 
 setup_auto() {
     # If LIBGL_ALWAYS_SOFTWARE is 1 from environment, log it but don't return early if GPU_MODE is not cpu
