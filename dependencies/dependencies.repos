@@ -6,7 +6,7 @@
 # use specific tags or commit hashes for the 'version' field.
 # =============================================================================
 repositories:
-#  thirdparty/example_pkg:
+#  example_pkg:
 #    type: git
 #    url: https://github.com/example/example_pkg.git
 #    version: v1.0.0

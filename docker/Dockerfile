@@ -125,12 +125,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # build-tools
     build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev \
     # gui-tools
-    dbus-x11 clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils
+    dbus-x11 clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils && \
+    apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # CUDA Toolkit Installation (Conditional)
 ARG CUDA_VERSION
 ARG CUDNN_VERSION
 ARG HAS_NVIDIA
+ARG LD_LIBRARY_PATH
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
@@ -139,6 +142,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     cuda-nvcc-${major_minor} \
     cuda-compiler-${major_minor} \
+    cuda-libraries-dev-${major_minor} \
+    cuda-visual-tools-${major_minor} \
     cuda-cudart-dev-${major_minor} \
     libcublas-dev-${major_minor} \
     cuda-nvml-dev-${major_minor} \
@@ -156,13 +161,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
     apt-get autoremove -y || true; \
     apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
     ldconfig; \
     fi
+
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_HOME=/usr/local/cuda
 
 # Architecture-dependent packages (may not be installed on ARM64)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd || true
+    apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd || true && \
+    rm -rf /var/lib/apt/lists/*
 
 # D2Coding Font
 RUN if [ -f /opt/dependencies/D2Coding.zip ]; then \
@@ -229,16 +240,17 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     (rosdep init || true) && \
-    rosdep update --rosdistro ${ROS_DISTRO}
+    rosdep update --rosdistro ${ROS_DISTRO} && \
+    rm -rf /var/lib/apt/lists/*
 
 FROM ros-base AS ros
 ARG WORKSPACE_PATH
 ENV COLCON_HOME=${WORKSPACE_PATH}
-RUN mkdir -p ${WORKSPACE_PATH}/src && \
-    ln -sf /docker_dev/config/colcon.meta ${WORKSPACE_PATH}/colcon.meta
+WORKDIR ${WORKSPACE_PATH}
+
+RUN mkdir -p src && /docker_dev/scripts/util_setup_links.sh
 RUN SYNC_TARGET_DIR=/tmp/staging /docker_dev/scripts/setup_sync_deps.sh --rosdep && \
     rm -rf /tmp/staging
-WORKDIR ${WORKSPACE_PATH}
 
 # ── Stage: python-deps (Python Dependency Caching Layer) ────────────────────
 FROM dev-core AS python-deps
@@ -267,10 +279,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY s[r]c/ src/
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
+RUN /docker_dev/scripts/util_setup_links.sh && \
+    SYNC_TARGET_DIR=src/thirdparty /docker_dev/scripts/setup_sync_deps.sh
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
     mkdir -p build && cd build && \
     cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash /docker_dev/scripts/util_get_python.sh) ${CMAKE_EXTRA_ARGS} && \
-    make -j$(nproc) && make install && \
+    make -j$(nproc) install && \
     bash /docker_dev/scripts/check_deps.sh ${WORKSPACE_PATH}/install
 
 # ── Stage: builder-ros (ROS Workspace Orchestration) ─────────────────────────
@@ -288,8 +302,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     rosdep update --rosdistro ${ROS_DISTRO} && \
-    ln -s /opt/dependencies ${WORKSPACE_PATH}/dependencies && \
-    SYNC_TARGET_DIR=src/thirdparty /docker_dev/scripts/setup_sync_deps.sh --rosdep
+    /docker_dev/scripts/util_setup_links.sh && \
+    SYNC_TARGET_DIR=src/thirdparty /docker_dev/scripts/setup_sync_deps.sh --rosdep && \
+    rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
 RUN --mount=type=cache,target=/cache/ccache,sharing=locked \

@@ -12,6 +12,9 @@ export LANG=${LANG:-C.UTF-8}
 export LC_ALL=${LANG:-C.UTF-8}
 export LANGUAGE=${LANG:-en_US.UTF-8}
 
+# Fix for "detected dubious ownership" git error in Docker/WSL2
+export GIT_CONFIG_PARAMETERS="'safe.directory=*'"
+
 # ccache
 export PATH="/usr/lib/ccache:$PATH"
 export CCACHE_DIR=/cache/ccache
@@ -26,6 +29,11 @@ export CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}
 
 # Custom Aliases
 source /docker_dev/config/util_aliases.sh
+
+# Synchronize workspace links
+if [ -f "/docker_dev/scripts/util_setup_links.sh" ]; then
+    /docker_dev/scripts/util_setup_links.sh
+fi
 
 # Shell Prompt
 export PS1="\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "

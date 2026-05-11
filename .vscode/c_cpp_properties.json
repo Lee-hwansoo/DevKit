@@ -24,7 +24,8 @@
                 "${workspaceFolder}/src/**",
                 "${workspaceFolder}/install/include/**",
                 "/opt/ros/${env:ROS_DISTRO}/include/**",
-                "/usr/include/**"
+                "/usr/include/**",
+                "${workspaceFolder}/src/thirdparty/**"
             ],
             "defines": [],
             "compileCommands": "${workspaceFolder}/build/compile_commands.json",

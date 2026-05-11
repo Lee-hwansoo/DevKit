@@ -34,6 +34,14 @@ fi
 LOG_PREFIX="[Entrypoint]"
 
 # =============================================================================
+# Workspace & Environment Setup
+# =============================================================================
+
+# Fix for "detected dubious ownership" git error in Docker/WSL2
+# Using environment variable instead of file config to avoid "Device or resource busy" when .gitconfig is mounted.
+export GIT_CONFIG_PARAMETERS="'safe.directory=*'"
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
@@ -119,6 +127,12 @@ fi
 # Move to workspace root
 if [ -d "${WORKSPACE_PATH:-/workspace}" ]; then
     cd "${WORKSPACE_PATH:-/workspace}"
+
+    # Synchronize workspace links (handles host mount overwrites)
+    if [ "$IS_DEV" = true ] && [ -f "/docker_dev/scripts/util_setup_links.sh" ]; then
+        /docker_dev/scripts/util_setup_links.sh --verbose
+    fi
+
     # Clean up any conflicting libraries leaked from the host via bind mounts
     if [ "$IS_DEV" = true ]; then
         LEAKED_LIBS=$(find . -maxdepth 1 \( -name "libnvidia-*.so*" -o -name "libcuda.so*" \) 2>/dev/null)
@@ -187,15 +201,7 @@ if [ "$IS_DEV" = true ]; then
 fi
 
 # =============================================================================
-# [4] Git safe.directory Setup (Dev Only)
-# =============================================================================
-if [ "$IS_DEV" = true ] && command -v git &>/dev/null; then
-    git config --global --add safe.directory "${WORKSPACE_PATH:-/workspace}" 2>/dev/null || true
-    log_ok "Git safe.directory configured"
-fi
-
-# =============================================================================
-# [5] Check SSH Key Permissions (Dev Only)
+# [4] Check SSH Key Permissions (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ] && [ -d "${DEV_HOME}/.ssh" ]; then
     BAD_PERMS=$(find "${DEV_HOME}/.ssh" -name "id_*" ! -perm 600 2>/dev/null | head -1)
@@ -208,7 +214,7 @@ if [ "$IS_DEV" = true ] && [ -d "${DEV_HOME}/.ssh" ]; then
 fi
 
 # =============================================================================
-# [6] Workspace Status Guide (Dev Only)
+# [5] Workspace Status Guide (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     if [ ! -f "${WORKSPACE_PATH:-/workspace}/install/setup.bash" ] && [ ! -d "${WORKSPACE_PATH:-/workspace}/install/.venv" ]; then
@@ -221,7 +227,7 @@ if [ "$IS_DEV" = true ]; then
     fi
 fi
 
-# [7] SocketCAN Interface Detection
+# [6] SocketCAN Interface Detection
 if ip link show can0 >/dev/null 2>&1; then
     log_ok "SocketCAN can0 available"
 elif ip link show 2>/dev/null | grep -q ": can"; then
@@ -229,10 +235,10 @@ elif ip link show 2>/dev/null | grep -q ": can"; then
 fi
 
 # =============================================================================
-# [8] Environment Sourcing (ROS and Python venv)
+# [7] Environment Sourcing (ROS and Python venv)
 # =============================================================================
 
-# [8.1] Development Aliases & Tools (For Non-interactive support)
+# [7.1] Development Aliases & Tools (For Non-interactive support)
 ALIASES_SH="/docker_dev/config/util_aliases.sh"
 [ ! -f "$ALIASES_SH" ] && ALIASES_SH="/opt/scripts/util_aliases.sh"
 if [ -f "$ALIASES_SH" ]; then
@@ -254,20 +260,20 @@ else
     log_info "ROS2 not installed or not in /opt/ros, skipping ROS2 setup"
 fi
 
-# [8.2] ROS Version-specific Configuration
+# [7.2] ROS Version-specific Configuration
 ROS_ENV_INIT="/docker_dev/config/init_ros_env.sh"
 [ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/init_ros_env.sh"
 if [ -f "$ROS_ENV_INIT" ]; then
     source "$ROS_ENV_INIT"
 fi
 
-# [8.3] Auto-activate Python virtual environment
+# [7.3] Auto-activate Python virtual environment
 if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
     activate
 fi
 
 # =============================================================================
-# [9] GPU Hardware Acceleration Orchestration
+# [8] GPU Hardware Acceleration Orchestration
 # =============================================================================
 # Sourced after ROS to ensure LD_LIBRARY_PATH priority for GPU drivers
 log_info "GPU mode: ${GPU_MODE:-auto}"
@@ -285,7 +291,7 @@ if [ -f "$HOME/.gpu_env.sh" ]; then
 fi
 
 # =============================================================================
-# [10] Workspace Status Summary (Dev Only)
+# [9] Workspace Status Summary (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     printf "\n${BLUE}--- Workspace Status ---${NC}\n"
@@ -301,7 +307,7 @@ if [ "$IS_DEV" = true ]; then
 fi
 
 # =============================================================================
-# [11] Automated Dependency Synchronization (On-Demand Development Only)
+# [10] Automated Dependency Synchronization (On-Demand Development Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     # Keep src/thirdparty as default, but run only if dependencies file exists

@@ -29,7 +29,17 @@ done
 PROJECT_ROOT="${WORKSPACE_PATH:-/workspace}"
 REPOS_FILE="${PROJECT_ROOT}/dependencies/dependencies.repos"
 OVERLAY_DIR="${PROJECT_ROOT}/dependencies/overlay"
-TARGET_DIR="${PROJECT_ROOT}/${SYNC_TARGET_DIR:-src/thirdparty}"
+
+# 1. Path Architecture Setup
+# If SYNC_TARGET_DIR starts with /, treat it as an absolute path; otherwise, relative to PROJECT_ROOT.
+if [[ "$SYNC_TARGET_DIR" == /* ]]; then
+    TARGET_DIR="$SYNC_TARGET_DIR"
+else
+    TARGET_DIR="${PROJECT_ROOT}/${SYNC_TARGET_DIR:-src/thirdparty}"
+fi
+
+# Sanitize double slashes for clean logging
+TARGET_DIR="${TARGET_DIR//\/\//\/}"
 
 mkdir -p "$TARGET_DIR"
 
@@ -63,14 +73,12 @@ fi
 # 2. Package Overlay Application
 print_section "Overlay Application"
 if [ -d "$OVERLAY_DIR" ]; then
-    HAS_FILES=$(find "$OVERLAY_DIR" -mindepth 1 -not -name "*.md" | wc -l)
-    if [ "$HAS_FILES" -gt 0 ]; then
-        log_info "Applying overlays from $OVERLAY_DIR ..."
-        cp -a "$OVERLAY_DIR/." "$TARGET_DIR/"
-        log_step_done "Overlays applied successfully."
-    else
-        log_info "No files found in overlay directory."
-    fi
+    log_info "Applying overlays from $OVERLAY_DIR ..."
+    # Use -print0 and xargs -0 -r for safe file name handling and empty result handling
+    find "$OVERLAY_DIR" -mindepth 1 -maxdepth 1 \
+        ! \( -name "CATKIN_IGNORE" -o -name "COLCON_IGNORE" -o -name "*.md" \) -print0 | \
+        xargs -0 -r cp -a -t "$TARGET_DIR/"
+    log_step_done "Overlays applied successfully."
 else
     log_info "Overlay directory not found."
 fi
@@ -82,11 +90,19 @@ if [ "$DO_ROSDEP" = true ] && command -v rosdep &>/dev/null && [ -n "${ROS_DISTR
     # Ensure apt is updated for fresh dependency resolution
     apt-get update -qq || true
 
-    # Scan the entire src directory to include both internal and third-party packages
-    if ! rosdep install --from-paths src --ignore-src -r -y --rosdistro "$ROS_DISTRO"; then
+    # Scan both the specific target directory (for third-party staging)
+    # AND the main src directory (for internal packages).
+    # rosdep is smart enough to handle duplicates and nested directories.
+    SCAN_PATHS="$TARGET_DIR"
+    if [ -d "${PROJECT_ROOT}/src" ] && [ "$TARGET_DIR" != "${PROJECT_ROOT}/src" ]; then
+        SCAN_PATHS="${PROJECT_ROOT}/src $SCAN_PATHS"
+    fi
+
+    log_info "Running rosdep install for: $SCAN_PATHS"
+    if ! rosdep install --from-paths $SCAN_PATHS --ignore-src -r -y --rosdistro "$ROS_DISTRO"; then
         log_warn "Some rosdep packages failed to install. Check the output above."
     else
-        log_step_done "Workspace-wide rosdep check completed."
+        log_step_done "rosdep check completed for: $SCAN_PATHS"
     fi
 elif [ "$DO_ROSDEP" = true ]; then
     log_info "ROS environment not detected. Skipping rosdep system dependency check."

@@ -41,6 +41,8 @@ CMakeFiles/
 cmake_install.cmake
 Makefile.cmake
 _build/
+colcon.meta
+compile_commands.json
 
 # --- Docker / Environment ----------------------------
 .env

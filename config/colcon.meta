@@ -1,10 +1,22 @@
 {
     "names": {
-        "Eigen3": {
+        "eigen": {
             "cmake-args": [
+                "-Wno-dev",
                 "-DBUILD_TESTING=OFF",
                 "-DEIGEN_BUILD_DOC=OFF",
-                "-DEIGEN_BUILD_PKGCONFIG=OFF"
+                "-DEIGEN_BUILD_PKGCONFIG=OFF",
+                "-DEIGEN_BUILD_LAPACK=OFF",
+                "-DEIGEN_BUILD_BLAS=OFF"
+            ]
+        },
+        "opencv": {
+            "cmake-args": [
+                "-DBUILD_EXAMPLES=OFF",
+                "-DBUILD_TESTS=OFF",
+                "-DBUILD_PERF_TESTS=OFF",
+                "-DBUILD_DOCS=OFF",
+                "-DOPENCV_EXTRA_MODULES_PATH=/workspace/src/thirdparty/opencv_contrib/modules"
             ]
         },
         "gtsam": {

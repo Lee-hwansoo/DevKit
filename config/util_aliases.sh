@@ -43,19 +43,32 @@ function __get_build_py_exe() {
     fi
 }
 
+# Smart GPU-aware CMake Arguments
+# Dynamically enables CUDA support for OpenCV if NVIDIA hardware is detected.
+function __get_gpu_cmake_args() {
+    local script="/docker_dev/scripts/setup_gpu.sh"
+    [ ! -f "$script" ] && script="${WORKSPACE_PATH:-/workspace}/scripts/setup_gpu.sh"
+
+    if [ -f "$script" ]; then
+        bash "$script" opencv_args 2>/dev/null
+    else
+        echo "-DWITH_CUDA=OFF"
+    fi
+}
+
 # =============================================================================
 # ROS (ROS1 & ROS2 Common)
 # =============================================================================
 if [ -n "${ROS_DISTRO}" ]; then
     # --- Build (Unified Colcon) ----------------------------------------------
     # CMAKE_CXX_STANDARD is injected via .env -> docker-compose -> ENV
-    alias cb='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe)'
-    alias cbp='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --packages-select'
-    alias cbm='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --metas'
+    alias cb='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
+    alias cbp='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --packages-select'
+    alias cbm='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --metas'
 
     # Release mode (Optimized)
-    alias cbr='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe)'
-    alias cbrp='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) --packages-select'
+    alias cbr='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
+    alias cbrp='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --packages-select'
     alias cbt='colcon test'
     # Smart Sourcing: Auto-detects (devel/) or (install/)
     function __smart_source() {
@@ -132,7 +145,7 @@ function mkenv() {
     fi
     mkdir -p "$(dirname "$VENV_PATH")" && \
     uv venv "$VENV_PATH" --python "$py_exe" $share_flag --seed --prompt "${COMPOSE_PROJECT_NAME:-.venv}" && \
-    ln -sf "$VENV_PATH" "${WORKSPACE_PATH:-/workspace}/.venv" && \
+    /docker_dev/scripts/util_setup_links.sh && \
     echo -e "Created ${GREEN}${msg}${NC} in $(dirname "$VENV_PATH") and linked to ${WORKSPACE_PATH:-/workspace}/.venv. Run: ${CYAN}activate${NC}"
 }
 
@@ -178,9 +191,9 @@ function activate() {
         export UV_PYTHON="$(which python3)"
     fi
 
-    # Ensure .venv symlink exists in development for IDE integration
+    # Ensure workspace symlinks exist in development for IDE integration
     if [ -d "/docker_dev" ]; then
-        ln -sf "$target_venv" "${WORKSPACE_PATH:-/workspace}/.venv" 2>/dev/null
+        /docker_dev/scripts/util_setup_links.sh 2>/dev/null
     fi
 
     [ "$INTERACTIVE" = true ] && echo -e "${GREEN}✓${NC} Activated (${ENVIRONMENT_TYPE})"
@@ -291,7 +304,7 @@ function syspython() {
 # Utils & Build
 # =============================================================================
 # Standard C++ build workflow (src -> build -> install)
-alias mbuild='mkdir -p ${WORKSPACE_PATH:-/workspace}/build && cd ${WORKSPACE_PATH:-/workspace}/build && cmake ../src -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH:-/workspace}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) && make -j$(nproc) install && cd ${WORKSPACE_PATH:-/workspace}'
+alias mbuild='mkdir -p ${WORKSPACE_PATH:-/workspace}/build && cd ${WORKSPACE_PATH:-/workspace}/build && cmake ../src -Wno-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH:-/workspace}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) && make -j$(nproc) install && cd ${WORKSPACE_PATH:-/workspace}'
 
 alias k='killall'
 alias k9='killall -9'

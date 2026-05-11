@@ -425,6 +425,21 @@ setup_auto() {
 }
 
 # =============================================================================
+# OpenCV CMake Arguments (GPU-aware)
+# =============================================================================
+# Returns CMake flags to enable CUDA acceleration for OpenCV if NVIDIA hardware
+# is detected, otherwise disables CUDA. Extracted as a function so `local` is valid.
+__opencv_cmake_args() {
+    if has_nvidia; then
+        local args="-DWITH_CUDA=ON -DWITH_CUDNN=ON -DOPENCV_DNN_CUDA=ON"
+        args+=" -DENABLE_FAST_MATH=ON -DCUDA_FAST_MATH=ON -DWITH_CUBLAS=ON"
+        echo "$args"
+    else
+        echo "-DWITH_CUDA=OFF"
+    fi
+}
+
+# =============================================================================
 # Status
 # =============================================================================
 __gpu_status_impl() {
@@ -466,9 +481,9 @@ __gpu_status_impl() {
             # Try fallback to glxinfo -B (brief mode)
             RENDERER=$(glxinfo -B 2>/dev/null | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
             if [ -n "$RENDERER" ]; then
-                 log_ok "Renderer: $RENDERER (Detected via Brief Mode)"
+                log_ok "Renderer: $RENDERER (Detected via Brief Mode)"
             else
-                 log_warn "Renderer: Unable to detect via glxinfo. Acceleration state uncertain."
+                log_warn "Renderer: Unable to detect via glxinfo. Acceleration state uncertain."
             fi
         fi
     else
@@ -522,8 +537,9 @@ case "${1:-auto}" in
     igpu)               apply_gpu_setup setup_igpu ;;
     cpu|software)       setup_software ;;
     status)             __gpu_status_impl ;;
+    opencv_args)        __opencv_cmake_args ;;
     auto|"")            setup_auto ;;
     *)
-        echo "Usage: source setup_gpu.sh {auto|intel|amd|nvidia|igpu|cpu|status}"
+        echo "Usage: source setup_gpu.sh {auto|intel|amd|nvidia|igpu|cpu|status|opencv_args}"
         ;;
 esac

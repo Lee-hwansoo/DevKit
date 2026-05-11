@@ -516,12 +516,12 @@ clean:
 	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
 		echo -e "  $(WARN) CI/FORCE mode: Forcibly deleting host folders without prompting."; ans="y"; \
 	else \
-		echo -e "  $(WARN) Do you want to delete the build, install, log, and .venv host folders?"; \
-		echo -n "  (WARNING: If you used bind mounts in .env, actual data will be lost!) [Y/N]: "; \
+		echo -e "  $(WARN) Do you want to delete the [build, install, log, .venv, colcon.meta] host folders?"; \
+		echo -n "  (WARNING: If you used bind mounts in [.env], actual data will be lost!) [Y/N]: "; \
 		read ans || true; \
 	fi; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
-		$(call SUDO_FREE_RM,$(HOST_WORKSPACE_PATH),build install log .venv); \
+		$(call SUDO_FREE_RM,$(HOST_WORKSPACE_PATH),build install log .venv colcon.meta); \
 	else \
 		echo -e "  $(INFO) Safely skipped deleting host folders."; \
 	fi
