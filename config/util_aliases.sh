@@ -62,13 +62,13 @@ function __get_gpu_cmake_args() {
 if [ -n "${ROS_DISTRO}" ]; then
     # --- Build (Unified Colcon) ----------------------------------------------
     # CMAKE_CXX_STANDARD is injected via .env -> docker-compose -> ENV
-    alias cb='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
-    alias cbp='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --packages-select'
-    alias cbm='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --metas'
+    alias cb='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
+    alias cbp='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --packages-select'
+    alias cbm='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --metas ${WORKSPACE_PATH:-/workspace}/colcon.meta --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
 
     # Release mode (Optimized)
-    alias cbr='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
-    alias cbrp='colcon build --symlink-install --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --packages-select'
+    alias cbr='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
+    alias cbrp='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --packages-select'
     alias cbt='colcon test'
     # Smart Sourcing: Auto-detects (devel/) or (install/)
     function __smart_source() {
@@ -112,6 +112,7 @@ if [ -n "${ROS_DISTRO}" ]; then
         alias rr='rosrun'
         alias rl='roslaunch'
         alias ri='rosmsg show'
+        alias gzs='roslaunch gazebo_ros empty_world.launch'
     fi
 
     alias rqt='rqt'
@@ -303,8 +304,9 @@ function syspython() {
 # =============================================================================
 # Utils & Build
 # =============================================================================
-# Standard C++ build workflow (src -> build -> install)
-alias mbuild='mkdir -p ${WORKSPACE_PATH:-/workspace}/build && cd ${WORKSPACE_PATH:-/workspace}/build && cmake ../src -Wno-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH:-/workspace}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) && make -j$(nproc) install && cd ${WORKSPACE_PATH:-/workspace}'
+# Standard C++ build workflow (Modern CMake CLI)
+alias mbuild='cmake -S ${WORKSPACE_PATH:-/workspace}/src -B ${WORKSPACE_PATH:-/workspace}/build -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH:-/workspace}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) && cmake --build ${WORKSPACE_PATH:-/workspace}/build -j$(nproc) --target install'
+alias mclean='rm -rf ${WORKSPACE_PATH:-/workspace}/build ${WORKSPACE_PATH:-/workspace}/install && echo -e "${BLUE}ℹ${NC} Build and Install directories cleared."'
 
 alias k='killall'
 alias k9='killall -9'
@@ -388,14 +390,15 @@ function __print_help() {
     echo -e "    ${GREEN}cb${NC} / ${GREEN}cbr${NC}          : colcon build (Standard / Release)"
     echo -e "    ${GREEN}cbp${NC} / ${GREEN}cbrp${NC}        : colcon build --packages-select (Package specific)"
     echo -e "    ${GREEN}cbm${NC}               : colcon build using project meta files"
-    echo -e "    ${GREEN}s${NC} / ${GREEN}sb${NC}           : Source workspace setup.bash / Source ~/.bashrc"
+    echo -e "    ${GREEN}mbuild${NC} / ${GREEN}mclean${NC}   : C++ build (Modern CMake) / Clean build"
+    echo -e "    ${GREEN}s${NC} / ${GREEN}sb${NC}            : Source workspace setup.bash / Source ~/.bashrc"
     echo -e ""
     echo -e "  ${BLUE}🤖 ROS & Simulation:${NC}"
     echo -e "    ${GREEN}rt${NC} / ${GREEN}rn${NC} / ${GREEN}rl${NC}     : List topics / nodes / launch files"
     echo -e "    ${GREEN}rte${NC} / ${GREEN}rth${NC} / ${GREEN}rshow${NC} : Echo topic / Hz check / Show interface (ri)"
     echo -e "    ${GREEN}rs${NC} / ${GREEN}rp${NC} / ${GREEN}rr${NC}     : List services / params / Run package"
     echo -e "    ${GREEN}rqt${NC} / ${GREEN}gz${NC}          : Launch RQT / Gazebo"
-    echo -e "    ${GREEN}gzs${NC}               : Launch Gazebo ROS factory (ROS 2)"
+    echo -e "    ${GREEN}gzs${NC}                            : Launch Gazebo ROS factory (ROS 1/2)"
     echo -e ""
     echo -e "  ${BLUE}🐍 Python & Dev Tools:${NC}"
     echo -e "    ${GREEN}mkenv [--share]${NC}   : Create pure or shared (system-site-packages) python venv"

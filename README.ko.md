@@ -417,7 +417,8 @@ sync_deps         # dependencies.repos 클론 및 rosdep 의존성 자동 설치
 
 # 3. 🔨 소스 코드 빌드 시작
 cb                # ROS: colcon build 수행
-mbuild            # 순수 C++: cmake & make 수행
+mbuild            # 순수 C++: 현대적 CMake 빌드 및 설치 수행
+mclean            # 클린 빌드: 빌드 및 설치 아티팩트 제거
 ```
 
 ### 📋 통합 명령어 사전
@@ -428,6 +429,7 @@ mbuild            # 순수 C++: cmake & make 수행
 | **`mksync`** | **통합 초기화** | **원스텝 자동화**: mkenv + uvs + sync_deps + 프로젝트별 빌드 |
 | **`hw_check`** | 하드웨어 상태 진단 | GPU 가속 여부 및 **XWayland/Wayland 상태**, 렌더러 진단 |
 | **`mbuild`** | **일반 C++ 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
+| **`mclean`** | **클린 빌드** | `build/` 및 `install/` 아티팩트의 정밀 삭제 |
 | **`mkenv`** | **Python 가상환경 생성** | `install/.venv` 경로 및 **디렉토리 자동 생성**, 루트 심볼릭 링크 생성 |
 | **`cb`** | **ROS 빌드** | `src/` 소스를 빌드하여 `install/`에 설치 |
 | **`sync_deps`** | 의존성 동기화 | `.repos` 기반 소스 다운로드 및 `src/thirdparty` 병합 |
@@ -441,6 +443,7 @@ mbuild            # 순수 C++: cmake & make 수행
 | | `mksync --share` | 공유 환경 초기화 | 시스템 패키지 공유 모드로 초기화 (ROS/OpenCV 바인딩용) |
 | **ROS 빌드** | `cb` / `cbr` | Colcon 빌드 | `RelWithDebInfo` / `Release` 프로필로 빌드 |
 | | `cbp`, `cbt` | 특정 패키지 / 테스트 | `--packages-select`, `colcon test` |
+| **C++ 빌드** | `mbuild` / `mclean` | 현대적 CMake 빌드 | 빌드 & 설치 / 정밀 삭제 |
 | | `s` | 워크스페이스 소싱 | `source install/setup.bash` |
 | **Python** | `activate` | venv 활성화 | `source install/.venv/bin/activate` |
 | | `uvs`, `uvr` | uv 명령어 | `uv sync`, `uv run` |

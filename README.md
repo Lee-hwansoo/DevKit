@@ -416,7 +416,8 @@ sync_deps         # Clone dependencies.repos and auto-install rosdep system pack
 
 # 3. 🔨 Orchestrate Source Code Build
 cb                # ROS: Execute colcon build
-mbuild            # Pure C++: Execute standard cmake & make
+mbuild            # Pure C++: Execute modern CMake build & install
+mclean            # Clean Build: Remove build and install artifacts
 ```
 
 ### 📋 Unified Command Dictionary
@@ -427,6 +428,7 @@ mbuild            # Pure C++: Execute standard cmake & make
 | **`mksync`** | **Unified Init** | **One-step automation**: mkenv + uvs + sync_deps + Build |
 | **`hw_check`** | Hardware Diagnostics | Check GPU acceleration, **XWayland/Wayland availability**, and detailed renderer diagnostics |
 | **`mbuild`** | **Standard C++ Build** | Build `src/` source code and install it to the `install/` directory |
+| **`mclean`** | **Clean Build** | Surgical removal of `build/` and `install/` artifacts |
 | **`mkenv`** | **Create Python venv** | **Auto-create directory** and attach a root symlink for the `install/.venv` path |
 | **`cb`** | **ROS Build** | Build `src/` source code and install it to the `install/` directory |
 | **`sync_deps`** | Sync Dependencies | Synchronize external repositories based on `.repos` and merge them into the `src/thirdparty` workspace |
@@ -440,6 +442,7 @@ mbuild            # Pure C++: Execute standard cmake & make
 | | `mksync --share` | Shared Env Init | Init with system-site-packages enabled (for ROS/OpenCV bindings) |
 | **ROS Build** | `cb` / `cbr` | Colcon Build | Build with `RelWithDebInfo` / `Release` profile |
 | | `cbp`, `cbt` | Target Package / Test | `--packages-select`, `colcon test` |
+| **C++ Build** | `mbuild` / `mclean` | Modern CMake Build | Build & Install / Surgical Clean |
 | | `s` | Source Workspace | `source install/setup.bash` |
 | **Python** | `activate` | Activate venv | `source install/.venv/bin/activate` |
 | | `uvs`, `uvr` | uv commands | `uv sync`, `uv run` |
