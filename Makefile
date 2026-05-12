@@ -161,7 +161,7 @@ define PRINT_SECTION
 	@bash -c "source scripts/util_logging.sh && print_section \"$1\""
 endef
 
-.PHONY: help setup check check-host xauth status \
+.PHONY: h help setup check check-host xauth status \
         build-ros build-dev rebuild-ros rebuild-dev \
         ros ros-stop ros-restart dev dev-stop dev-restart ros-shell dev-shell ros-term dev-term \
 		build-ros-prod build-dev-prod rebuild-ros-prod rebuild-dev-prod \
@@ -169,57 +169,63 @@ endef
 		save-ros save-dev load-ros load-dev \
 		update-gpg stats top logs down clean clean-cache clean-all docker-clean env-check
 
+h: help
+
 # =============================================================================
-# Default & Help
+# Infrastructure Logic
 # =============================================================================
+IS_CONTAINER := $(shell [ -f /.dockerenv ] && echo true || echo false)
+
+define GUARD_HOST_ONLY
+	@if [ "$(IS_CONTAINER)" = "true" ]; then \
+		echo -e "  ${RED}[ERROR]${NC} This command must be run on the HOST, not inside the container."; \
+		echo -e "  ${CYAN}[Hint]${NC} Use container aliases. (type ${YELLOW}h${NC} or ${YELLOW}help${NC})"; \
+		exit 1; \
+	fi
+endef
+
+# =============================================================================
+# Help
+# =============================================================================
+
 help:
-	@bash -c "source scripts/util_logging.sh && print_banner WELCOME"
-	@echo -e ""
-	@echo -e "  ${BLUE}🛠️   Setup & Infrastructure:${NC}"
-	@echo -e "    ${GREEN}make setup${NC}            : Initialize .env and host prerequisites"
-	@echo -e "    ${GREEN}make status${NC}           : Diagnose overall project & GPU state"
-	@echo -e "    ${GREEN}make check-host${NC}       : Deep audit of WSL2/Host permissions"
-	@echo -e "    ${GREEN}make env-check${NC}        : Verify .env synchronization with example"
-	@echo -e "    ${GREEN}make xauth${NC}            : Refresh X11/GUI authentication"
-	@echo -e ""
-	@echo -e "  ${BLUE}💻  Development (Interactive):${NC}"
-	@echo -e "    ${GREEN}make ros${NC} / ${GREEN}dev${NC}                 : Run ROS or Pure Dev environment"
-	@echo -e "    ${GREEN}make ros-shell${NC} / ${GREEN}dev-shell${NC}     : Enter container shell"
-	@echo -e "    ${GREEN}make ros-stop${NC} / ${GREEN}dev-stop${NC}       : Stop specific service"
-	@echo -e "    ${GREEN}make ros-restart${NC} / ${GREEN}dev-restart${NC} : Restart specific service"
-	@echo -e "    ${GREEN}make ros-term${NC} / ${GREEN}dev-term${NC}       : Open container in new window"
-	@echo -e ""
-	@echo -e "  ${BLUE}🏗️   Image Building:${NC}"
-	@echo -e "    ${GREEN}make build-ros${NC} / ${GREEN}dev${NC}      : Build development images"
-	@echo -e "    ${GREEN}make rebuild-ros${NC} / ${GREEN}dev${NC}    : Full rebuild (no cache)"
-	@echo -e "    ${GREEN}make build-ros-prod${NC} / ${GREEN}dev${NC} : Build optimized production images"
-	@echo -e ""
-	@echo -e "  ${BLUE}🚀  Production & Portability:${NC}"
-	@echo -e "    ${GREEN}make ros-prod${NC} / ${GREEN}dev-prod${NC}    : Run production service"
-	@echo -e "    ${GREEN}make ros-prod-stop${NC} / ${GREEN}dev-..${NC} : Stop production service"
-	@echo -e "    ${GREEN}make save-ros${NC} / ${GREEN}save-dev${NC}    : Export image to .tar.gz"
-	@echo -e "    ${GREEN}make load-ros${NC} / ${GREEN}load-dev${NC}    : Restore image from .tar.gz"
-	@echo -e ""
-	@echo -e "  ${BLUE}📊  Monitoring & Maintenance:${NC}"
-	@echo -e "    ${GREEN}make stats${NC}            : Real-time resource monitor (CPU/Mem/GPU)"
-	@echo -e "    ${GREEN}make top${NC}              : Detailed per-process monitor"
-	@echo -e "    ${GREEN}make logs${NC}             : Stream real-time container logs"
-	@echo -e "    ${GREEN}make update-gpg${NC}       : Update ROS GPG keys in build scripts"
-	@echo -e "    ${GREEN}make down${NC}             : Stop and remove all containers"
-	@echo -e ""
-	@echo -e "  ${BLUE}🧹  Cleanup:${NC}"
-	@echo -e "    ${GREEN}make clean${NC}            : Delete build output (build/install/log)"
-	@echo -e "    ${GREEN}make clean-cache${NC}      : Wipe .docker_cache (ccache/uv/apt)"
-	@echo -e "    ${GREEN}make clean-all${NC}        : Reset everything (images/volumes/cache)"
-	@echo -e "    ${GREEN}make docker-clean${NC}     : Global Docker system cleanup"
-	@echo -e ""
-	@echo -e "  ${CYAN}Notice:${NC} All commands auto-detect GPU. Stay agile!"
-	@echo -e ""
+	@if [ "$(IS_CONTAINER)" = "true" ]; then \
+		bash -c "source scripts/util_logging.sh && print_banner GUIDE && echo -e \"\n  ${YELLOW}Notice:${NC} You are INSIDE the container.\n  Please use aliases (type ${GREEN}h${NC} or ${GREEN}help${NC}) instead of make commands.\n\""; \
+	else \
+		bash -c ' \
+			source scripts/util_logging.sh && \
+			print_banner WELCOME && \
+			while IFS= read -r line; do \
+				if [[ $$line =~ ^[[:space:]]*"## @section" ]]; then \
+					section_data="$${line#*## @section }"; \
+					emoji=$$(echo "$$section_data" | cut -d"|" -f1 | xargs); \
+					title=$$(echo "$$section_data" | cut -d"|" -f2 | xargs); \
+					color_name=$$(echo "$$section_data" | cut -d"|" -f3 | xargs); \
+					color=$${!color_name:-$$BLUE}; \
+					printf "\n  $${color}%s  %s:$${NC}\n" "$$emoji" "$$title"; \
+				elif [[ $$line =~ ^[[:space:]]*"## @target" ]]; then \
+					content="$${line#*## @target }"; \
+					cmd=$$(echo "$${content%%:*}" | xargs); \
+					desc=$$(echo "$${content#*:}" | xargs); \
+					printf "    $${GREEN}make %-22s$${NC} : %s\n" "$$cmd" "$$desc"; \
+				fi; \
+			done < Makefile; \
+			echo -e "\n  ${CYAN}Notice:${NC} All commands auto-detect GPU.\n" \
+		'; \
+	fi
 
 # =============================================================================
 # Initial Setup and Status Check
 # =============================================================================
+
+## @section 🛠️ | Setup & Infrastructure | BLUE
+## @target setup : Initialize .env and host prerequisites
+## @target status : Diagnose overall project & GPU state
+## @target check-host : Deep audit of WSL2/Host permissions
+## @target env-check : Verify .env synchronization with example
+## @target xauth : Refresh X11/GUI authentication
 setup:
+	$(call GUARD_HOST_ONLY)
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
 		echo -e "  $(OK) Created .env file. Please edit settings to your needs."; \
@@ -229,6 +235,7 @@ setup:
 	@$(MAKE) xauth
 
 status: check
+	$(call GUARD_HOST_ONLY)
 	$(call PRINT_SECTION,Project Configuration Summary)
 	@echo "  Project Name:      $(COMPOSE_PROJECT_NAME)"
 	@echo "  Workspace(Host):   $(HOST_WORKSPACE_PATH)"
@@ -249,6 +256,7 @@ status: check
 	fi
 
 check-host:
+	$(call GUARD_HOST_ONLY)
 	@if [ "$(HAS_NVIDIA)" = "true" ]; then \
 		if [ "$(HAS_TOOLKIT_BIN)" = "false" ]; then \
 			echo -e "  $(WARN) NVIDIA GPU detected but NVIDIA Container Toolkit is not installed."; \
@@ -261,6 +269,7 @@ check-host:
 	fi
 
 xauth:
+	$(call GUARD_HOST_ONLY)
 	@if [ -n "$(DISPLAY)" ]; then \
 		if command -v xauth >/dev/null 2>&1; then \
 			[ -f "$(HOST_XAUTHORITY)" ] || touch "$(HOST_XAUTHORITY)" 2>/dev/null || true; \
@@ -274,6 +283,7 @@ xauth:
 	fi
 
 check: check-host
+	$(call GUARD_HOST_ONLY)
 	@if [ ! -f .env ]; then echo -e "  $(ERROR) .env not found. Please run 'make setup' first."; exit 1; fi
 	@if [ ! -d "$(HOST_WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) HOST_WORKSPACE_PATH ($(HOST_WORKSPACE_PATH)) does not exist."; exit 1; fi
 	@if [ "$(IS_WSL)" = "true" ]; then \
@@ -287,8 +297,25 @@ check: check-host
 	$(call VALIDATE_COMPOSE_NAME)
 	$(call VALIDATE_ROS_ENV)
 
+# Verify environment variables synchronization
+env-check:
+	$(call GUARD_HOST_ONLY)
+	@echo -e "  $(INFO) Comparing .env settings against .env.example..."
+	@MISSING=$$(comm -23 <(grep -E "^[^#]+=" .env.example | cut -d= -f1 | sort) <(grep -E "^[^#]+=" .env | cut -d= -f1 | sort)); \
+	if [ -n "$$MISSING" ]; then \
+		echo -e "  $(WARN) The following environment variables are missing in your .env:\n$$MISSING"; \
+	else \
+		echo -e "  $(OK) All required environment variables are properly set."; \
+	fi
+
+# =============================================================================
 # Build
 # =============================================================================
+
+## @section 🏗️ | Image Building | BLUE
+## @target build-ros / dev : Build development images
+## @target rebuild-ros / dev : Full rebuild (no cache)
+## @target build-ros-prod / dev : Build optimized production images
 build-ros: check
 	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,ROS Development,,Build finished! Please run 'make ros' to start the container.)
 
@@ -320,6 +347,13 @@ rebuild-dev-prod: check
 # =============================================================================
 # Execution and Shell Access (Dev) - Auto GPU Detection
 # =============================================================================
+
+## @section 💻 | Development (Interactive) | BLUE
+## @target ros / dev : Run ROS or Pure Dev environment
+## @target ros-shell / dev-shell : Enter container shell
+## @target ros-stop / dev-stop : Stop specific service
+## @target ros-restart / dev-restart : Restart specific service
+## @target ros-term / dev-term : Open container in new window
 ros: check xauth
 	$(call RUN_SERVICE,$(COMPOSE_DEV),ros,ROS Development)
 	@echo -e "\n  $(INFO) [Hint] Container started! Use 'make ros-shell' or 'make ros-term' to attach to the container."
@@ -354,10 +388,15 @@ dev-shell: check xauth
 dev-term: check xauth
 	$(call EXEC_DETACHED,$(DEV_FILTER),$(TERMINAL),Development)
 
-
 # =============================================================================
 # Production Execution (Prod) - Auto GPU Detection
 # =============================================================================
+
+## @section 🚀 | Production & Portability | BLUE
+## @target ros-prod / dev-prod : Run production service
+## @target ros-prod-stop / dev-prod-stop : Stop production service
+## @target save-ros / save-dev : Export image to .tar.gz
+## @target load-ros / load-dev : Restore image from .tar.gz
 ros-prod: check xauth
 	$(call CHECK_ENV,ROS_LAUNCH_COMMAND)
 	$(call RUN_SERVICE,$(COMPOSE_PROD),ros,ROS Production)
@@ -395,25 +434,38 @@ define LOAD_IMAGE
 endef
 
 save-ros:
+	$(call GUARD_HOST_ONLY)
 	$(call SAVE_IMAGE,ros-runtime,$(SAVE_NAME_ROS),ROS)
 
 save-dev:
+	$(call GUARD_HOST_ONLY)
 	$(call SAVE_IMAGE,dev-runtime,$(SAVE_NAME_DEV),Pure Development)
 
 load-ros:
+	$(call GUARD_HOST_ONLY)
 	$(call LOAD_IMAGE,$(SAVE_NAME_ROS),ROS)
 
 load-dev:
+	$(call GUARD_HOST_ONLY)
 	$(call LOAD_IMAGE,$(SAVE_NAME_DEV),Pure Development)
 
 # =============================================================================
 # Maintenance
 # =============================================================================
+
+## @section 📊 | Monitoring & Maintenance | BLUE
+## @target stats : Real-time resource monitor (CPU/Mem/GPU)
+## @target top : Detailed per-process monitor
+## @target logs : Stream real-time container logs
+## @target update-gpg : Update ROS GPG keys in build scripts
+## @target down : Stop and remove all containers
 update-gpg:
+	$(call GUARD_HOST_ONLY)
 	@bash scripts/setup_ros_gpg.sh
 
 # Real-time Monitoring (CPU, MEM, NVIDIA/Intel/AMD GPU)
 stats:
+	$(call GUARD_HOST_ONLY)
 	@echo -e "  $(INFO) Initiating real-time resource monitoring (Ctrl+C to terminate)..."
 	@watch -t -n 1 "bash -c ' \
 		source scripts/util_logging.sh; \
@@ -445,6 +497,7 @@ stats:
 
 # Detailed Expert Monitoring (Per CPU Core + Per GPU Process)
 top:
+	$(call GUARD_HOST_ONLY)
 	@CONTAINER=$$(docker ps --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)" --format "{{.Names}}" | head -n 1); \
 	if [ -n "$$CONTAINER" ]; then \
 		echo -e "  $(INFO) Initiating granular container-level monitoring ($$CONTAINER)..."; \
@@ -494,6 +547,7 @@ top:
 	fi
 
 logs:
+	$(call GUARD_HOST_ONLY)
 	@if [ -n "$$($(COMPOSE) $(COMPOSE_DEV) ps --status running -q 2>/dev/null)" ]; then \
 		echo -e "  $(INFO) [Dev] Streaming development logs..."; \
 		$(COMPOSE) $(COMPOSE_DEV) logs -f --tail 100; \
@@ -503,10 +557,22 @@ logs:
 	fi
 
 down:
+	$(call GUARD_HOST_ONLY)
 	$(call TEARDOWN_SERVICES)
 	@echo -e "  $(OK) All containers have successfully been stopped and removed."
 
+
+# =============================================================================
+# Cleanup
+# =============================================================================
+
+## @section 🧹 | Cleanup | BLUE
+## @target clean : Delete build output (build/install/log)
+## @target clean-cache : Wipe .docker_cache (ccache/uv/apt)
+## @target clean-all : Reset everything (images/volumes/cache)
+## @target docker-clean : Global Docker system cleanup
 clean:
+	$(call GUARD_HOST_ONLY)
 	$(call TEARDOWN_SERVICES,-v)
 	@echo -e "  $(INFO) Removing all named volumes related to $(COMPOSE_PROJECT_NAME)..."
 	@VOLUMES=$$(docker volume ls -q --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)"); \
@@ -517,7 +583,7 @@ clean:
 		echo -e "  $(WARN) CI/FORCE mode: Forcibly deleting host folders without prompting."; ans="y"; \
 	else \
 		echo -e "  $(WARN) Do you want to delete the [build, install, log, .venv, colcon.meta] host folders?"; \
-		echo -n "  (WARNING: If you used bind mounts in [.env], actual data will be lost!) [Y/N]: "; \
+		echo -en "  $(WARN) If you used bind mounts in [.env], actual data will be lost! [Y/N]: "; \
 		read ans || true; \
 	fi; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
@@ -528,6 +594,7 @@ clean:
 	@echo -e "  $(OK) General project clean up completed."
 
 clean-cache:
+	$(call GUARD_HOST_ONLY)
 	@CACHE_DIR=$(HOST_CACHE_DIR); \
 	if [ -z "$$CACHE_DIR" ] || [ "$$CACHE_DIR" = "/" ]; then \
 		echo -e "  $(ERROR) Cache directory ($$CACHE_DIR) is invalid or unsafe."; \
@@ -550,6 +617,7 @@ clean-cache:
 
 # Reset all project-related resources (including images)
 clean-all:
+	$(call GUARD_HOST_ONLY)
 	@$(MAKE) clean SKIP_ALPINE_RM=1
 	@$(MAKE) clean-cache SKIP_ALPINE_RM=1
 	@echo -e "  $(INFO) Cleaning up the temporary alpine image used for sudo-free deletion..."
@@ -566,6 +634,7 @@ clean-all:
 
 # Global Docker cleanup (Warning: affects build caches across all projects on the system)
 docker-clean:
+	$(call GUARD_HOST_ONLY)
 	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
 		ans="y"; \
 	else \
@@ -578,13 +647,3 @@ docker-clean:
 	@echo -e "  $(INFO) Cleaning up unused images..."
 	@docker image prune -f
 	@echo -e "  $(OK) Global Docker cleanup completed."
-
-# Verify environment variables synchronization
-env-check:
-	@echo -e "  $(INFO) Comparing .env settings against .env.example..."
-	@MISSING=$$(comm -23 <(grep -E "^[^#]+=" .env.example | cut -d= -f1 | sort) <(grep -E "^[^#]+=" .env | cut -d= -f1 | sort)); \
-	if [ -n "$$MISSING" ]; then \
-		echo -e "  $(WARN) The following environment variables are missing in your .env:\n$$MISSING"; \
-	else \
-		echo -e "  $(OK) All required environment variables are properly set."; \
-	fi

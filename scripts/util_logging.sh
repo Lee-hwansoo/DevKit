@@ -15,6 +15,7 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 NC='\033[0m'
+TEAL='\033[38;2;45;212;191m'
 
 # Load settings (defaults)
 LOG_SHOW_TIME="${LOG_SHOW_TIME:-false}"
@@ -66,7 +67,7 @@ log_debug() {
 }
 
 # Export color variables for independent use in Makefile, etc.
-export RED GREEN YELLOW BLUE CYAN PURPLE NC
+export RED GREEN YELLOW BLUE CYAN PURPLE NC TEAL
 
 # Formatted status strings for manual usage (e.g. within sections or sub-items)
 INFO="${BLUE}[INFO]${NC}"
@@ -85,48 +86,47 @@ export INFO OK WARN ERROR DEBUG
 #   type: WELCOME (Large), DIAG (Diagnostics), SETUP (Maintenance)
 print_banner() {
     local type="${1:-WELCOME}"
-    local T1='\033[38;2;45;212;191m' # Teal
 
     case "$type" in
         WELCOME)
-            echo -e "${T1}=================================================${NC}"
-            echo -e "  ${T1}██████╗ ███████╗██╗   ██╗██╗  ██╗██╗████████╗${NC}"
-            echo -e "  ${T1}██╔══██╗██╔════╝██║   ██║██║ ██╔╝██║╚══██╔══╝${NC}"
-            echo -e "  ${T1}██║  ██║█████╗  ██║   ██║█████╔╝ ██║   ██║   ${NC}"
-            echo -e "  ${T1}██║  ██║██╔══╝  ╚██╗ ██╔╝██╔═██╗ ██║   ██║   ${NC}"
-            echo -e "  ${T1}██████╔╝███████╗ ╚████╔╝ ██║  ██╗██║   ██║   ${NC}"
-            echo -e "  ${T1}╚═════╝ ╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚═╝   ╚═╝   ${NC}"
-            echo -e "${T1}=================================================${NC}"
+            echo -e "${TEAL}=================================================${NC}"
+            echo -e "  ${TEAL}██████╗ ███████╗██╗   ██╗██╗  ██╗██╗████████╗${NC}"
+            echo -e "  ${TEAL}██╔══██╗██╔════╝██║   ██║██║ ██╔╝██║╚══██╔══╝${NC}"
+            echo -e "  ${TEAL}██║  ██║█████╗  ██║   ██║█████╔╝ ██║   ██║   ${NC}"
+            echo -e "  ${TEAL}██║  ██║██╔══╝  ╚██╗ ██╔╝██╔═██╗ ██║   ██║   ${NC}"
+            echo -e "  ${TEAL}██████╔╝███████╗ ╚████╔╝ ██║  ██╗██║   ██║   ${NC}"
+            echo -e "  ${TEAL}╚═════╝ ╚══════╝  ╚═══╝  ╚═╝  ╚═╝╚═╝   ╚═╝   ${NC}"
+            echo -e "${TEAL}=================================================${NC}"
             ;;
         DIAG)
-            echo -e "${T1}================================${NC}"
-            echo -e "  ${T1}██████╗ ██╗ █████╗ ██████╗  ${NC}"
-            echo -e "  ${T1}██╔══██╗██║██╔══██╗██╔════╝ ${NC}"
-            echo -e "  ${T1}██║  ██║██║███████║██║  ███╗${NC}"
-            echo -e "  ${T1}██║  ██║██║██╔══██║██║   ██║${NC}"
-            echo -e "  ${T1}██████╔╝██║██║  ██║╚██████╔╝${NC}"
-            echo -e "  ${T1}╚═════╝ ╚═╝╚═╝  ╚═╝ ╚═════╝ ${NC}"
-            echo -e "${T1}================================${NC}"
+            echo -e "${TEAL}================================${NC}"
+            echo -e "  ${TEAL}██████╗ ██╗ █████╗ ██████╗  ${NC}"
+            echo -e "  ${TEAL}██╔══██╗██║██╔══██╗██╔════╝ ${NC}"
+            echo -e "  ${TEAL}██║  ██║██║███████║██║  ███╗${NC}"
+            echo -e "  ${TEAL}██║  ██║██║██╔══██║██║   ██║${NC}"
+            echo -e "  ${TEAL}██████╔╝██║██║  ██║╚██████╔╝${NC}"
+            echo -e "  ${TEAL}╚═════╝ ╚═╝╚═╝  ╚═╝ ╚═════╝ ${NC}"
+            echo -e "${TEAL}================================${NC}"
             ;;
         SETUP)
-            echo -e "${T1}==============================================${NC}"
-            echo -e "  ${T1}███████╗███████╗████████╗██╗   ██╗██████╗ ${NC}"
-            echo -e "  ${T1}██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗${NC}"
-            echo -e "  ${T1}███████╗█████╗     ██║   ██║   ██║██████╔╝${NC}"
-            echo -e "  ${T1}╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝ ${NC}"
-            echo -e "  ${T1}███████║███████╗   ██║   ╚██████╔╝██║     ${NC}"
-            echo -e "  ${T1}╚══════╝╚══════╝   ╚═╝    ╚═══╝   ╚═╝     ${NC}"
-            echo -e "${T1}==============================================${NC}"
+            echo -e "${TEAL}==============================================${NC}"
+            echo -e "  ${TEAL}███████╗███████╗████████╗██╗   ██╗██████╗ ${NC}"
+            echo -e "  ${TEAL}██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗${NC}"
+            echo -e "  ${TEAL}███████╗█████╗     ██║   ██║   ██║██████╔╝${NC}"
+            echo -e "  ${TEAL}╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝ ${NC}"
+            echo -e "  ${TEAL}███████║███████╗   ██║   ╚██████╔╝██║     ${NC}"
+            echo -e "  ${TEAL}╚══════╝╚══════╝   ╚═╝    ╚═══╝   ╚═╝     ${NC}"
+            echo -e "${TEAL}==============================================${NC}"
             ;;
         GUIDE)
-            echo -e "${T1}====================================${NC}"
-            echo -e "  ${T1}██╗  ██╗███████╗██╗     ██████╗ ${NC}"
-            echo -e "  ${T1}██║  ██║██╔════╝██║     ██╔══██╗${NC}"
-            echo -e "  ${T1}███████║█████╗  ██║     ██████╔╝${NC}"
-            echo -e "  ${T1}██╔══██║██╔══╝  ██║     ██╔═══╝ ${NC}"
-            echo -e "  ${T1}██║  ██║███████╗███████╗██║     ${NC}"
-            echo -e "  ${T1}╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ${NC}"
-            echo -e "${T1}====================================${NC}"
+            echo -e "${TEAL}====================================${NC}"
+            echo -e "  ${TEAL}██╗  ██╗███████╗██╗     ██████╗ ${NC}"
+            echo -e "  ${TEAL}██║  ██║██╔════╝██║     ██╔══██╗${NC}"
+            echo -e "  ${TEAL}███████║█████╗  ██║     ██████╔╝${NC}"
+            echo -e "  ${TEAL}██╔══██║██╔══╝  ██║     ██╔═══╝ ${NC}"
+            echo -e "  ${TEAL}██║  ██║███████╗███████╗██║     ${NC}"
+            echo -e "  ${TEAL}╚═╝  ╚═╝╚══════╝╚══════╝╚═╝     ${NC}"
+            echo -e "${TEAL}====================================${NC}"
             ;;
         *)
             local label="DevKit"
@@ -134,23 +134,23 @@ print_banner() {
             local padding=$(( (33 - ${#full_text}) / 2 ))
             local left_pad=""
             [ $padding -gt 0 ] && left_pad=$(printf '%*s' $padding "")
-            echo -e "${T1}=================================${NC}"
-            echo -e "${left_pad}${T1}${full_text}${NC}"
-            echo -e "${T1}=================================${NC}"
+            echo -e "${TEAL}=================================${NC}"
+            echo -e "${left_pad}${TEAL}${full_text}${NC}"
+            echo -e "${TEAL}=================================${NC}"
             ;;
     esac
 }
 
-# print_section [title] - Creates a professional horizontal divider
+# print_section [title] - Creates a professional left-aligned divider
 print_section() {
-    local title="[ $1 ]"
-    local total_len=60
-    local title_len=${#title}
-    local pad_len=$(( (total_len - title_len) / 2 ))
+    local title="$1"
+    local total_len=50
+    local title_len=$(( ${#title} + 4 )) # +4 for "[ " and " ]"
+    local pad_len=$(( total_len - title_len ))
+    [ $pad_len -lt 0 ] && pad_len=0
     local padding=$(printf '%*s' "$pad_len" "" | tr ' ' '=')
 
-    echo -e ""
-    echo -e "${CYAN}${padding}${title}${padding}${NC}"
+    printf "\n${TEAL}[ %s ] %s${NC}\n" "$title" "$padding"
 }
 
 # log_detail [message] - Indented auxiliary information

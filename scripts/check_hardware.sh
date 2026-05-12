@@ -523,10 +523,10 @@ else
 fi
 echo ""
 if [ "$DIAG_ERRORS" -gt 0 ] || [ "$DIAG_WARNINGS" -gt 0 ]; then
-    echo -e "${BLUE}================================================================${NC}"
-    echo -e "  ${BLUE}Resolution Guide for Detected Issues${NC}"
-    echo -e "${BLUE}================================================================${NC}"
-    
+    echo -e "${CYAN}================================================================${NC}"
+    echo -e "  ${CYAN}Resolution Guide for Detected Issues${NC}"
+    echo -e "${CYAN}================================================================${NC}"
+
     # 1. Clock Sync Resolution
     if [ "$DIAG_ERRORS" -gt 0 ]; then
         echo -e "  ${YELLOW}[Clock Sync Error]${NC}"
@@ -548,7 +548,7 @@ if [ "$DIAG_ERRORS" -gt 0 ] || [ "$DIAG_WARNINGS" -gt 0 ]; then
     fi
 fi
 
-echo -e "  ${BLUE}Next Steps:${NC}"
+echo -e "  ${CYAN}Next Steps:${NC}"
 echo -e "    ${GREEN}gpu_status${NC}      : Detailed GPU & Display diagnostics"
 echo -e "    ${GREEN}mksync${NC}          : Fully initialize workspace (venv + deps + build)"
 echo -e "    ${GREEN}cb${NC} / ${GREEN}cbr${NC}        : colcon build (Standard / Release)"

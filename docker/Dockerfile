@@ -126,6 +126,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev \
     # gui-tools
     dbus-x11 clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils && \
+    # Install D2Coding Font
+    if [ -f /opt/dependencies/D2Coding.zip ]; then \
+    unzip -q /opt/dependencies/D2Coding.zip -d /usr/share/fonts/truetype/d2coding; \
+    else \
+    curl -sfL --retry 3 --retry-delay 2 https://github.com/naver/d2codingfont/releases/download/VER1.3.2/D2Coding-Ver1.3.2-20180524.zip -o /tmp/d2coding.zip && \
+    unzip -q /tmp/d2coding.zip -d /usr/share/fonts/truetype/d2coding && rm -f /tmp/d2coding.zip; \
+    fi; \
+    fc-cache -f && \
     apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # CUDA Toolkit Installation (Conditional)
@@ -175,15 +183,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd || true && \
     rm -rf /var/lib/apt/lists/*
 
-# D2Coding Font
-RUN if [ -f /opt/dependencies/D2Coding.zip ]; then \
-    unzip -q /opt/dependencies/D2Coding.zip -d /usr/share/fonts/truetype/d2coding; \
-    else \
-    curl -sfL https://github.com/naver/d2codingfont/releases/download/VER1.3.2/D2Coding-Ver1.3.2-20180524.zip -o /tmp/d2coding.zip && \
-    unzip -q /tmp/d2coding.zip -d /usr/share/fonts/truetype/d2coding && rm -f /tmp/d2coding.zip; \
-    fi; \
-    fc-cache -f || true
-
 # ── Stage: dev-core (Python Runtime & Environment Orchestration) ─────────────
 FROM dev-base-tools AS dev-core
 ARG WORKSPACE_PATH
@@ -209,14 +208,12 @@ ENV PATH="/usr/lib/ccache:${WORKSPACE_PATH}/install/.venv/bin:$PATH" \
 
 RUN mkdir -p ${CCACHE_DIR} ${UV_CACHE_DIR} ${WORKSPACE_PATH}/install
 
+COPY docker/entrypoint.sh /entrypoint.sh
 COPY config/  /docker_dev/config/
 COPY scripts/ /docker_dev/scripts/
-RUN chmod +x /docker_dev/scripts/*.sh && \
+RUN chmod +x /entrypoint.sh /docker_dev/scripts/*.sh && \
     cat /docker_dev/config/init_bash.sh >> /root/.bashrc && \
     mkdir -p /root/.config/terminator && cp /docker_dev/config/terminator_config /root/.config/terminator/config 2>/dev/null || true
-
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]
 
