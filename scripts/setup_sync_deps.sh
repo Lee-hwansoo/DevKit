@@ -15,6 +15,14 @@ SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[Sync Deps]"
 
+# Fix for "detected dubious ownership" git error in Docker/WSL2 (Optimized for Read-Only .gitconfig)
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0="safe.directory"
+export GIT_CONFIG_VALUE_0="*"
+export GIT_CONFIG_PARAMETERS="'safe.directory=*'"
+git config --system --get-all safe.directory 2>/dev/null | grep -q "^[*]$" || \
+git config --system --add safe.directory "*" 2>/dev/null || true
+
 # 0. Argument Parsing (Enterprise Standard)
 FORCE_MODE=false
 DO_ROSDEP=false

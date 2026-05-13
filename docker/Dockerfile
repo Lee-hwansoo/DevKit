@@ -45,7 +45,7 @@ COPY scripts/util_apt_helper.sh /tmp/util_apt_helper.sh
 COPY scripts/util_logging.sh /tmp/util_logging.sh
 COPY dependencies/ /opt/dependencies/
 
-RUN chmod +x /tmp/util_apt_helper.sh && \
+RUN chmod +x /tmp/util_apt_helper.sh /tmp/util_logging.sh && \
     /tmp/util_apt_helper.sh init-apt && \
     /tmp/util_apt_helper.sh configure-snapshot ${APT_SNAPSHOT_DATE} && \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
@@ -211,7 +211,7 @@ RUN mkdir -p ${CCACHE_DIR} ${UV_CACHE_DIR} ${WORKSPACE_PATH}/install
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY config/  /docker_dev/config/
 COPY scripts/ /docker_dev/scripts/
-RUN chmod +x /entrypoint.sh /docker_dev/scripts/*.sh && \
+RUN chmod +x /entrypoint.sh /docker_dev/scripts/*.sh /docker_dev/config/*.sh && \
     cat /docker_dev/config/init_bash.sh >> /root/.bashrc && \
     mkdir -p /root/.config/terminator && cp /docker_dev/config/terminator_config /root/.config/terminator/config 2>/dev/null || true
 ENTRYPOINT ["/entrypoint.sh"]

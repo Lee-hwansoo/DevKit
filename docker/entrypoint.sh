@@ -37,9 +37,13 @@ LOG_PREFIX="[Entrypoint]"
 # Workspace & Environment Setup
 # =============================================================================
 
-# Fix for "detected dubious ownership" git error in Docker/WSL2
-# Using environment variable instead of file config to avoid "Device or resource busy" when .gitconfig is mounted.
+# Fix for "detected dubious ownership" git error in Docker/WSL2 (Optimized for Read-Only .gitconfig)
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0="safe.directory"
+export GIT_CONFIG_VALUE_0="*"
 export GIT_CONFIG_PARAMETERS="'safe.directory=*'"
+git config --system --get-all safe.directory 2>/dev/null | grep -q "^[*]$" || \
+git config --system --add safe.directory "*" 2>/dev/null || true
 
 # =============================================================================
 # Helper Functions

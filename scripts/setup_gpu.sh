@@ -433,6 +433,10 @@ __opencv_cmake_args() {
     if has_nvidia; then
         local args="-DWITH_CUDA=ON -DWITH_CUDNN=ON -DOPENCV_DNN_CUDA=ON"
         args+=" -DENABLE_FAST_MATH=ON -DCUDA_FAST_MATH=ON -DWITH_CUBLAS=ON"
+        if command -v nvidia-smi >/dev/null 2>&1; then
+            local caps=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | sort -u | paste -sd ";" -)
+            [ -n "$caps" ] && args+="-DCUDA_ARCH_BIN=\"$caps+PTX\" "
+        fi
         echo "$args"
     else
         echo "-DWITH_CUDA=OFF"
