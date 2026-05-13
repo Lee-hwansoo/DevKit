@@ -158,6 +158,33 @@ function __detect_project_type() {
     fi
 }
 
+# --- Core Build & Sync Implementations ---------------------------------------
+
+# Modern CMake build implementation
+function __mbuild_impl() {
+    cmake -S "${WORKSPACE_PATH:-/workspace}/src" -B "${WORKSPACE_PATH:-/workspace}/build" -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="${WORKSPACE_PATH:-/workspace}/install" -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) && cmake --build "${WORKSPACE_PATH:-/workspace}/build" -j$(nproc) --target install "$@"
+}
+
+# Dependency synchronization implementation
+function __sync_deps_impl() {
+    bash /docker_dev/scripts/setup_sync_deps.sh "$@"
+}
+
+# ROS Build implementation (RelWithDebInfo)
+function __cb_impl() {
+    colcon --log-base "${WORKSPACE_PATH:-/workspace}/log" build --symlink-install --build-base "${WORKSPACE_PATH:-/workspace}/build" --install-base "${WORKSPACE_PATH:-/workspace}/install" --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) "$@"
+}
+
+# ROS Build implementation (Release)
+function __cbr_impl() {
+    colcon --log-base "${WORKSPACE_PATH:-/workspace}/log" build --symlink-install --build-base "${WORKSPACE_PATH:-/workspace}/build" --install-base "${WORKSPACE_PATH:-/workspace}/install" --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) "$@"
+}
+
+# uv-based Python synchronization implementation
+function __uvs_impl() {
+    uv sync --project "${WORKSPACE_PATH:-/workspace}/src" --extra ${UV_EXTRA:-cpu} "$@"
+}
+
 function __print_help() {
     [ "$INTERACTIVE" = false ] && return
     print_banner GUIDE
@@ -207,29 +234,29 @@ function mksync() {
     # 1. Core Environment Setup
     mkenv "$@" && \
     activate && \
-    UV_PYTHON="$target_py" uvs && \
-    sync_deps --rosdep || return 1
+    UV_PYTHON="$target_py" __uvs_impl && \
+    __sync_deps_impl --rosdep || return 1
 
     # 2. Intelligent Build Strategy
     local project_type=$(__detect_project_type)
     case "$project_type" in
         "ROS")
             log_info "ROS environment detected. Executing colcon build (cb)..."
-            cb && s ;;
+            __cb_impl && __smart_source ;;
         "CPP")
             log_info "Pure C++ project detected. Executing mbuild..."
-            mbuild ;;
+            __mbuild_impl ;;
         *)
             log_ok "Pure Python or minimal project detected. Skipping build step." ;;
     esac
 }
 
 ## @alias mbuild / mclean : C++ build / clean (Modern CMake)
-alias mbuild='cmake -S ${WORKSPACE_PATH:-/workspace}/src -B ${WORKSPACE_PATH:-/workspace}/build -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH:-/workspace}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) && cmake --build ${WORKSPACE_PATH:-/workspace}/build -j$(nproc) --target install'
+alias mbuild='__mbuild_impl'
 alias mclean='rm -rf ${WORKSPACE_PATH:-/workspace}/build ${WORKSPACE_PATH:-/workspace}/install && echo -e "${BLUE}ℹ${NC} Build and Install directories cleared."'
 
 ## @alias sync_deps / check_deps : Sync / Check dependencies
-alias sync_deps='bash /docker_dev/scripts/setup_sync_deps.sh'
+alias sync_deps='__sync_deps_impl'
 alias check_deps='bash /docker_dev/scripts/check_deps.sh'
 
 # =============================================================================
@@ -240,13 +267,13 @@ alias check_deps='bash /docker_dev/scripts/check_deps.sh'
 if [ -n "${ROS_DISTRO}" ]; then
     # --- Build  --------------------------------------------------------------
     ## @alias cb / cbp / cbm : colcon build (build, packages-select, metas | RelWithDebInfo| )
-    alias cb='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
-    alias cbp='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --packages-select'
-    alias cbm='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --metas ${WORKSPACE_PATH:-/workspace}/colcon.meta --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
+    alias cb='__cb_impl'
+    alias cbp='__cb_impl --packages-select'
+    alias cbm='__cb_impl --metas "${WORKSPACE_PATH:-/workspace}/colcon.meta"'
 
     ## @alias cbr / cbrp / cbrm : colcon build (Release optimized)
-    alias cbr='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args)'
-    alias cbrp='colcon --log-base ${WORKSPACE_PATH:-/workspace}/log build --symlink-install --build-base ${WORKSPACE_PATH:-/workspace}/build --install-base ${WORKSPACE_PATH:-/workspace}/install --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) --packages-select'
+    alias cbr='__cbr_impl'
+    alias cbrp='__cbr_impl --packages-select'
     alias cbt='colcon test'
 
     ## @alias s / sb : Source setup.bash / .bashrc
@@ -306,7 +333,7 @@ fi
 
 ## @section 🐍 | Python & Dev Tools | BLUE
 ## @alias uvs / uvr : uv sync / uv run
-alias uvs='uv sync --project ${WORKSPACE_PATH:-/workspace}/src --extra ${UV_EXTRA:-cpu}'
+alias uvs='__uvs_impl'
 alias uvr='uv run'
 ## @alias uvp / uvl : uv pip install / list
 alias uvp='uv pip install'
@@ -443,8 +470,8 @@ alias ccc='ccache -C'
 
 # --- Navigation ----------------------------------------------------------
 ## @alias cw / cs / cc : cd to root / src / config
-alias cw='cd ${WORKSPACE_PATH:-/workspace}'
-alias cs='cd ${WORKSPACE_PATH:-/workspace}/src'
+alias cw='cd "${WORKSPACE_PATH:-/workspace}"'
+alias cs='cd "${WORKSPACE_PATH:-/workspace}/src"'
 alias cc='cd /docker_dev/config'
 
 # --- Shell & Editing ---------------------------------------------------------

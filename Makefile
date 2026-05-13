@@ -561,7 +561,6 @@ down:
 	$(call TEARDOWN_SERVICES)
 	@echo -e "  $(OK) All containers have successfully been stopped and removed."
 
-
 # =============================================================================
 # Cleanup
 # =============================================================================
