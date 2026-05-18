@@ -6,13 +6,15 @@
 
 set -e
 
-# Load logging utilities
-source "$(dirname "${BASH_SOURCE[0]}")/util_logging.sh" 2>/dev/null || true
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
 
-# Section-aware INI value checker (local utility).
-# Usage: _ini_has <file> <section> <key> <value>
-# Returns 0 if [section] contains an uncommented key=value pair, 1 otherwise.
-# Handles: leading whitespace, case-insensitive matching, and comment rejection.
+# Load logging utilities
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG" || true
+
+# Section-aware INI value checker
 _ini_has() {
     local file="$1" section="$2" key="$3" value="$4"
     [ -f "$file" ] || return 1
@@ -42,7 +44,6 @@ fi
 # 1. Locate .wslconfig on Windows Host
 WIN_USERPROFILE=""
 
-# Method A: powershell.exe (Most reliable)
 if command -v powershell.exe >/dev/null 2>&1; then
     _raw_profile=$(timeout 3 powershell.exe -NoProfile -Command 'Write-Host $env:USERPROFILE -NoNewline' 2>/dev/null | tr -d '\r') || true
     if [ -n "${_raw_profile}" ]; then
@@ -50,7 +51,6 @@ if command -v powershell.exe >/dev/null 2>&1; then
     fi
 fi
 
-# Method B: cmd.exe fallback
 if [ -z "${WIN_USERPROFILE}" ] && command -v cmd.exe >/dev/null 2>&1; then
     _raw_profile=$(timeout 3 cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r') || true
     if [ -n "${_raw_profile}" ]; then
@@ -58,7 +58,6 @@ if [ -z "${WIN_USERPROFILE}" ] && command -v cmd.exe >/dev/null 2>&1; then
     fi
 fi
 
-# Method C: Hardcoded inference from /mnt/c/Users (Last resort)
 if [ -z "${WIN_USERPROFILE}" ]; then
     _win_user=$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r' 2>/dev/null || whoami)
     for _drive in /mnt/*; do
@@ -72,7 +71,6 @@ fi
 WSL_CONFIG_PATH="${WIN_USERPROFILE}/.wslconfig"
 LOCAL_WSL_CONF="/etc/wsl.conf"
 
-# Status Flags
 HAS_SYSTEMD="false"
 HAS_MIRRORED="false"
 
@@ -81,7 +79,6 @@ if _ini_has "${LOCAL_WSL_CONF}" "boot" "systemd" "true"; then
     HAS_SYSTEMD="true"
 fi
 
-# Check global .wslconfig if not found locally
 if [ "${HAS_SYSTEMD}" = "false" ] && _ini_has "${WSL_CONFIG_PATH}" "boot" "systemd" "true"; then
     HAS_SYSTEMD="true"
 fi
@@ -111,7 +108,8 @@ if [ "${HAS_SYSTEMD}" = "false" ] || [ "${HAS_MIRRORED}" = "false" ]; then
 fi
 
 # 5. GPU Acceleration Audit
-SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
+SOURCE_GPU="${WS_SCRIPTS}/util_gpu_detect.sh"
+[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
 if [ -f "$SOURCE_GPU" ]; then
     source "$SOURCE_GPU"
 else
@@ -122,7 +120,6 @@ if [ "${IS_WSL}" = "true" ] && command -v glxinfo &>/dev/null; then
     host_renderer=$(glxinfo -B 2>/dev/null | grep -Ei "OpenGL renderer string" | head -n 1 | sed -E 's/.*:[[:space:]]*(.*)/\1/' | xargs || true)
 
     if [ -n "$host_renderer" ]; then
-        # Scenario A: Software Rendering Fallback (Critical performance impact)
         if [[ "$host_renderer" == *"llvmpipe"* ]]; then
             print_section "WSL GPU Acceleration Audit"
             log_warn "Host OpenGL is stuck on Software Rendering (llvmpipe)."
@@ -134,8 +131,6 @@ if [ "${IS_WSL}" = "true" ] && command -v glxinfo &>/dev/null; then
                 get_gpu_prescription "igpu_wsl" "    "
             fi
             echo ""
-
-        # Scenario B: Sub-optimal GPU selection (e.g. using iGPU while NVIDIA dGPU is available)
         elif [[ "$host_renderer" == *"D3D12"* ]] && has_nvidia && [[ "$host_renderer" != *"NVIDIA"* ]]; then
             print_section "WSL GPU Acceleration Audit"
             log_info "Current Renderer: ${host_renderer} (iGPU)"

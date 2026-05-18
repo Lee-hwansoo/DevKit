@@ -273,6 +273,7 @@ The method for implementing the core stack varies based on your Host OS. Select 
 ### 🛠 Detailed Setup Guide
 
 #### 1. Common Installation: Docker Engine & NVIDIA Toolkit (Native)
+
 Standard procedure for **Native Linux** and **WSL 2 (Option B)** users.
 
 ```bash
@@ -341,10 +342,12 @@ nvidia-smi
 - **Networking Mode (ROS 2 Multicast)**: To communicate with hardware or robots on the local network, **Mirrored Networking Mode** is highly recommended.
   1. Create or edit `%USERPROFILE%\.wslconfig` on Windows.
   2. Add the following configuration:
+
    ```ini
    [wsl2]
    networkingMode=mirrored
    ```
+
   3. Restart WSL: Run `wsl --shutdown` in PowerShell and restart your terminal.
 
 - **GPU Acceleration & Hardware Alignment (Optimization) 🚀**
@@ -360,12 +363,15 @@ nvidia-smi
 
   **2. Hardware-Specific Setup (Add to HOST(WSL) ~/.bashrc)**:
   - **Case A: Using Discrete NVIDIA GPU (dGPU) - Recommended**
+
     ```bash
     export MESA_LOADER_DRIVER_OVERRIDE=d3d12
     export GALLIUM_DRIVER=d3d12
     export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
     ```
+
   - **Case B: Using Integrated Intel/AMD GPU (iGPU) Only**
+
     ```bash
     export MESA_LOADER_DRIVER_OVERRIDE=d3d12
     export GALLIUM_DRIVER=d3d12
@@ -388,6 +394,35 @@ The system automatically selects the optimal hardware mode for your workstation.
 | **Pure Dev** | **`make dev`** | **`make dev-stop`** | **`make dev-restart`** | **`make dev-shell`** | **`make dev-term`** |
 
 > **Tip:** You can use `make status` to verify if the current system accurately recognizes an NVIDIA GPU and the Container Toolkit, and to confirm the active architecture (AMD64/ARM64).
+
+---
+
+## 🔌 VS Code (IDE) Integration Guide (IDE Integration)
+
+To seamlessly connect your host development editor (VS Code) with the powerful isolated build engine inside the container, **DevKit** strongly recommends the **"Start Container First, then VS Code Attach"** workflow.
+
+Instead of spawning a heavy container directly from the editor, this robotics/HPC industry-standard workflow allows you to launch the optimal container service tailored to your hardware layout (GPU/iGPU, etc.) via the terminal first, and then attach your VS Code editor engine as a lightweight client on top.
+
+### 🏁 Recommended Workflow
+
+1. **Start the Container Service via Host Terminal**:
+   Launch the container service matching your current project focus and hardware layout:
+
+   ```bash
+   make ros      # Launches the ROS environment (Auto-detects GPU and runs persistently in background)
+   # OR
+   make dev      # Launches the general C++/Python development target
+   ```
+
+2. **Attach VS Code to the Running Container**:
+   - Launch VS Code on your host machine.
+   - Press **`F1`** (or `Ctrl+Shift+P`) to open the Command Palette.
+   - Search for and select **`Dev Containers: Attach to Running Container...`**.
+   - Select your active project container (e.g., `devkit-ros-nvidia` or similar) from the dropdown list.
+
+3. **Develop & Code Natively**:
+   - Once connected, VS Code Server is automatically installed inside the container, and the pre-configured C++ and ROS extensions (IntelliSense, CMake Tools, ROS, etc.) defined in `.devcontainer/devcontainer.json` will instantly activate.
+   - Open the `/workspace` folder and start developing with native-grade autocomplete and symbols navigation!
 
 ---
 
@@ -451,7 +486,7 @@ mclean            # Clean Build: Remove build and install artifacts
 | | `gpu_setup` | Auto-detect GPU | Rescan hardware layout and reset system environment variables |
 | | `vulkan_check` | Check Vulkan API | Print `vulkaninfo` hardware summary |
 | **Utils** | `k` / `k9` | Terminate Process | Graceful kill (`killall`) / Force kill (`-9`) |
-| **Nav** | `cw`, `cs`, `cc` | Move Directory | Traverse to `/workspace`, `/workspace/src`, or `/docker_dev/config` |
+| **Nav** | `cw`, `cs`, `cc` | Move Directory | Traverse to `/workspace`, `/workspace/src`, or `/workspace/config` |
 
 > 💡 **Advanced Tip: Bash Completion & Automation**
 > - **Tab Completion**: All custom commands (`mksync`, `mkenv`, `gpu_setup`, etc.) and ROS packages (for `cbp`) support rich Bash tab-completion.
@@ -484,64 +519,42 @@ Utilize these integrated tasks from your host terminal to manage the project lif
 
 ---
 
-## 🚀 Production Deployment Workflow
+## 🧊 Apptainer Workflow (Production & Portability)
 
-The production environment operates completely without source code, leveraging the deterministic **Bake & Switch** strategy.
+The DevKit leverages **Apptainer (formerly Singularity)** as the primary strategy for production deployment and portability across high-performance computing (HPC) clusters and edge devices.
 
 ```mermaid
 graph TD
-    A[Source Code] -->|make build-ros-prod| B(Builder Image)
-    B -->|Compile & Install| C{install/ Artifacts}
-    C -->|Copy| D(Runtime Image)
-    D -->|make ros-prod| E[Production Service]
+    A[Docker Development Image] -->|make bake| B(Apptainer SIF Image)
+    B -->|Portable File| C[Target Deployment Server]
+    C -->|make run-sif| D[Isolated Production Service]
 ```
 
-### ⚠️ Pre-Deployment Recommendations (Data Hygiene)
+### 1. Why Apptainer for Production?
 
-Before baking the production image, executing **`make clean`** is strictly recommended.
+- **Single File Portability**: The entire workspace (build, install, venv) is "baked" into a single `.sif` file.
+- **Rootless Execution**: Runs securely on shared clusters (HPC) without requiring root/sudo privileges.
+- **Environment Snapshots**: Captures the exact state of your development environment, ensuring "it works on my machine" translates to the field.
 
-**Recommended Build Sequence:**
-
-1. **`make clean`**: Completely obliterates any existing build residues and flushes isolated volume data.
-
-2. **`make build-ros-prod`**: Builds (Bakes) the pristine deployment image starting from a clean state.
-
-- **Reason:** When using bind mounts, this strictly isolates and prevents stale files or outdated build artifacts left on the host from leaking into the deployment image.
-
-### 1. Features of the Deployment Image (`Dockerfile.prod`)
-
-- **Explicit Source Code Exclusion**: Only the `install/` artifacts generated strictly during the compilation stage (Builder) are cleanly replicated into the final runtime image.
-- **Automatic Dependency Verification (Sanity Check)**: Assures absolute runtime stability by executing an `ldd` scan during the build to verify all essential shared libraries are structurally embedded.
-- **Maximized Determinism**: Maintains perfect environmental parity and isolation using APT snapshots and `uv sync --frozen`.
-
-### 2. Deployment Service Control Commands (Auto GPU Detection)
+### 2. Core Commands
 
 | Category | Execute Command | Action |
 | :--- | :--- | :--- |
-| **ROS Deployment** | **`make ros-prod`** | Spawns a dedicated service based on optimized ROS artifacts |
-| | **`make ros-prod-stop`** | Stop the ROS production service |
-| **Pure Deployment** | **`make dev-prod`** | Spawns a lightweight service strictly for C++/Python artifacts |
-| | **`make dev-prod-stop`** | Stop the pure dev production service |
-| **Extract Image** | **`make save-ros`** / **`save-dev`** | Wraps the deployment image as an isolated compressed archive (`.tar.gz`) |
-| **Restore Image** | **`make load-ros`** / **`load-dev`** | Ingests an image from an isolated compressed archive back into the registry |
+| **Bake** | **`make bake`** | Internalizes the current workspace into a SIF image |
+| **Bake (Shared)** | **`make bake-share`** | Bake with system-site-packages enabled |
+| **Run** | **`make run-sif`** | Run the SIF image with fresh host configurations |
 
-### 3. Offline Deployment Guide
-
-When migrating a framework to an isolated edge target server restricted natively from the network, physically transfer the extracted Docker image archive.
+### 3. Deployment Guide
 
 ```bash
-# 1. Build the deployment image (Bake)
-make build-ros-prod  # Or make build-dev-prod
+# 1. Bake the workspace into a SIF image
+make bake
 
-# 2. Extract the physical image (Makefile-based automation)
-make save-ros        # Wraps {project}-ros-{distro}.tar.gz in the project root upon success
+# 2. Transfer the .sif file to the target server
+scp project.sif user@target:/path/to/project/
 
-# 3. Transmit the physical elements safely (Required variables: .tar.gz, .env, docker-compose.prod.yml, Makefile)
-# Place the structurally sound .tar.gz file in the target server's physical root directory.
-
-# 4. Ingest and spawn inside the isolated target server
-make load-ros        # Automatically isolates and ingests the archive file
-make ros-prod        # Spin up the target service natively
+# 3. Run the service natively
+make run-sif
 ```
 
 ---

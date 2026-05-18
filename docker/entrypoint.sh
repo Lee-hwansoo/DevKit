@@ -18,10 +18,20 @@ export LC_ALL=${LANG:-C.UTF-8}
 export LANGUAGE=${LANG:-en_US.UTF-8}
 
 # =============================================================================
-# Bootstrap: Logging (must precede helper function definitions)
+# Bootstrap: Centralized Path Management (Single Source of Truth)
 # =============================================================================
-SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/opt/scripts/util_logging.sh"
+WS_ROOT="${WORKSPACE_PATH:-/workspace}"
+UTIL_PATHS="${WS_ROOT}/config/util_paths.sh"
+
+if [ -f "$UTIL_PATHS" ]; then
+    source "$UTIL_PATHS"
+else
+    # Minimal fallback if util_paths.sh is missing
+    export WS_SCRIPTS="${WS_ROOT}/scripts"
+    export WS_CONFIG="${WS_ROOT}/config"
+fi
+
+# Locate logging utility (Standard Project Path)
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
 # Fallback: Define logging stubs if utility functions are unavailable (Safety net for production)
@@ -117,24 +127,25 @@ for var in ROS_IP WAYLAND_DISPLAY HOST_WAYLAND_DISPLAY; do
 done
 
 # =============================================================================
-# [1] Environment Detection (Dev vs Prod)
+# [1] Environment Detection (Dev/Bake vs Prod)
 # =============================================================================
-# if /docker_dev exists, it's a dev environment
-if [ -d "/docker_dev" ]; then
+# If workspace scripts exist, it's a development or baked environment
+if [ -d "${WS_SCRIPTS}" ]; then
     IS_DEV=true
-    log_info "Environment: Development (Source mounting active)"
+    log_info "Environment: Development/Baked (Project scripts active)"
 else
     IS_DEV=false
-    log_info "Environment: Production"
+    log_info "Environment: Production (Minimal runtime)"
 fi
 
 # Move to workspace root
-if [ -d "${WORKSPACE_PATH:-/workspace}" ]; then
-    cd "${WORKSPACE_PATH:-/workspace}"
+if [ -d "${WS_ROOT}" ]; then
+    cd "${WS_ROOT}"
 
     # Synchronize workspace links (handles host mount overwrites)
-    if [ "$IS_DEV" = true ] && [ -f "/docker_dev/scripts/util_setup_links.sh" ]; then
-        /docker_dev/scripts/util_setup_links.sh --verbose
+    if [ "$IS_DEV" = true ]; then
+        SETUP_LINKS="${WS_SCRIPTS}/util_setup_links.sh"
+        [ -f "$SETUP_LINKS" ] && "$SETUP_LINKS" --verbose
     fi
 
     # Clean up any conflicting libraries leaked from the host via bind mounts
@@ -221,7 +232,7 @@ fi
 # [5] Workspace Status Guide (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
-    if [ ! -f "${WORKSPACE_PATH:-/workspace}/install/setup.bash" ] && [ ! -d "${WORKSPACE_PATH:-/workspace}/install/.venv" ]; then
+    if [ ! -f "${WS_INSTALL}/setup.bash" ] && [ ! -d "${WS_VENV}" ]; then
         log_warn "Workspace not yet built or environment not set up."
         if [ -f "$ROS_SETUP" ]; then
             log_warn "  Run: cb     (colcon build for ROS)"
@@ -242,12 +253,11 @@ fi
 # [7] Environment Sourcing (ROS and Python venv)
 # =============================================================================
 
-# [7.1] Development Aliases & Tools (For Non-interactive support)
-ALIASES_SH="/docker_dev/config/util_aliases.sh"
-[ ! -f "$ALIASES_SH" ] && ALIASES_SH="/opt/scripts/util_aliases.sh"
+# [7.1] Development Aliases & Tools (Project Path)
+ALIASES_SH="${WS_CONFIG}/util_aliases.sh"
 if [ -f "$ALIASES_SH" ]; then
     source "$ALIASES_SH"
-    log_ok "Development aliases and tools integrated"
+    log_ok "Development tools integrated from: $ALIASES_SH"
 fi
 
 # ROS environment source
@@ -256,8 +266,8 @@ if [ -f "$ROS_SETUP" ]; then
     source "$ROS_SETUP"
     log_ok "ROS ${ROS_DISTRO:-humble} sourced"
 
-    if [ -f "${WORKSPACE_PATH:-/workspace}/install/setup.bash" ]; then
-        source "${WORKSPACE_PATH:-/workspace}/install/setup.bash"
+    if [ -f "${WS_INSTALL}/setup.bash" ]; then
+        source "${WS_INSTALL}/setup.bash"
         log_ok "Workspace overlay sourced"
     fi
 else
@@ -265,15 +275,14 @@ else
 fi
 
 # [7.2] ROS Version-specific Configuration
-ROS_ENV_INIT="/docker_dev/config/init_ros_env.sh"
-[ ! -f "$ROS_ENV_INIT" ] && ROS_ENV_INIT="/opt/scripts/init_ros_env.sh"
+ROS_ENV_INIT="${WS_CONFIG}/init_ros_env.sh"
 if [ -f "$ROS_ENV_INIT" ]; then
     source "$ROS_ENV_INIT"
 fi
 
 # [7.3] Auto-activate Python virtual environment
-if [ -f "${WORKSPACE_PATH:-/workspace}/install/.venv/bin/activate" ]; then
-    activate
+if [ -f "${WS_VENV}/bin/activate" ]; then
+    source "${WS_VENV}/bin/activate"
 fi
 
 # =============================================================================
@@ -281,10 +290,10 @@ fi
 # =============================================================================
 # Sourced after ROS to ensure LD_LIBRARY_PATH priority for GPU drivers
 log_info "GPU mode: ${GPU_MODE:-auto}"
-if [ -f "/docker_dev/scripts/setup_gpu.sh" ]; then
-    source /docker_dev/scripts/setup_gpu.sh "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
-elif [ -f "/opt/scripts/setup_gpu.sh" ]; then
-    source /opt/scripts/setup_gpu.sh "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
+GPU_SETUP="${WS_SCRIPTS}/setup_gpu.sh"
+
+if [ -f "$GPU_SETUP" ]; then
+    source "$GPU_SETUP" "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
 fi
 
 # Persist GPU environment for non-interactive shells (docker exec)
@@ -316,10 +325,11 @@ fi
 if [ "$IS_DEV" = true ]; then
     # Keep src/thirdparty as default, but run only if dependencies file exists
     TARGET_DIR="${SYNC_TARGET_DIR:-src/thirdparty}"
-    if [ "$PWD" == "${WORKSPACE_PATH:-/workspace}" ] && [ -f "dependencies/dependencies.repos" ]; then
+    if [ "$PWD" == "$WS_ROOT" ] && [ -f "dependencies/dependencies.repos" ]; then
         if [ ! -d "$TARGET_DIR" ] || [ -z "$(ls -A $TARGET_DIR 2>/dev/null)" ]; then
-            log_info "Dependency directory ($TARGET_DIR) is empty. Running setup_sync_deps.sh..."
-            bash /docker_dev/scripts/setup_sync_deps.sh
+            SYNC_DEPS="${WS_SCRIPTS}/setup_sync_deps.sh"
+            log_info "Dependency directory ($TARGET_DIR) is empty. Running $(basename $SYNC_DEPS)..."
+            bash "$SYNC_DEPS"
         fi
     fi
 fi

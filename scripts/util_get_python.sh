@@ -1,45 +1,28 @@
 #!/bin/bash
 # =============================================================================
 # scripts/util_get_python.sh
-# Centralized Python Interpreter Detector (Enterprise Grade)
-# Features: Dynamic path resolution, execution bit safety, and SSOT integration.
+# Detects the appropriate Python interpreter for the current project context
 # =============================================================================
 
-WS_ROOT="${WORKSPACE_PATH:-/workspace}"
-VENV_PATH="${VENV_PATH:-${WS_ROOT}/install/.venv}"
-VENV_CFG="${VENV_PATH}/pyvenv.cfg"
-SYS_EXE="${SYS_PYTHON_EXE:-/usr/bin/python3}"
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
 
-# Logic:
-# 1. If venv exists AND has 'include-system-site-packages = true' AND the binary is executable
-#    -> Use venv python (Hybrid mode: system + venv)
-# 2. Otherwise, use system python (Stable/Isolated mode)
-if [[ -f "$VENV_CFG" ]]; then
-    # Robustly extract include-system-site-packages value using awk
-    INCLUDE_SYS=$(awk -F'=' '/include-system-site-packages/ {gsub(/ /, "", $2); print tolower($2)}' "$VENV_CFG")
+# 1. Prioritize active virtual environment (User explicit activation)
+[ -n "$VIRTUAL_ENV" ] && [ -x "$VIRTUAL_ENV/bin/python" ] && echo "$VIRTUAL_ENV/bin/python" && exit 0
 
-    if [[ "$INCLUDE_SYS" == "true" ]]; then
-        TARGET_PY="${VENV_PATH}/bin/python3"
-        if [[ -x "$TARGET_PY" ]]; then
-            echo "$TARGET_PY"
-            exit 0
-        else
-            # Fallback log (stderr) if venv is corrupted but config says 'true'
-            echo "[Warn] Venv interpreter not executable: $TARGET_PY" >&2
-        fi
-    fi
+# 2. Case: ROS Environment (Priority: System, Exception: Shared Venv)
+if [ -n "$ROS_DISTRO" ]; then
+    grep -q "include-system-site-packages = true" "${WS_VENV}/pyvenv.cfg" 2>/dev/null && \
+        echo "${WS_VENV}/bin/python" || echo "${SYS_PYTHON_EXE:-/usr/bin/python3}"
+    exit 0
 fi
 
-# Fallback with System Integrity Check
-if [[ -x "$SYS_EXE" ]]; then
-    echo "$SYS_EXE"
-else
-    # Ultimate fail-safe using PATH search
-    AUTO_DETECTED_PY=$(command -v python3 || command -v python)
-    if [[ -n "$AUTO_DETECTED_PY" ]]; then
-        echo "$AUTO_DETECTED_PY"
-    else
-        # Last resort: returning a string is better than empty for build systems
-        echo "${SYS_PYTHON_EXE:-/usr/bin/python3}"
-    fi
+# 3. Case: Non-ROS Environment (Priority: Local Venv)
+if [ -d "${WS_VENV}" ] && [ -x "${WS_VENV}/bin/python" ]; then
+    echo "${WS_VENV}/bin/python"
+    exit 0
 fi
+
+# 4. Final Fallback
+echo "${SYS_PYTHON_EXE:-/usr/bin/python3}"

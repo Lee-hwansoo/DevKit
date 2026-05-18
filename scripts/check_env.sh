@@ -8,17 +8,20 @@
 # KEY=VALUE format for Makefile integration.
 # =============================================================================
 
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+
 # Load logging utility
-source "$(dirname "${BASH_SOURCE[0]}")/util_logging.sh" 2>/dev/null || true
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG" || true
 LOG_PREFIX="[Env Detector]"
 
 # 0. Detect Workspace Paths (Host & Container Separation)
 HOST_WORKSPACE_PATH="${HOST_WORKSPACE_PATH:-$(pwd)}"
-WORKSPACE_PATH="${WORKSPACE_PATH:-/workspace}"
+WORKSPACE_PATH="${WS_ROOT}"
 
 # 1. Check Environment and Determine host CPU architecture
-# Composite WSL 2 detection: kernel signature + WSLg artifact check.
-# Simple "Microsoft" grep causes false positives on Azure VMs and Hyper-V guests.
 IS_WSL="false"
 if grep -qi "microsoft" /proc/version 2>/dev/null; then
     if grep -qiE "WSL2|microsoft-standard" /proc/version 2>/dev/null || [ -d "/mnt/wslg" ] || [ -d "/run/WSL" ]; then
@@ -26,7 +29,7 @@ if grep -qi "microsoft" /proc/version 2>/dev/null; then
     fi
 fi
 
-# WSL2 D3D12/DirectX Device Mount (Prevent crash on Native Linux)
+# WSL2 D3D12/DirectX Device Mount
 if [ "${IS_WSL}" = "true" ] && [ -e "/dev/dxg" ]; then
     HOST_DXG_MOUNT="/dev/dxg:/dev/dxg"
 else
@@ -43,13 +46,12 @@ esac
 
 # 2. Identify GPU hardware and container toolkit compatibility
 HAS_NVIDIA="false"
-HAS_TOOLKIT="false"      # Docker-configured status
-HAS_TOOLKIT_BIN="false"  # Binary installation status
+HAS_TOOLKIT="false"
+HAS_TOOLKIT_BIN="false"
 HAS_DRI="false"
 
 if command -v nvidia-smi >/dev/null 2>&1; then
     HAS_NVIDIA="true"
-    # Extract maximum supported CUDA version from the host driver
     HOST_CUDA_MAX=$(nvidia-smi 2>/dev/null | grep -o "CUDA Version: [0-9.]*" | cut -d: -f2 | xargs || echo "Unknown")
 fi
 
@@ -61,20 +63,14 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     if docker info 2>/dev/null | grep -iq "Runtimes: .*nvidia"; then
         HAS_TOOLKIT="true"
     fi
-else
-    # Only warn if not in a quiet/Makefile context (optional, but keeping for now)
-    :
 fi
 
-# Detect /dev/dri existence (Used for Intel/AMD resource allocation and auto-mount selection)
 if [ -d /dev/dri ] && ls /dev/dri/renderD* >/dev/null 2>&1; then
     HAS_DRI="true"
 elif [ "${IS_WSL}" = "true" ] && [ -e "/dev/dxg" ]; then
-    # In WSL 2, iGPU is supported via /dev/dxg even if /dev/dri is not mapped yet.
     HAS_DRI="true"
 fi
 
-# Intel/AMD iGPU DRI Device Mount (Prevent crash on WSL2 where /dev/dri doesn't exist)
 if [ -d /dev/dri ]; then
     HOST_DRI_MOUNT="/dev/dri:/dev/dri"
 else
@@ -82,7 +78,6 @@ else
 fi
 
 # 3. Establish Workspace Path and Secure Cache Paths
-# HOST side cache should be relative to HOST_WORKSPACE_PATH
 if [ -z "${DOCKER_DEV_CACHE_DIR}" ]; then
     HOST_CACHE_DIR="${HOST_WORKSPACE_PATH}/.docker_cache"
 else
@@ -94,16 +89,13 @@ DISPLAY_TYPE="X11"
 HOST_XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR}"
 HOST_WAYLAND_DISPLAY="${WAYLAND_DISPLAY}"
 
-# Special handling for WSLg (WSL 2 GUI)
 if [ "${IS_WSL}" = "true" ]; then
-    # Prioritize WSLg runtime directory if available
     if [ -d "/mnt/wslg/runtime-dir" ]; then
         HOST_XDG_RUNTIME_DIR="/mnt/wslg/runtime-dir"
         [ -z "${HOST_WAYLAND_DISPLAY}" ] && HOST_WAYLAND_DISPLAY="wayland-0"
     fi
 fi
 
-# Sudo support: Accurately locate the X11 authority file by referencing the real home directory of the SUDO_USER.
 if [ -n "${SUDO_USER}" ]; then
     HOST_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
 else
@@ -111,14 +103,10 @@ else
 fi
 REAL_HOST_XAUTH="${XAUTHORITY:-${HOST_HOME}/.Xauthority}"
 
-# Generate container-scoped Xauthority (limits X11 cookie exposure)
-# This prevents permission issues when the host file is owned by a different user
-# and ensures that only the necessary display cookie is shared with the container.
 HOST_XAUTHORITY_SCOPED="${HOST_CACHE_DIR}/container_xauthority"
 if [ -s "${REAL_HOST_XAUTH}" ] && command -v xauth >/dev/null 2>&1; then
     DISPLAY_NUM="${DISPLAY#:}"
     DISPLAY_NUM="${DISPLAY_NUM%%.*}"
-    # Clean old scoped file and try to extract current display cookie
     rm -f "${HOST_XAUTHORITY_SCOPED}"
     if xauth -b -f "${REAL_HOST_XAUTH}" extract - ":${DISPLAY_NUM}" 2>/dev/null | xauth -b -f "${HOST_XAUTHORITY_SCOPED}" merge - 2>/dev/null; then
         chmod 644 "${HOST_XAUTHORITY_SCOPED}"
@@ -126,20 +114,14 @@ if [ -s "${REAL_HOST_XAUTH}" ] && command -v xauth >/dev/null 2>&1; then
     fi
 fi
 
-# Fallback: Ensure HOST_XAUTHORITY is set to a valid path
 if [ ! -f "${HOST_XAUTHORITY:-}" ]; then
     HOST_XAUTHORITY="${HOST_CACHE_DIR}/dummy_xauthority"
     touch "${HOST_XAUTHORITY}"
 fi
 
-# Detect SSH Agent Forwarding socket with robust fallback for sudo environments
-# 1. Check current session's socket validity
 if [ -S "${SSH_AUTH_SOCK}" ]; then
     HOST_SSH_AUTH_SOCK="${SSH_AUTH_SOCK}"
-# 2. Case: running via sudo (Try to recover from original user's session)
 elif [ -n "${SUDO_USER}" ]; then
-    # Search for valid agent sockets belonging to the original user in /tmp
-    # Targeted search to minimize performance impact
     _USER_SOCK=$(find /tmp/ssh-* /tmp/ssh-agent-* -type s -user "${SUDO_USER}" -name "agent.*" 2>/dev/null | head -n 1)
     HOST_SSH_AUTH_SOCK="${_USER_SOCK:-}"
 else
@@ -148,9 +130,7 @@ fi
 
 if [ -n "$HOST_WAYLAND_DISPLAY" ]; then
     DISPLAY_TYPE="Wayland"
-    # Verify actual socket file existence and normalize path
     if [ -S "${HOST_XDG_RUNTIME_DIR}/${HOST_WAYLAND_DISPLAY}" ]; then
-        # Path already normalized
         :
     elif [ -S "/run/user/$(id -u)/${HOST_WAYLAND_DISPLAY}" ]; then
         HOST_XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -162,19 +142,15 @@ if [ -z "${HOST_XDG_RUNTIME_DIR}" ] || [ ! -d "${HOST_XDG_RUNTIME_DIR}" ]; then
     HOST_XDG_RUNTIME_DIR="${HOST_CACHE_DIR}/dummy_xdg_runtime"
 fi
 
-# Detect the X11 Unix socket directory with automatic fallback creation
 if [ -d /tmp/.X11-unix ]; then
     HOST_X11_DIR="/tmp/.X11-unix"
 elif [ "${IS_WSL}" = "true" ] && [ -d "/mnt/wslg/.X11-unix" ]; then
-    # WSLg alternative path
     HOST_X11_DIR="/mnt/wslg/.X11-unix"
 else
-    # Create a virtual path for environments without X11 or in special cases
     mkdir -p "${HOST_CACHE_DIR}/dummy_x11_unix"
     HOST_X11_DIR="${HOST_CACHE_DIR}/dummy_x11_unix"
 fi
 
-# WSL2 D3D12 Graphics Driver Mount Path (Prevent crash on Native Linux)
 if [ "${IS_WSL}" = "true" ] && [ -d "/usr/lib/wsl" ]; then
     WSL_LIB_DIR_MOUNT="/usr/lib/wsl"
 else
@@ -190,8 +166,6 @@ else
     HOST_GITCONFIG="${HOST_CACHE_DIR}/dummy_gitconfig"
 fi
 
-# Validate that path variables do not contain spaces to prevent Makefile parsing issues
-# Use bash indirect reference ${!var} instead of eval to prevent code injection
 for _path_var in HOST_HOME HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_XAUTHORITY; do
     _val="${!_path_var}"
     if echo "$_val" | grep -q ' '; then
@@ -199,18 +173,18 @@ for _path_var in HOST_HOME HOST_CACHE_DIR HOST_X11_DIR HOST_GITCONFIG HOST_XAUTH
     fi
 done
 
-# 4. Python Interpreter Detection (SSOT Integration)
-# Detects the best python executable for the current project context.
-GET_PY_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/util_get_python.sh"
+# 4. Python Interpreter Detection
+GET_PY_SCRIPT="${WS_SCRIPTS}/util_get_python.sh"
+[ ! -f "$GET_PY_SCRIPT" ] && GET_PY_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/util_get_python.sh"
 if [ -f "$GET_PY_SCRIPT" ]; then
     PYTHON_EXECUTABLE=$(bash "$GET_PY_SCRIPT")
 else
     PYTHON_EXECUTABLE="${SYS_PYTHON_EXE:-/usr/bin/python3}"
 fi
 
-# 5. Output all detected variables for Makefile integration
+# 5. Output for Makefile integration
 echo "HOST_WORKSPACE_PATH=${HOST_WORKSPACE_PATH}"
-echo "WORKSPACE_PATH=${WORKSPACE_PATH}"
+echo "WORKSPACE_PATH=${WS_ROOT}"
 echo "IS_WSL=${IS_WSL}"
 echo "HOST_DXG_MOUNT=${HOST_DXG_MOUNT}"
 echo "HOST_ARCH=${HOST_ARCH}"

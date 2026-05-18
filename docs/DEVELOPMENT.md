@@ -1,47 +1,78 @@
-﻿# ailab Workspace
+# 🚀 DevKit Development & Deployment Guide
 
-This directory contains the core source code and dependency specifications for the **ailab** project.
+This document outlines the core architecture, development workflows, and production deployment strategies for the **DevKit** ecosystem.
 
-## 🏁 원스톱 개발 워크플로우 (One-step Workflow)
+---
 
-프로젝트에 처음 진입했거나 의존성 또는 하드웨어 구성이 변경된 경우, 아래 **단 한 줄의 명령어**로 모든 환경 구축(Python, ROS, System) 및 빌드를 완료할 수 있습니다.
+## 🏛️ Architecture: Single Source of Truth (SSOT)
+
+DevKit enforces a **Single Source of Truth** for all paths and configurations. The environment is anchored to the `${WORKSPACE_PATH}` (default: `/workspace`).
+
+### 📍 Standardized Path Strategy
+
+- **No Shadow Directories**: All scripts, configurations, and dependencies reside strictly within the workspace.
+- **Relative Robustness**: Sibling scripts are sourced using a robust multi-path pattern:
+  1. `${WORKSPACE_PATH}/scripts/...` (Official SSOT)
+  2. `$(dirname "${BASH_SOURCE[0]}")/...` (Local Fallback/Host)
+
+---
+
+## 🏁 Unified Development Workflow
+
+Experience a zero-config setup after entering the container.
+
+### 1. One-Step Initialization
+
+Run the following command to automate environment creation, dependency synchronization, and initial build:
 
 ```bash
 mksync
 ```
 
-> [!NOTE]
-> `mksync`는 `mkenv` → `uvs` → `sync_deps --rosdep` → `cb` (또는 `mbuild`) 과정을 순차적으로 자동 수행합니다. 작업이 완료된 후 **`activate`**로 가상환경에 진입하고 **`s`** 명령어로 환경을 소싱하세요.
+> [!TIP]
+> `mksync` is an orchestrator that runs `mkenv` → `uvs` → `sync_deps --rosdep` → `cb`/`mbuild` in sequence.
+
+### 2. Dependency Management
+
+- **Python (`uv`)**: Managed via `src/pyproject.toml`. Use `uvs` for lightning-fast synchronization.
+- **System & ROS**: Managed via `dependencies/`. Use `sync_deps --rosdep` to pull external repos and install system packages.
 
 ---
 
-## 🔍 상세 가이드 (Standard Guide)
+## 📦 Production & Portability (Apptainer)
 
-### 1. Python Environment (uv)
+DevKit has transitioned from a multi-stage Docker deployment to a unified **Apptainer (Singularity)** workflow for maximum portability in HPC and cluster environments.
 
-`uv`를 통해 고성능의 격리된 환경을 제공합니다. `uvs` 명령어는 `src/pyproject.toml`을 읽어 현재 시스템에 NVIDIA GPU가 있는지 확인하고, 그에 맞는 PyTorch(cu128 또는 cpu)를 자동으로 선택하여 설치합니다.
+### 🧊 The "Bake to SIF" Strategy
 
-### 2. ROS & System Dependencies
+Instead of maintaining complex production Docker images, we "bake" the entire validated workspace into a single **SIF (Singularity Image File)**.
 
-`sync_deps --rosdep` 명령어는 내 소스 코드와 외부 라이브러리의 의존성을 한 번에 관리합니다:
-- `dependencies/dependencies.repos`에 명시된 외부 패키지를 `src/thirdparty`로 가져옵니다.
-- **`src/`** 디렉토리 전체를 재귀적으로 검색하여 `carmaker_teleop` 같은 내 패키지와 외부 패키지의 `package.xml` 의존성을 모두 자동으로 설치합니다.
+| Action | Command | Result |
+| :--- | :--- | :--- |
+| **Bake** | `make bake` | Generates `devkit_v1.0.sif` containing the full workspace |
+| **Run** | `make run-sif` | Runs the immutable image with rootless execution |
 
-### 3. Build & Source
+**Benefits**:
 
-- **`cb`**: `colcon build`의 별칭으로 `RelWithDebInfo` 모드로 빌드합니다.
-- **`s`**: 빌드가 끝난 후 `source install/setup.bash`를 실행하여 현재 셸에 빌드된 패키지들을 반영합니다.
+- **Total Isolation**: All `build/`, `install/`, and `scripts/` are frozen inside the image.
+- **High Performance**: Native performance on clusters without the overhead of Docker daemons.
+- **Version Control**: SIF files are immutable artifacts that can be easily versioned and shared.
 
-## 📦 주요 포함 라이브러리 (Core Stack)
+---
 
-- **Deep Learning**: PyTorch, torchvision
-- **Computer Vision**: OpenCV, Scikit-Image, Scikit-Learn
-- **3D Processing**: Open3D
-- **Analysis**: NumPy, Pandas, Matplotlib, SciPy
-- **Utils**: Pyre-check (Static Type checking)
+## 🏥 Diagnostics & Health Checks
 
-## 환경 체크용 명령어
+Maintain a healthy environment using the standardized diagnostic suite:
 
-```bash
-python3 -c "import torch; import torchvision; print(f'PyTorch Version: {torch.__version__}'); print(f'CUDA Available: {torch.cuda.is_available()}'); print(f'GPU Name: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
-```
+- **`hw_check`**: Comprehensive hardware diagnostics (GPU, Display, Architecture).
+- **`gpu_status`**: Quick check of active rendering mode and driver visibility.
+- **`check_deps`**: Verifies that no shared libraries (`*.so`) are missing in `install/`.
+- **`make status`**: (Host-side) Audits WSL/Linux host configuration for GPU acceleration.
+
+---
+
+## 📝 Best Practices
+
+1. **Always Source**: Use the `s` alias (`source install/setup.bash`) after any build or when opening a new terminal.
+2. **Venv Activation**: Use `activate` to enter the Python virtual environment.
+3. **Intelligent Build**: Use `cb` for ROS packages and `mbuild` for pure C++ projects.

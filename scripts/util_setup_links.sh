@@ -4,15 +4,16 @@
 # Centralized management for workspace symlinks (colcon.meta, dependencies, etc.)
 # =============================================================================
 
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+
 # Load logging utility
-SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
-WORKSPACE_ROOT="${WORKSPACE_PATH:-/workspace}"
-COLCON_META_SRC="/docker_dev/config/colcon.meta"
-DEPS_DIR_SRC="/opt/dependencies"
-VENV_DIR_SRC="${VENV_PATH:-${WORKSPACE_ROOT}/install/.venv}"
+COLCON_META_SRC="${WS_CONFIG}/colcon.meta"
+VENV_DIR_SRC="${WS_VENV}"
 
 # Function to safely create a symlink
 # Usage: safe_link <src> <dest> <description>
@@ -51,19 +52,39 @@ VERBOSE=false
 [ "$1" = "--verbose" ] && VERBOSE=true
 
 # 1. colcon.meta (Build Optimization Configuration)
-safe_link "$COLCON_META_SRC" "${WORKSPACE_ROOT}/colcon.meta" "Colcon configuration"
+safe_link "$COLCON_META_SRC" "${WS_ROOT}/colcon.meta" "Colcon configuration"
 
-# 2. dependencies (Third-party Dependency Source Mapping)
-safe_link "$DEPS_DIR_SRC" "${WORKSPACE_ROOT}/dependencies" "Dependency directory"
 
-# 3. .venv (IDE Integration)
-safe_link "$VENV_DIR_SRC" "${WORKSPACE_ROOT}/.venv" "Virtual environment"
+# 2. .venv (IDE Integration)
+safe_link "$VENV_DIR_SRC" "${WS_ROOT}/.venv" "Virtual environment"
 
-# 4. compile_commands.json (C++ IntelliSense)
-# Priority: 1. Workspace build root, 2. Package-specific build dir (most recent)
-COMPILE_COMMANDS_SRC="${WORKSPACE_ROOT}/build/compile_commands.json"
-if [ ! -f "$COMPILE_COMMANDS_SRC" ]; then
-    # Fallback to the most recently modified compile_commands.json in any build subdirectory
-    COMPILE_COMMANDS_SRC=$(find "${WORKSPACE_ROOT}/build" -maxdepth 2 -name "compile_commands.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -k1 -nr | head -1 | cut -d' ' -f2-)
+# 3. compile_commands.json (C++ IntelliSense)
+# If we have multiple package-specific build directories (e.g. ROS colcon), merge them into a single compile_commands.json
+if [ -d "${WS_ROOT}/build" ]; then
+    if [ "$VERBOSE" == true ]; then
+        log_info "Aggregating compile_commands.json from all sub-packages..."
+    fi
+    python3 -c "
+import json, glob, os
+build_dir = '${WS_ROOT}/build'
+output_file = os.path.join(build_dir, 'compile_commands.json')
+sub_files = [f for f in glob.glob(os.path.join(build_dir, '**/compile_commands.json'), recursive=True)
+             if os.path.abspath(f) != os.path.abspath(output_file)]
+
+if sub_files:
+    all_commands = []
+    for f in sub_files:
+        try:
+            with open(f, 'r') as file:
+                data = json.load(file)
+                if isinstance(data, list):
+                    all_commands.extend(data)
+        except Exception:
+            pass
+    with open(output_file, 'w') as file:
+        json.dump(all_commands, file, indent=2)
+" 2>/dev/null || true
 fi
-safe_link "$COMPILE_COMMANDS_SRC" "${WORKSPACE_ROOT}/compile_commands.json" "Compile commands"
+
+COMPILE_COMMANDS_SRC="${WS_ROOT}/build/compile_commands.json"
+safe_link "$COMPILE_COMMANDS_SRC" "${WS_ROOT}/compile_commands.json" "Compile commands"

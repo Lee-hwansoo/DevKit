@@ -3,7 +3,7 @@
 # config/util_aliases.sh
 # Comprehensive alias collection for ROS2, C++, Python (uv), and Diagnostics
 #
-# Loaded via ~/.bashrc using: source /docker_dev/config/util_aliases.sh
+# Loaded via ~/.bashrc using: source ${WORKSPACE_PATH:-/workspace}/config/util_aliases.sh
 # Note: ROS-specific aliases are only defined if the ros2 command is available,
 # ensuring compatibility with non-ROS dev targets.
 # Note: This file should only be loaded inside the container environment.
@@ -18,16 +18,20 @@ if [ ! -f /.dockerenv ] && [ "$FORCE_LOAD_ALIASES" != "true" ]; then
     return 0
 fi
 
+# Load centralized paths (Single Source of Truth)
+WS_ROOT="${WORKSPACE_PATH:-/workspace}"
+UTIL_PATHS="${WS_ROOT}/config/util_paths.sh"
+[ -f "$UTIL_PATHS" ] && source "$UTIL_PATHS"
+
 # Load logging utility for shared color variables & branding
-SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/../scripts/util_logging.sh"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="${WS_SCRIPTS}/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
 # Non-interactive shell detection
 [[ $- == *i* ]] && INTERACTIVE=true || INTERACTIVE=false
 
 # Environment Defaults & Paths
-VENV_PATH="${WORKSPACE_PATH:-/workspace}/install/.venv"
+VENV_PATH="${WS_VENV}"
 export SYS_PYTHON_EXE=${SYS_PYTHON_EXE:-/usr/bin/python3}
 
 # =============================================================================
@@ -36,14 +40,11 @@ export SYS_PYTHON_EXE=${SYS_PYTHON_EXE:-/usr/bin/python3}
 
 # Smart Python Detection for Builds
 function __get_build_py_exe() {
-    local script_live="${WORKSPACE_PATH:-/workspace}/scripts/util_get_python.sh"
-    local script_static="/docker_dev/scripts/util_get_python.sh"
+    local script="${WS_SCRIPTS}/util_get_python.sh"
 
     # 1. Prefer central detection script (Single Source of Truth)
-    if [ -f "$script_live" ]; then
-        bash "$script_live"
-    elif [ -f "$script_static" ]; then
-        bash "$script_static"
+    if [ -f "$script" ]; then
+        bash "$script"
     else
         # 2. Minimal fallback to system python (avoiding logic duplication)
         echo "${SYS_PYTHON_EXE:-/usr/bin/python3}"
@@ -52,8 +53,7 @@ function __get_build_py_exe() {
 
 # Smart GPU-aware CMake Arguments
 function __get_gpu_cmake_args() {
-    local script="/docker_dev/scripts/setup_gpu.sh"
-    [ ! -f "$script" ] && script="${WORKSPACE_PATH:-/workspace}/scripts/setup_gpu.sh"
+    local script="${WS_SCRIPTS}/setup_gpu.sh"
 
     if [ -f "$script" ]; then
         bash "$script" opencv_args 2>/dev/null
@@ -145,13 +145,13 @@ if torch.cuda.is_available():
 function __detect_project_type() {
     if [ -n "${ROS_DISTRO}" ] && command -v colcon &>/dev/null; then
         # Check for ROS-specific markers
-        if [ -f "${WORKSPACE_PATH:-/workspace}/src/CMakeLists.txt" ] || find "${WORKSPACE_PATH:-/workspace}/src" -maxdepth 2 -name "package.xml" | grep -q .; then
+        if [ -f "${WS_SRC}/CMakeLists.txt" ] || find "${WS_SRC}" -maxdepth 2 -name "package.xml" | grep -q .; then
             echo "ROS"
             return
         fi
     fi
 
-    if find "${WORKSPACE_PATH:-/workspace}/src" -maxdepth 2 -name "CMakeLists.txt" | grep -q .; then
+    if find "${WS_SRC}" -maxdepth 2 -name "CMakeLists.txt" | grep -q .; then
         echo "CPP"
     else
         echo "PYTHON"
@@ -162,33 +162,37 @@ function __detect_project_type() {
 
 # Modern CMake build implementation
 function __mbuild_impl() {
-    cmake -S "${WORKSPACE_PATH:-/workspace}/src" -B "${WORKSPACE_PATH:-/workspace}/build" -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="${WORKSPACE_PATH:-/workspace}/install" -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) && cmake --build "${WORKSPACE_PATH:-/workspace}/build" -j$(nproc) --target install "$@"
+    cmake -S "${WS_SRC}" -B "${WS_BUILD}" -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX="${WS_INSTALL}" -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && \
+    cmake --build "${WS_BUILD}" -j$(nproc) --target install "$@" && \
+    ${WS_SCRIPTS}/util_setup_links.sh
 }
 
 # Dependency synchronization implementation
 function __sync_deps_impl() {
-    bash /docker_dev/scripts/setup_sync_deps.sh "$@"
+    bash ${WS_SCRIPTS}/setup_sync_deps.sh "$@"
 }
 
 # ROS Build implementation (RelWithDebInfo)
 function __cb_impl() {
-    colcon --log-base "${WORKSPACE_PATH:-/workspace}/log" build --symlink-install --build-base "${WORKSPACE_PATH:-/workspace}/build" --install-base "${WORKSPACE_PATH:-/workspace}/install" --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) "$@"
+    colcon --log-base "${WS_ROOT}/log" build --symlink-install --build-base "${WS_BUILD}" --install-base "${WS_INSTALL}" --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@" && \
+    ${WS_SCRIPTS}/util_setup_links.sh
 }
 
 # ROS Build implementation (Release)
 function __cbr_impl() {
-    colcon --log-base "${WORKSPACE_PATH:-/workspace}/log" build --symlink-install --build-base "${WORKSPACE_PATH:-/workspace}/build" --install-base "${WORKSPACE_PATH:-/workspace}/install" --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) "$@"
+    colcon --log-base "${WS_ROOT}/log" build --symlink-install --build-base "${WS_BUILD}" --install-base "${WS_INSTALL}" --cmake-args -Wno-dev --no-warn-unused-cli -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17} -DPYTHON_EXECUTABLE=$(__get_build_py_exe) $(__get_gpu_cmake_args) -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@" && \
+    ${WS_SCRIPTS}/util_setup_links.sh
 }
 
 # uv-based Python synchronization implementation
 function __uvs_impl() {
-    uv sync --project "${WORKSPACE_PATH:-/workspace}/src" --extra ${UV_EXTRA:-cpu} "$@"
+    uv sync --project "${WS_SRC}" --extra ${UV_EXTRA:-cpu} "$@"
 }
 
 function __print_help() {
     [ "$INTERACTIVE" = false ] && return
     print_banner GUIDE
-    echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | WS: ${GREEN}${WORKSPACE_PATH}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC}"
+    print_env_info
 
     local current_section=""
     while IFS= read -r line; do
@@ -253,11 +257,11 @@ function mksync() {
 
 ## @alias mbuild / mclean : C++ build / clean (Modern CMake)
 alias mbuild='__mbuild_impl'
-alias mclean='rm -rf ${WORKSPACE_PATH:-/workspace}/build ${WORKSPACE_PATH:-/workspace}/install && echo -e "${BLUE}ℹ${NC} Build and Install directories cleared."'
+alias mclean='rm -rf ${WS_BUILD} ${WS_INSTALL} && echo -e "${BLUE}ℹ${NC} Build and Install directories cleared."'
 
 ## @alias sync_deps / check_deps : Sync / Check dependencies
 alias sync_deps='__sync_deps_impl'
-alias check_deps='bash /docker_dev/scripts/check_deps.sh'
+alias check_deps='bash ${WS_SCRIPTS}/check_deps.sh'
 
 # =============================================================================
 # ROS (ROS1 & ROS2 Common)
@@ -269,20 +273,21 @@ if [ -n "${ROS_DISTRO}" ]; then
     ## @alias cb / cbp / cbm : colcon build (build, packages-select, metas | RelWithDebInfo| )
     alias cb='__cb_impl'
     alias cbp='__cb_impl --packages-select'
-    alias cbm='__cb_impl --metas "${WORKSPACE_PATH:-/workspace}/colcon.meta"'
+    alias cbm='__cb_impl --metas "${WS_CONFIG}/colcon.meta"'
 
     ## @alias cbr / cbrp / cbrm : colcon build (Release optimized)
     alias cbr='__cbr_impl'
     alias cbrp='__cbr_impl --packages-select'
+    alias cbrm='__cbr_impl --metas "${WS_CONFIG}/colcon.meta"'
     alias cbt='colcon test'
 
     ## @alias s / sb : Source setup.bash / .bashrc
     function __smart_source() {
-        if [ -f "${WORKSPACE_PATH:-/workspace}/install/setup.bash" ]; then
-            source "${WORKSPACE_PATH:-/workspace}/install/setup.bash"
+        if [ -f "${WS_INSTALL}/setup.bash" ]; then
+            source "${WS_INSTALL}/setup.bash"
             echo -e "${GREEN}✓${NC} Sourced install/"
-        elif [ -f "${WORKSPACE_PATH:-/workspace}/devel/setup.bash" ]; then
-            source "${WORKSPACE_PATH:-/workspace}/devel/setup.bash"
+        elif [ -f "${WS_ROOT}/devel/setup.bash" ]; then
+            source "${WS_ROOT}/devel/setup.bash"
             echo -e "${GREEN}✓${NC} Sourced devel/"
         else
             echo -e "${YELLOW}⚠${NC} No setup.bash found in install/ or devel/"
@@ -352,14 +357,14 @@ function mkenv() {
     fi
     mkdir -p "$(dirname "$VENV_PATH")" && \
     uv venv "$VENV_PATH" --python "$py_exe" $share_flag --seed --prompt "${COMPOSE_PROJECT_NAME:-.venv}" && \
-    /docker_dev/scripts/util_setup_links.sh && \
-    echo -e "Created ${GREEN}${msg}${NC} in $(dirname "$VENV_PATH") and linked to ${WORKSPACE_PATH:-/workspace}/.venv. Run: ${CYAN}activate${NC}"
+    ${WS_SCRIPTS}/util_setup_links.sh && \
+    echo -e "Created ${GREEN}${msg}${NC} in $(dirname "$VENV_PATH") and linked to ${WS_ROOT}/.venv. Run: ${CYAN}activate${NC}"
 }
 
 # Smart activation function that handles Shared (Integrated) vs Pure (Isolated) environments
 ## @alias activate : Activate the virtual environment
 function activate() {
-    local target_venv="${VENV_PATH:-${WORKSPACE_PATH:-/workspace}/install/.venv}"
+    local target_venv="${VENV_PATH:-${WS_INSTALL}/.venv}"
     local act_script="${target_venv}/bin/activate"
     [ ! -f "$act_script" ] && { echo -e "${RED}Error:${NC} Virtual environment not found at ${target_venv}, Run ${CYAN}mkenv${NC} or ${CYAN}mksync${NC} first."; return 1; }
 
@@ -376,8 +381,8 @@ function activate() {
     fi
 
     # Ensure workspace symlinks exist in development for IDE integration
-    if [ -d "/docker_dev" ]; then
-        /docker_dev/scripts/util_setup_links.sh 2>/dev/null
+    if [ -d "${WS_SCRIPTS}" ]; then
+        ${WS_SCRIPTS}/util_setup_links.sh 2>/dev/null
     fi
 
     [ "$INTERACTIVE" = true ] && echo -e "${GREEN}✓${NC} Activated (${ENVIRONMENT_TYPE})"
@@ -438,7 +443,7 @@ function syspython() {
 
 ## @section 🔍 | Hardware & Rendering | BLUE
 ## @alias hw_check : Full hardware/env diagnostics
-alias hw_check='bash /docker_dev/scripts/check_hardware.sh'
+alias hw_check='bash ${WS_SCRIPTS}/check_hardware.sh'
 
 ## @alias gpu_check / vulkan_check : GPU/Vulkan availability check
 alias gpu_check='glxinfo 2>&1 | grep -E "OpenGL (vendor|renderer|version)" || echo "Error: glxinfo failed (no display?)"'
@@ -448,15 +453,15 @@ alias vulkan_check='vulkaninfo --summary 2>/dev/null | head -20 || echo "Vulkan 
 alias gpu_test='timeout 5 glxgears -info 2>&1 | head -10 || echo "GPU test failed (no display?)"'
 
 ## @alias gpu_status : Show GPU, Display & Lib status
-alias gpu_status='source /docker_dev/scripts/setup_gpu.sh status'
+alias gpu_status='source ${WS_SCRIPTS}/setup_gpu.sh status'
 ## @alias gpu_setup : Auto-configure optimal GPU mode
-alias gpu_setup='source /docker_dev/scripts/setup_gpu.sh auto && gpu_status'
+alias gpu_setup='source ${WS_SCRIPTS}/setup_gpu.sh auto && gpu_status'
 
 ## @alias use_nvidia / _intel / _amd / _cpu : Force Hardware acceleration mode
-alias use_nvidia='source /docker_dev/scripts/setup_gpu.sh nvidia && gpu_status'
-alias use_intel='source /docker_dev/scripts/setup_gpu.sh intel && gpu_status'
-alias use_amd='source /docker_dev/scripts/setup_gpu.sh amd && gpu_status'
-alias use_cpu='source /docker_dev/scripts/setup_gpu.sh cpu && gpu_status'
+alias use_nvidia='source ${WS_SCRIPTS}/setup_gpu.sh nvidia && gpu_status'
+alias use_intel='source ${WS_SCRIPTS}/setup_gpu.sh intel && gpu_status'
+alias use_amd='source ${WS_SCRIPTS}/setup_gpu.sh amd && gpu_status'
+alias use_cpu='source ${WS_SCRIPTS}/setup_gpu.sh cpu && gpu_status'
 
 ## @alias ccc / ccs : ccache clear / ccache stat
 alias ccs='ccache -s'
@@ -470,9 +475,9 @@ alias ccc='ccache -C'
 
 # --- Navigation ----------------------------------------------------------
 ## @alias cw / cs / cc : cd to root / src / config
-alias cw='cd "${WORKSPACE_PATH:-/workspace}"'
-alias cs='cd "${WORKSPACE_PATH:-/workspace}/src"'
-alias cc='cd /docker_dev/config'
+alias cw='cd "${WS_ROOT}"'
+alias cs='cd "${WS_SRC}"'
+alias cc='cd "${WS_CONFIG}"'
 
 # --- Shell & Editing ---------------------------------------------------------
 ## @alias g : git wrapper (status, pull, etc)

@@ -12,12 +12,16 @@
 
 set -eo pipefail
 
-# Load logging utility (Simplicity First)
-source "$(dirname "${BASH_SOURCE[0]}")/util_logging.sh" 2>/dev/null || true
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+
+# Load logging utility
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG" || true
 LOG_PREFIX="[Sanity Check]"
 
-WS_ROOT="${WORKSPACE_PATH:-/workspace}"
-TARGET_DIR=${1:-${WS_ROOT}/install}
+TARGET_DIR=${1:-${WS_INSTALL}}
 MISSING_COUNT=0
 
 log_info "Scanning for missing dependencies in $TARGET_DIR..."
@@ -50,8 +54,8 @@ function verify_package() {
 }
 
 function check_python_integrity() {
-    local script_dir="$(dirname "${BASH_SOURCE[0]}")"
-    local get_py_script="${script_dir}/util_get_python.sh"
+    local get_py_script="${WS_SCRIPTS}/util_get_python.sh"
+    [ ! -f "$get_py_script" ] && get_py_script="$(dirname "${BASH_SOURCE[0]}")/util_get_python.sh"
 
     if [ ! -f "$get_py_script" ]; then
         log_warn "Python detector script not found. Skipping Python integrity check."

@@ -342,31 +342,36 @@ nvidia-smi
 - **네트워크 모드 (ROS 2 멀티캐스트 설정)**: 로컬 네트워크의 실제 로봇이나 하드웨어와 통신해야 한다면, **Mirrored Networking Mode** 사용을 강력히 권장합니다.
   1. Windows 사용자 폴더(`%USERPROFILE%`)에 `.wslconfig` 파일을 생성하거나 편집합니다.
   2. 다음 내용을 추가합니다:
+
    ```ini
    [wsl2]
    networkingMode=mirrored
    ```
+
   3. WSL 재시작: 터미널에서 `wsl --shutdown` 실행 후 다시 접속합니다.
 
 - **GPU 가속 및 하드웨어 정렬 (최적화) 🚀**
   WSL 2는 내장 그래픽(iGPU)과 외장 그래픽(NVIDIA)이 공존할 때 내장 그래픽을 우선시하거나 소프트웨어 렌더러(`llvmpipe`)로 폴백하여 성능이 저하될 수 있습니다. 이를 해결하기 위해 호스트 리눅스(WSL)의 `~/.bashrc`에 하드웨어 사양에 맞는 설정을 추가하십시오.
-  
+
   **1. 자동 상태 진단**: 호스트 터미널에서 `make status`를 실행하여 `WSL GPU Acceleration Audit` 경고가 뜨는지 확인하세요. 경고가 뜨지 않는다면 이미 최적화된 상태입니다.
-  
+
   **1.1 수동 확인 (선택 사항)**: 설정을 적용하기 전/후에 호스트(WSL) 터미널에서 직접 확인할 수 있습니다.
   - **렌더러 확인**: `glxinfo -B | grep "OpenGL renderer"`
     - 출력 결과에 `llvmpipe`가 포함되어 있다면 소프트웨어 렌더링 중입니다.
     - `D3D12` 또는 `NVIDIA`가 표시되어야 정상입니다.
   - **NVIDIA 상태 확인**: `nvidia-smi` (NVIDIA 사용 시)
-  
+
   **2. 하드웨어별 설정 (HOST(WSL) ~/.bashrc 에 추가)**:
   - **Case A: NVIDIA 외장 그래픽(dGPU) 사용 시 (권장)**
+
     ```bash
     export MESA_LOADER_DRIVER_OVERRIDE=d3d12
     export GALLIUM_DRIVER=d3d12
     export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
     ```
+
   - **Case B: 인텔/AMD 내장 그래픽(iGPU)만 사용 시**
+
     ```bash
     export MESA_LOADER_DRIVER_OVERRIDE=d3d12
     export GALLIUM_DRIVER=d3d12
@@ -389,6 +394,35 @@ nvidia-smi
 | **순수 개발** | **`make dev`**       | **`make dev-stop`**    | **`make dev-restart`** | **`make dev-shell`** | **`make dev-term`** |
 
 > **Tip:** `make status`를 통해 현재 시스템이 NVIDIA GPU와 Container Toolkit을 올바르게 인식하고 있는지, 그리고 현재 아키텍처(AMD64/ARM64)가 무엇인지 확인할 수 있습니다.
+
+---
+
+## 🔌 VS Code (IDE) 연동 가이드 (IDE Integration)
+
+본 **DevKit**은 호스트의 개발 에디터(VS Code)와 컨테이너 내부의 격리된 빌드 엔진을 가장 직관적이고 강력하게 연결하기 위해 **"선행 터미널 기동 + VS Code Attach"** 개발 방식을 권장합니다.
+
+이 방식은 매번 무겁게 컨테이너를 새로 띄우는 대신, 하드웨어 사양(GPU/iGPU 등)에 맞게 띄워진 기존 컨테이너 위에 VS Code의 에디터 엔진을 깃털처럼 가볍게 얹어(Attach) 개발하는 고성능 자율주행/로보틱스 표준 워크플로우입니다.
+
+### 🏁 권장 개발 워크플로우 (Recommended Workflow)
+
+1. **호스트 터미널에서 컨테이너 선행 기동**:
+   호스트 PC의 일반 터미널에서 프로젝트 성격에 맞춰 컨테이너 서비스를 구동합니다.
+
+   ```bash
+   make ros      # ROS 환경 가동 (GPU 자동 감지 및 백그라운드 상시 대기)
+   # 또는
+   make dev      # C++/Python 일반 격리 환경 가동
+   ```
+
+2. **VS Code로 동작 중인 컨테이너에 접속 (Attach)**:
+   - 호스트 PC에서 VS Code를 켭니다.
+   - 단축키 **`F1`** (또는 `Ctrl+Shift+P`)를 눌러 커맨드 팔레트를 엽니다.
+   - **`Dev Containers: Attach to Running Container...`**를 검색하여 선택합니다.
+   - 실행 중인 컨테이너 목록 중 내 프로젝트 컨테이너(예: `devkit-ros-nvidia` 등)를 클릭하여 접속합니다.
+
+3. **IDE 연동 완료 및 코딩**:
+   - 접속 시 VS Code Server가 컨테이너 내부에 자동으로 심어지며, `.devcontainer/devcontainer.json`에 미리 준비해 둔 **명품 C++ 및 ROS 개발 확장 기능들**이 별도 설치 없이 원클릭으로 활성화됩니다.
+   - 마운트된 `/workspace` 폴더를 열고 쾌적한 네이티브 자동완성을 누리며 코딩을 수행하시면 됩니다.
 
 ---
 
@@ -452,7 +486,7 @@ mclean            # 클린 빌드: 빌드 및 설치 아티팩트 제거
 | | `gpu_setup` | GPU 자동 감지/설정 | 하드웨어 재검색 및 환경 변수 초기화 |
 | | `vulkan_check` | Check Vulkan API | `vulkaninfo` 요약 출력 |
 | **Utils** | `k` / `k9` | 프로세스 종료 | 일반 종료(`killall`) / 강제 종료(`-9`) |
-| **Nav** | `cw`, `cs`, `cc` | 디렉토리 이동 | `/workspace`, `/workspace/src`, `/docker_dev/config` 이동 |
+| **Nav** | `cw`, `cs`, `cc` | 디렉토리 이동 | `/workspace`, `/workspace/src`, `/workspace/config` 이동 |
 
 > 💡 **고급 팁: 자동 완성 및 자동화 지원**
 > - **Bash 자동 완성**: `mksync`, `mkenv`, `gpu_setup` 등 모든 커스텀 명령어와 ROS 패키지 이름(`cbp` 등)에 대한 강력한 Tab 자동 완성을 지원합니다.
@@ -485,64 +519,42 @@ mclean            # 클린 빌드: 빌드 및 설치 아티팩트 제거
 
 ---
 
-## 🚀 운영(Production) 배포 워크플로우
+## 🧊 Apptainer 워크플로우 (운영 및 이식성)
 
-배포 환경은 **Bake & Switch** 전략을 통해 소스 코드 없이 동작합니다.
+본 DevKit은 고성능 컴퓨팅(HPC) 클러스터 및 엣지 디바이스로의 이식성과 운영을 위해 **Apptainer (구 Singularity)**를 기본 전략으로 채택하고 있습니다.
 
 ```mermaid
 graph TD
-    A[Source Code] -->|make build-ros-prod| B(Builder Image)
-    B -->|Compile & Install| C{install/ Artifacts}
-    C -->|Copy| D(Runtime Image)
-    D -->|make ros-prod| E[Production Service]
+    A[Docker 개발 이미지] -->|make bake| B(Apptainer SIF 이미지)
+    B -->|단일 이미지 파일| C[타겟 운영 서버]
+    C -->|make run-sif| D[격리된 운영 서비스]
 ```
 
-### ⚠️ 배포 전 필수 권장 사항 (Data Hygiene)
+### 1. 왜 운영 환경에 Apptainer를 사용하는가?
 
-운영 이미지를 빌드하기 전, **`make clean`**을 실행하는 것을 강력히 권장합니다.
+- **단일 파일 이식성**: 전체 워크스페이스(빌드, 설치, 가상환경)가 단일 `.sif` 파일로 "구워"집니다.
+- **비루트(Rootless) 실행**: 루트 권한이 없는 공유 클러스터(HPC)에서도 보안 문제 없이 즉시 실행 가능합니다.
+- **환경 스냅샷**: 개발 환경의 상태를 그대로 캡처하여 "내 컴퓨터에서 되던 것"이 현장에서도 100% 동일하게 동작함을 보장합니다.
 
-**권장 빌드 순서:**
+### 2. 핵심 명령어
 
-1. **`make clean`**: 기존 빌드 찌꺼기 및 격리된 볼륨 데이터를 완전히 초기화합니다.
+| 구분 | 실행 명령어 | 설명 |
+| :--- | :--- | :--- |
+| **Bake** | **`make bake`** | 현재 워크스페이스를 SIF 이미지로 내부화하여 생성 |
+| **Bake (Shared)** | **`make bake-share`** | 시스템 패키지 공유 모드로 SIF 이미지 생성 |
+| **Run** | **`make run-sif`** | 생성된 SIF 이미지를 최신 호스트 설정과 함께 실행 |
 
-2. **`make build-ros-prod`**: 깨끗한 상태에서 배포용 이미지를 빌드(Bake)합니다.
-
-- **이유:** 연결 모드(Bind Mount) 사용 시 호스트에 남은 잔여 파일이나 구 버전의 빌드 아티팩트가 배포 이미지에 포함되는 것을 방지하고, 네임드 볼륨의 데이터를 초기화하여 깨끗한 상태에서 빌드를 보장합니다.
-
-### 1. 배포 이미지의 특징 (`Dockerfile.prod`)
-
-- **소스 코드 제외**: 빌드 단계(Builder)에서 생성된 `install/` 아티팩트만 최종 런타임 이미지로 복제합니다.
-- **자동 의존성 검증 (Sanity Check)**: 빌드 과정 중 `ldd`를 통해 필요한 공유 라이브러리가 모두 포함되었는지 검사하여 런타임 안정성을 보장합니다.
-- **결정성 극대화**: APT 스냅샷과 `uv sync --frozen`을 통해 환경의 완벽한 일관성을 유지합니다.
-
-### 2. 배포 서비스 제어 명령어 (자동 GPU 감지)
-
-| 환경 구분       | 실행 명령어                          | 특징                                        |
-| :-------------- | :----------------------------------- | :------------------------------------------ |
-| **ROS 배포**    | **`make ros-prod`**                  | 최적화된 ROS 아티팩트 기반 서비스 시작      |
-|                 | **`make ros-prod-stop`**             | ROS 배포 서비스 중지                        |
-| **순수 배포**   | **`make dev-prod`**                  | 가벼운 C++/Python 아티팩트 전용 서비스 시작 |
-|                 | **`make dev-prod-stop`**             | 순수 배포 서비스 중지                       |
-| **이미지 추출** | **`make save-ros`** / **`save-dev`** | 배포용 이미지를 압축 파일(`.tar.gz`)로 추출 |
-| **이미지 복원** | **`make load-ros`** / **`load-dev`** | 압축 파일에서 이미지를 도커 시스템으로 복원 |
-
-### 3. 오프라인 배포 가이드 (Offline Deployment)
-
-네트워크가 제한된 타겟 서버에 프로젝트를 배포할 때는 도커 이미지를 추출하여 전송합니다.
+### 3. 배포 가이드
 
 ```bash
-# 1. 배포용 이미지 빌드 (Bake)
-make build-ros-prod  # 또는 make build-dev-prod
+# 1. 워크스페이스를 SIF 이미지로 굽기
+make bake
 
-# 2. 이미지 추출 (Makefile 기반 자동화)
-make save-ros        # 추출 완료 후 프로젝트 루트에 {project}-ros-{distro}.tar.gz 생성
+# 2. 생성된 .sif 파일을 타겟 서버로 전송
+scp project.sif user@target:/path/to/project/
 
-# 3. 타겟 서버로 전송 (필수 파일: .tar.gz, .env, docker-compose.prod.yml, Makefile)
-# .tar.gz 파일을 타겟 서버의 프로젝트 루트 디렉토리에 위치시켜야 합니다.
-
-# 4. 타겟 서버에서 복원 및 실행
-make load-ros        # 루트의 아카이브 파일을 자동으로 찾아 이미지 로드
-make ros-prod        # 서비스 시작 (또는 docker compose -f docker-compose.prod.yml up -d)
+# 3. 타겟 서버에서 즉시 서비스 실행
+make run-sif
 ```
 
 ---

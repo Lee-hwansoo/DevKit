@@ -162,3 +162,24 @@ log_detail() {
 log_step_done() {
     echo -e "  ${GREEN}✓${NC} $1"
 }
+
+# print_env_info - Displays a standardized project dashboard (Single Source of Truth)
+print_env_info() {
+    # 1. Detect Python Environment Mode
+    local venv_status="${RED}None${NC}"
+    local v_path="${WS_VENV:-${WORKSPACE_PATH:-/workspace}/install/.venv}"
+    if [ -d "$v_path" ]; then
+        if grep -q "include-system-site-packages = true" "${v_path}/pyvenv.cfg" 2>/dev/null; then
+            venv_status="${YELLOW}SHARED${NC}"
+        else
+            venv_status="${BLUE}PURE${NC}"
+        fi
+    fi
+
+    # 2. Path Normalization (Relative to Workspace Root)
+    local root="${WS_ROOT:-${WORKSPACE_PATH:-/workspace}}"
+    local v_rel="${v_path#$root/}"
+
+    # 3. Output Unified Dashboard
+    echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | WS: ${GREEN}${root}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | Python: ${CYAN}${v_rel}${NC}(${venv_status})"
+}

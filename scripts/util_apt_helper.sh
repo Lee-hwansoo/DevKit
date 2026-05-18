@@ -11,10 +11,12 @@
 set -eo pipefail
 COMMAND=$1
 
-# Load logging utility (path may vary during docker build)
-SOURCE_LOG="/tmp/util_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+
+# Load logging utility
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="${WS_SCRIPTS}/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[APT Helper]"
 
@@ -143,7 +145,7 @@ setup_cuda_repo() {
 install_packages() {
     local filter=$1  # "all" (dev/builder) or "runtime" (production)
     local distro=$2
-    local dep_dir=${3:-"/opt/dependencies"} # Default dependency directory
+    local dep_dir=${3:-"${WS_DEPS:-/workspace/dependencies"}} # Default dependency directory
 
     local apt_file="/tmp/apt.txt"
     local ros_file="/tmp/apt_ros.txt"

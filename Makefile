@@ -40,7 +40,6 @@ endif
 
 COMPOSE := docker compose
 COMPOSE_DEV := -f docker-compose.dev.yml
-COMPOSE_PROD := -f docker-compose.prod.yml
 TERMINAL ?= terminator
 
 # Macros (Deduplication & SSOT)
@@ -134,9 +133,6 @@ endef
 # $1: EXTRA_ARGS (e.g. -v for volumes)
 define TEARDOWN_SERVICES
 	$(COMPOSE) $(COMPOSE_DEV) --profile "*" down $1 --remove-orphans
-	@if [ -f docker-compose.prod.yml ]; then \
-		$(COMPOSE) $(COMPOSE_PROD) --profile "*" down $1 --remove-orphans 2>/dev/null || true; \
-	fi
 endef
 
 # $1: MOUNT_DIR (Absolute Path), $2: Targets to delete
@@ -164,9 +160,7 @@ endef
 .PHONY: h help setup check check-host xauth status \
         build-ros build-dev rebuild-ros rebuild-dev \
         ros ros-stop ros-restart dev dev-stop dev-restart ros-shell dev-shell ros-term dev-term \
-		build-ros-prod build-dev-prod rebuild-ros-prod rebuild-dev-prod \
-        ros-prod ros-prod-stop dev-prod dev-prod-stop \
-		save-ros save-dev load-ros load-dev \
+		bake bake-share run-sif \
 		update-gpg stats top logs down clean clean-cache clean-all docker-clean env-check
 
 h: help
@@ -315,7 +309,6 @@ env-check:
 ## @section 🏗️ | Image Building | BLUE
 ## @target build-ros / dev : Build development images
 ## @target rebuild-ros / dev : Full rebuild (no cache)
-## @target build-ros-prod / dev : Build optimized production images
 build-ros: check
 	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,ROS Development,,Build finished! Please run 'make ros' to start the container.)
 
@@ -327,22 +320,6 @@ rebuild-ros: check
 
 rebuild-dev: check
 	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Rebuild Pure Dev without cache,--no-cache,Build finished! Please run 'make dev' to start the container.)
-
-build-ros-prod: check
-	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Bake Production ROS,,Production image baked! Extract with 'make save-ros' or run with 'make ros-prod'.)
-
-build-dev-prod: check
-	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Bake Production Pure Dev,,Production image baked! Extract with 'make save-dev' or run with 'make dev-prod'.)
-
-rebuild-ros-prod: check
-	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),ros,Rebuild Production ROS without cache,--no-cache,Production image baked! Extract with 'make save-ros' or run with 'make ros-prod'.)
-
-rebuild-dev-prod: check
-	@echo -e "  $(INFO) [Notice] A clean build (make clean) is recommended for production-grade artifacts."
-	$(call BUILD_SERVICE,$(COMPOSE_PROD),basic,Rebuild Production Pure Dev without cache,--no-cache,Production image baked! Extract with 'make save-dev' or run with 'make dev-prod'.)
 
 # =============================================================================
 # Execution and Shell Access (Dev) - Auto GPU Detection
@@ -389,65 +366,23 @@ dev-term: check xauth
 	$(call EXEC_DETACHED,$(DEV_FILTER),$(TERMINAL),Development)
 
 # =============================================================================
-# Production Execution (Prod) - Auto GPU Detection
+# Apptainer Baking (Portable Snapshot)
 # =============================================================================
 
-## @section 🚀 | Production & Portability | BLUE
-## @target ros-prod / dev-prod : Run production service
-## @target ros-prod-stop / dev-prod-stop : Stop production service
-## @target save-ros / save-dev : Export image to .tar.gz
-## @target load-ros / load-dev : Restore image from .tar.gz
-ros-prod: check xauth
-	$(call CHECK_ENV,ROS_LAUNCH_COMMAND)
-	$(call RUN_SERVICE,$(COMPOSE_PROD),ros,ROS Production)
-	@$(MAKE) logs
+## @section 🧊 | Apptainer Workflow (Bake & Run) | BLUE
+## @target bake / bake-share : Bake workspace into a SIF image (Standard / Shared)
+## @target run-sif : Run SIF with fresh configs (Internal build/install)
+bake: check
+	$(call PRINT_SECTION,Baking Apptainer Image)
+	@./scripts/apptainer_bake.sh
 
-ros-prod-stop:
-	$(call STOP_SERVICE,$(COMPOSE_PROD),ros,ROS Production)
+bake-share: check
+	$(call PRINT_SECTION,Baking Shared Apptainer Image)
+	@./scripts/apptainer_bake.sh --share
 
-dev-prod: check xauth
-	$(call CHECK_ENV,APP_COMMAND)
-	$(call RUN_SERVICE,$(COMPOSE_PROD),basic,Pure Development Production)
-	@$(MAKE) logs
-
-dev-prod-stop:
-	$(call STOP_SERVICE,$(COMPOSE_PROD),basic,Pure Development Production)
-
-# Image Extraction and Restoration Strategy
-IMAGE_SUFFIX := $(if $(filter humble,$(ROS_DISTRO)),humble,$(if $(filter noetic,$(ROS_DISTRO)),noetic,latest))
-SAVE_NAME_ROS := $(COMPOSE_PROJECT_NAME)-ros-$(IMAGE_SUFFIX).tar.gz
-SAVE_NAME_DEV := $(COMPOSE_PROJECT_NAME)-dev-$(IMAGE_SUFFIX).tar.gz
-
-# $1: TARGET_ENV (ros-runtime or dev-runtime), $2: SAVE_FILE_NAME, $3: MSG
-define SAVE_IMAGE
-	@echo -e "  $(INFO) Extracting production image for $3: $2..."
-	@docker save $(COMPOSE_PROJECT_NAME)/$1:latest | gzip > $2
-	@echo -e "  $(OK) Image extraction completed: $$(du -h $2) (Path: ./$2)"
-endef
-
-# $1: SAVE_FILE_NAME, $2: MSG
-define LOAD_IMAGE
-	@if [ ! -f $1 ]; then echo -e "  $(ERROR) File not found: $1"; exit 1; fi
-	@echo -e "  $(INFO) Restoring $2 image..."
-	@docker load < $1
-	@echo -e "  $(OK) $2 image restored successfully."
-endef
-
-save-ros:
-	$(call GUARD_HOST_ONLY)
-	$(call SAVE_IMAGE,ros-runtime,$(SAVE_NAME_ROS),ROS)
-
-save-dev:
-	$(call GUARD_HOST_ONLY)
-	$(call SAVE_IMAGE,dev-runtime,$(SAVE_NAME_DEV),Pure Development)
-
-load-ros:
-	$(call GUARD_HOST_ONLY)
-	$(call LOAD_IMAGE,$(SAVE_NAME_ROS),ROS)
-
-load-dev:
-	$(call GUARD_HOST_ONLY)
-	$(call LOAD_IMAGE,$(SAVE_NAME_DEV),Pure Development)
+run-sif: check xauth
+	$(call PRINT_SECTION,Running Apptainer Image)
+	@./scripts/apptainer_run.sh
 
 # =============================================================================
 # Maintenance
@@ -551,9 +486,6 @@ logs:
 	@if [ -n "$$($(COMPOSE) $(COMPOSE_DEV) ps --status running -q 2>/dev/null)" ]; then \
 		echo -e "  $(INFO) [Dev] Streaming development logs..."; \
 		$(COMPOSE) $(COMPOSE_DEV) logs -f --tail 100; \
-	elif [ -f docker-compose.prod.yml ] && [ -n "$$($(COMPOSE) $(COMPOSE_PROD) ps --status running -q 2>/dev/null)" ]; then \
-		echo -e "  $(INFO) [Prod] Streaming production logs..."; \
-		$(COMPOSE) $(COMPOSE_PROD) logs -f --tail 100; \
 	fi
 
 down:

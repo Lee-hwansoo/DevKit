@@ -2,18 +2,18 @@
 # =============================================================================
 # scripts/show_welcome.sh
 # Container Welcome Message (MOTD) and quick-start guide
-#
-# Displays project metadata (ROS version, GPU mode) and a summarized list
-# of core helper commands and shortcuts for a better onboarding experience.
 # =============================================================================
 
-# Load logging utility for shared color variables (unified color source)
-SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+
+# Load logging utility
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
 print_banner WELCOME
-echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | WS: ${GREEN}${WORKSPACE_PATH}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC}"
+print_env_info
 
 print_section "Quick Start"
 echo -e "    ${GREEN}mksync${NC}           : Fully initialize workspace (venv + deps + build)"
@@ -37,5 +37,5 @@ echo -e "    ${GREEN}gpu_status${NC}       : Show detailed GPU & Display info"
 
 echo -e ""
 echo -e "  Type ${CYAN}h${NC} or ${CYAN}help${NC} to see the full alias & shortcut guide."
-echo -e "  Workspace: ${CYAN}${WORKSPACE_PATH:-/workspace}${NC} (mapped from host)"
+echo -e "  Workspace: ${CYAN}${WS_ROOT}${NC} (mapped from host)"
 echo -e ""

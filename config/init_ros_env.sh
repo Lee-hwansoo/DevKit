@@ -17,8 +17,8 @@ else
 
     # Auto-configure CycloneDDS defaults (Unicast Fallback for Bridge Networks)
     if [ "$RMW_IMPLEMENTATION" = "rmw_cyclonedds_cpp" ] && [ -z "$CYCLONEDDS_URI" ]; then
-        if [ -f /docker_dev/config/cyclonedds.xml ]; then
-            export CYCLONEDDS_URI=file:///docker_dev/config/cyclonedds.xml
+        if [ -f "${WORKSPACE_PATH:-/workspace}/config/cyclonedds.xml" ]; then
+            export CYCLONEDDS_URI=file://${WORKSPACE_PATH:-/workspace}/config/cyclonedds.xml
         fi
     fi
 fi

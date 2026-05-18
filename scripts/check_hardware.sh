@@ -26,8 +26,11 @@
 BRIEF_MODE=false
 [ "${1:-}" = "--brief" ] && BRIEF_MODE=true
 
-# Load logging utility (color variables only — see Output Strategy above)
-SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+
+# Load logging utility (color variables only)
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 
@@ -41,7 +44,7 @@ for env_file in "${GPU_ENV_FILES[@]}"; do
 done
 
 # Load shared GPU detection helpers
-SOURCE_GPU="/docker_dev/scripts/util_gpu_detect.sh"
+SOURCE_GPU="${WS_SCRIPTS}/util_gpu_detect.sh"
 [ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
 [ -f "$SOURCE_GPU" ] && source "$SOURCE_GPU"
 
@@ -138,7 +141,7 @@ while IFS= read -r line; do
     else
         _hw_printf "      %-10s %s used (%s free)\n" "$mount:" "$used" "$free_space"
     fi
-done < <(df -h / "${WORKSPACE_PATH:-/workspace}" 2>/dev/null | awk 'NR>1' | sort -u)
+done < <(df -h / "${WS_ROOT}" 2>/dev/null | awk 'NR>1' | sort -u)
 
 # =============================================================================
 # [2/5] Network & Time Sync
@@ -169,7 +172,7 @@ while read -r iface rest; do
     fi
 done < <(ip addr show 2>/dev/null | awk '/^[0-9]+:/{iface=$2} /mtu/{print iface, $0}' | grep -v "^lo")
 
-# Clock Sync — critical for multi-device ROS TF (H-1 fix: pattern match instead of echo|grep)
+# Clock Sync
 if [[ "$HOST_TYPE" == *"Docker"* ]]; then
     if command -v chronyc >/dev/null 2>&1; then
         TRACKING=$(chronyc tracking 2>/dev/null | grep "System time" | awk '{print $4, $5}')
@@ -262,7 +265,7 @@ if [ -d "/dev/dri" ]; then
     fi
 fi
 
-# Jetson / Tegra — embedded NVIDIA without nvidiactl
+# Jetson / Tegra
 if type has_tegra &>/dev/null && has_tegra; then
     GPU_FOUND=true
     TEGRA_DEVS=$(ls /dev/nvhost-* 2>/dev/null | xargs -n1 basename | tr '\n' ' ')
@@ -321,7 +324,7 @@ elif [ -d "/opt/rocm" ]; then
     _hw_ok "AMD:    ROCm $ROCM_VER (/opt/rocm)"
 fi
 
-# OpenGL — GPU_MODE-aware interpretation (added else branch for missing glxinfo)
+# OpenGL
 if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
     _hw_skip "OpenGL: No display set (DISPLAY/WAYLAND_DISPLAY)"
 elif command -v glxinfo &>/dev/null; then
@@ -349,7 +352,6 @@ elif command -v glxinfo &>/dev/null; then
         log_detail "On host: xhost +SI:localuser:root"
     fi
 else
-    # Explicit message when glxinfo is not installed but display is set
     sys_vendor=$(get_gpu_vendor_sysfs)
     if [ "$sys_vendor" != "Unknown" ]; then
         _hw_ok "OpenGL: $sys_vendor GPU detected via sysfs (glxinfo missing)"
@@ -358,7 +360,7 @@ else
     fi
 fi
 
-# Vulkan — name + API version
+# Vulkan
 if command -v vulkaninfo &>/dev/null; then
     VK_OUT=$(vulkaninfo --summary 2>/dev/null || true)
     VK_GPU=$(echo "$VK_OUT" | grep "deviceName" | head -1 | cut -d= -f2 | xargs)
@@ -399,7 +401,7 @@ fi
 [ -n "${UV_PYTHON:-}" ]  && _hw_detail "    UV_PYTHON:          ${UV_PYTHON}"
 if command -v uv &>/dev/null; then
     _hw_ok "uv:      $(uv --version)"
-    ACTIVE_VENV="${VIRTUAL_ENV:-${UV_PROJECT_ENVIRONMENT:-}}"
+    ACTIVE_VENV="${VIRTUAL_ENV:-${WS_VENV}}"
     if [ -n "$ACTIVE_VENV" ] && [ -d "$ACTIVE_VENV" ]; then
         _hw_detail "    venv:    $ACTIVE_VENV"
     else
@@ -413,22 +415,17 @@ else
     _hw_err "uv: Not found"
 fi
 
-# ccache with hit rate calculation (JSON-first with whitespace tolerance)
-# Parsing strategy: try JSON format first (ccache ≥4.0, stable schema),
-# then fall back to legacy text parsing for older versions.
+# ccache
 if command -v ccache &>/dev/null; then
     CCACHE_VER=$(ccache --version | head -1)
     _hw_ok "ccache: $CCACHE_VER"
     HITS=""
     MISSES=""
-    # JSON-first: ccache ≥4.0 supports --show-stats --format=json
     if ccache --show-stats --format=json &>/dev/null 2>&1; then
         JSON_STATS=$(ccache --show-stats --format=json 2>/dev/null)
-        # whitespace-tolerant parsing for pretty-printed JSON
         HITS=$(echo "$JSON_STATS" | grep -oP '"direct_cache_hit"\s*:\s*\K[0-9]+' || true)
         MISSES=$(echo "$JSON_STATS" | grep -oP '"cache_miss"\s*:\s*\K[0-9]+' || true)
     fi
-    # Fallback: ccache ≤3.x text format
     if [ -z "$HITS" ] || [ -z "$MISSES" ]; then
         STATS=$(ccache -s 2>/dev/null)
         HITS=$(echo "$STATS" | grep -E "^cache hit \(direct\)" | awk '{print $NF}' | tr -d ',')
@@ -454,7 +451,7 @@ fi
 # =============================================================================
 print_section "5/5 I/O & Peripherals"
 
-# Video Devices (Cameras) — safe glob handling via process substitution
+# Video Devices
 VIDEO_FOUND=false
 if compgen -G "/dev/video*" > /dev/null 2>&1; then
     while IFS= read -r vdev; do
@@ -473,7 +470,7 @@ if ! $VIDEO_FOUND; then
     _hw_skip "Video:  No devices (/dev/video*)"
 fi
 
-# Serial/Controller Devices
+# Serial Devices
 SERIAL_DEVICES=$(ls /dev/ttyUSB* /dev/ttyACM* /dev/ttyTHS* 2>/dev/null | xargs 2>/dev/null)
 if [ -n "$SERIAL_DEVICES" ]; then
     _hw_ok "Serial: $SERIAL_DEVICES"
@@ -481,11 +478,11 @@ else
     _hw_skip "Serial: No devices (/dev/ttyUSB*, /dev/ttyACM*, /dev/ttyTHS*)"
 fi
 
-# Input Devices (Joysticks)
+# Input Devices
 INPUT_DEVICES=$(ls /dev/input/js* 2>/dev/null | xargs 2>/dev/null)
 [ -n "$INPUT_DEVICES" ] && _hw_ok "Input:  $INPUT_DEVICES"
 
-# SocketCAN — detect interface and check link state (use `ip link show type can`)
+# SocketCAN
 CAN_FOUND=false
 if ip link show type can 2>/dev/null | grep -q .; then
     while IFS= read -r can_iface; do
@@ -503,7 +500,7 @@ if ! $CAN_FOUND; then
 fi
 
 # =============================================================================
-# Summary (exit code support for --brief mode)
+# Summary
 # =============================================================================
 if $BRIEF_MODE; then
     echo ""
@@ -527,7 +524,6 @@ if [ "$DIAG_ERRORS" -gt 0 ] || [ "$DIAG_WARNINGS" -gt 0 ]; then
     echo -e "  ${CYAN}Resolution Guide for Detected Issues${NC}"
     echo -e "${CYAN}================================================================${NC}"
 
-    # 1. Clock Sync Resolution
     if [ "$DIAG_ERRORS" -gt 0 ]; then
         echo -e "  ${YELLOW}[Clock Sync Error]${NC}"
         echo -e "    WSL2 often drifts after PC sleep/hibernation."
@@ -537,7 +533,6 @@ if [ "$DIAG_ERRORS" -gt 0 ] || [ "$DIAG_WARNINGS" -gt 0 ]; then
         echo ""
     fi
 
-    # 2. MTU Warning Resolution
     if [ "$DIAG_WARNINGS" -gt 0 ]; then
         echo -e "  ${YELLOW}[Network/MTU Warning]${NC}"
         echo -e "    Standard MTU is 1500. For high-end Lidar, you might need 9000 (Jumbo)."

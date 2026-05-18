@@ -10,14 +10,17 @@
 #   - Automatic fallback to software rendering (llvmpipe) upon acceleration failure
 # =============================================================================
 
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+
 # Load logging utility
-SOURCE_LOG="/docker_dev/scripts/util_logging.sh"
 [ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[GPU]"
 
 # Load shared GPU detection helpers (SSOT for GPU detection functions)
-SOURCE_GPU="/docker_dev/scripts/util_gpu_detect.sh"
+SOURCE_GPU="${WS_SCRIPTS}/util_gpu_detect.sh"
 [ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
 [ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="/opt/scripts/util_gpu_detect.sh"
 if [ -f "$SOURCE_GPU" ]; then
@@ -317,10 +320,6 @@ setup_software() {
 # =============================================================================
 # Automated environment-based GPU setup selection
 # =============================================================================
-# =============================================================================
-# Automated environment-based GPU setup selection
-# =============================================================================
-
 # Strategy Registry: Mapping hardware detection to setup functions
 # Priority is determined by the order in this list
 declare -A GPU_STRATEGIES=(

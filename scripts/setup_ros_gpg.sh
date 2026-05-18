@@ -6,13 +6,18 @@
 
 set -eo pipefail
 
+# Load path configuration
+[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
+[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+
 # Load logging utility
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG" || true
 LOG_PREFIX="[GPG Update]"
 
-TARGET_FILE="${SCRIPT_DIR}/util_apt_helper.sh"
+TARGET_FILE="${WS_SCRIPTS}/util_apt_helper.sh"
+[ ! -f "$TARGET_FILE" ] && TARGET_FILE="$(dirname "${BASH_SOURCE[0]}")/util_apt_helper.sh"
+
 ROS_KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
 ROS_ASC_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc"
 
