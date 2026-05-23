@@ -170,6 +170,7 @@ persist_env_block() {
     local script="$2"
     local target="/etc/bash.bashrc"
     [ ! -f "$script" ] && return
+    [ ! -w "$target" ] && return
 
     local start_mark="# $marker"
     local end_mark="# ${marker/START/END}"
@@ -197,9 +198,11 @@ if [ "$IS_DEV" = true ]; then
         export XDG_RUNTIME_DIR="$(setup_xdg_runtime)"
 
         # Persist for 'docker exec' sessions (e.g. make ros-shell)
-        echo "export XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\"" > /etc/profile.d/devkit-xdg.sh
-        chmod 644 /etc/profile.d/devkit-xdg.sh
-        persist_env_block "__DEVKIT_XDG_START" "/etc/profile.d/devkit-xdg.sh"
+        if [ -w /etc/profile.d ]; then
+            echo "export XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\"" > /etc/profile.d/devkit-xdg.sh
+            chmod 644 /etc/profile.d/devkit-xdg.sh
+            persist_env_block "__DEVKIT_XDG_START" "/etc/profile.d/devkit-xdg.sh"
+        fi
 
         verify_x11
         setup_wayland
@@ -212,11 +215,15 @@ fi
 # [3] Cache and Other Settings (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
-    mkdir -p /cache/ccache /cache/uv /cache/apt
-    if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
-        chown -R "${CONTAINER_USER}:${CONTAINER_USER}" /cache/ccache /cache/uv /cache/apt 2>/dev/null || true
+    if [ -w /cache ] || [ -d /cache/ccache ]; then
+        mkdir -p /cache/ccache /cache/uv /cache/apt
+        if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
+            chown -R "${CONTAINER_USER}:${CONTAINER_USER}" /cache/ccache /cache/uv /cache/apt 2>/dev/null || true
+        fi
+        log_ok "Cache dirs ready: /cache/{ccache,uv,apt}"
+    else
+        log_warn "Cache directory /cache is not writable, skipping cache directory setup"
     fi
-    log_ok "Cache dirs ready: /cache/{ccache,uv,apt}"
 fi
 
 # =============================================================================
@@ -302,9 +309,11 @@ fi
 
 # Persist GPU environment for non-interactive shells (docker exec)
 if [ -f "$HOME/.gpu_env.sh" ]; then
-    cp "$HOME/.gpu_env.sh" /etc/profile.d/devkit-gpu.sh
-    chmod 644 /etc/profile.d/devkit-gpu.sh
-    persist_env_block "__DEVKIT_GPU_START" "/etc/profile.d/devkit-gpu.sh"
+    if [ -w /etc/profile.d ]; then
+        cp "$HOME/.gpu_env.sh" /etc/profile.d/devkit-gpu.sh
+        chmod 644 /etc/profile.d/devkit-gpu.sh
+        persist_env_block "__DEVKIT_GPU_START" "/etc/profile.d/devkit-gpu.sh"
+    fi
 fi
 
 # =============================================================================
