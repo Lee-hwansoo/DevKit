@@ -49,8 +49,11 @@ Instead of maintaining complex production Docker images, we "bake" the entire va
 
 | Action | Command | Result |
 | :--- | :--- | :--- |
-| **Bake** | `make bake` | Generates `devkit_v1.0.sif` containing the full workspace |
-| **Run** | `make run-sif` | Runs the immutable image with rootless execution |
+| **Bake** | `make bake` | Generates `[COMPOSE_PROJECT_NAME].sif` with isolated virtual environment |
+| **Bake (Production)** | `make bake-prod` | Generates optimized production SIF with bytecode compile and source stripping |
+| **Run (Local)** | `make run-sif` | Runs the SIF container locally with rootless execution and GUI/display support |
+| **Run (SLURM)** | `make run-slurm` | Submits the Apptainer job as a batch execution to the SLURM scheduler |
+| **SLURM Control** | `make slurm-status` / `cancel` | Monitor or cancel queued/running jobs on the cluster |
 
 **Benefits**:
 

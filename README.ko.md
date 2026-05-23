@@ -540,21 +540,27 @@ graph TD
 
 | 구분 | 실행 명령어 | 설명 |
 | :--- | :--- | :--- |
-| **Bake** | **`make bake`** | 현재 워크스페이스를 SIF 이미지로 내부화하여 생성 |
+| **Bake** | **`make bake`** | 현재 워크스페이스를 SIF 이미지로 내부화하여 생성 (독립 가상환경) |
 | **Bake (Shared)** | **`make bake-share`** | 시스템 패키지 공유 모드로 SIF 이미지 생성 |
-| **Run** | **`make run-sif`** | 생성된 SIF 이미지를 최신 호스트 설정과 함께 실행 |
+| **Bake (Production)** | **`make bake-prod`** | 운영 최적화 SIF 이미지 생성 (파이썬 컴파일 및 C++ 소스코드 스트리핑) |
+| **Run (로컬)** | **`make run-sif`** | 생성된 SIF 이미지를 로컬에서 최신 호스트 설정과 함께 실행 |
+| **Run (SLURM)** | **`make run-slurm`** | SLURM 스케줄러 노드에 Apptainer 배치 작업 제출 |
+| **SLURM 상태** | **`make slurm-status`** | 현재 사용자가 제출한 활성/대기 SLURM 작업 조회 |
+| **SLURM 취소** | **`make slurm-cancel`** | 실행 중이거나 대기 중인 SLURM 작업 취소 |
 
 ### 3. 배포 가이드
 
 ```bash
-# 1. 워크스페이스를 SIF 이미지로 굽기
-make bake
+# 1. 워크스페이스를 운영 최적화 SIF 이미지로 굽기
+make bake-prod
 
 # 2. 생성된 .sif 파일을 타겟 서버로 전송
 scp project.sif user@target:/path/to/project/
 
 # 3. 타겟 서버에서 즉시 서비스 실행
 make run-sif
+# 또는 타겟 서버의 SLURM 스케줄러에 작업 제출
+make run-slurm
 ```
 
 ---

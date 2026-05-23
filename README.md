@@ -540,21 +540,27 @@ graph TD
 
 | Category | Execute Command | Action |
 | :--- | :--- | :--- |
-| **Bake** | **`make bake`** | Internalizes the current workspace into a SIF image |
-| **Bake (Shared)** | **`make bake-share`** | Bake with system-site-packages enabled |
-| **Run** | **`make run-sif`** | Run the SIF image with fresh host configurations |
+| **Bake** | **`make bake`** | Internalizes the current workspace into a SIF image (isolated Python venv) |
+| **Bake (Shared)** | **`make bake-share`** | Bake SIF image sharing system site-packages |
+| **Bake (Production)** | **`make bake-prod`** | Bake optimized production SIF image (compiles Python bytecode, strips source files) |
+| **Run (Local)** | **`make run-sif`** | Run the SIF image locally with fresh host configurations |
+| **Run (SLURM)** | **`make run-slurm`** | Submit Apptainer batch job execution to SLURM cluster scheduler |
+| **SLURM Status** | **`make slurm-status`** | Query active/pending SLURM jobs of the current user |
+| **SLURM Cancel** | **`make slurm-cancel`** | Cancel running/pending SLURM jobs |
 
 ### 3. Deployment Guide
 
 ```bash
-# 1. Bake the workspace into a SIF image
-make bake
+# 1. Bake the workspace into an optimized production SIF image
+make bake-prod
 
 # 2. Transfer the .sif file to the target server
 scp project.sif user@target:/path/to/project/
 
-# 3. Run the service natively
+# 3. Run the service natively on the target host
 make run-sif
+# OR submit as a batch job to the SLURM scheduler
+make run-slurm
 ```
 
 ---

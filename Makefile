@@ -403,8 +403,8 @@ run-sif: check xauth
 
 ## @section 🛰️ | SLURM Scheduling (Server) | BLUE
 ## @target run-slurm : Submit job to SLURM scheduler
-## @target slurm-status : Query active/pending SLURM jobs of current user
-## @target slurm-cancel : Cancel running/pending SLURM jobs (interactive or all)
+## @target slurm-status : Query active/pending SLURM jobs
+## @target slurm-cancel : Cancel running/pending SLURM jobs
 run-slurm: check
 	$(call PRINT_SECTION,Submitting SLURM Job)
 	@if command -v sbatch >/dev/null 2>&1; then \
@@ -426,13 +426,13 @@ slurm-status:
 slurm-cancel:
 	$(call GUARD_HOST_ONLY)
 	@if command -v scancel >/dev/null 2>&1; then \
-		echo -en "  $(WARN) Enter Job ID to cancel (or press Enter to cancel all your jobs): "; \
+		echo -en "  $(WARN) Enter Job ID to cancel: "; \
 		read jobid; \
 		if [ -z "$$jobid" ]; then \
-			scancel -u $$USER && echo -e "  $(OK) Cancelled all jobs for $$USER."; \
-		else \
-			scancel $$jobid && echo -e "  $(OK) Cancelled job $$jobid."; \
+			echo -e "  $(ERROR) Job ID is required. Operation cancelled."; \
+			exit 1; \
 		fi; \
+		scancel $$jobid && echo -e "  $(OK) Cancelled job $$jobid."; \
 	else \
 		echo -e "  $(ERROR) SLURM binary 'scancel' not found."; \
 		exit 1; \
