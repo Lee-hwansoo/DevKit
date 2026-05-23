@@ -38,7 +38,7 @@
 - **Runtime Dependency Guardian (Sanity Check)**: When building deployment images, it automatically inspects executables and libraries for missing dependencies using `ldd`, completely preventing 'Shared library not found' errors at runtime.
 - **Ultra-lightweight & Secure Deployments (Bake & Switch)**: Deployment images exclude source code and only retain **production artifacts** from the `install/` directory, ensuring maximum security and runtime efficiency.
 - **Multi-Arch Build Support**: Runs with native performance of the underlying CPU across both x86 (Intel/AMD) and ARM64 (Jetson, Apple Silicon) environments without translation overhead using a single Dockerfile.
-- **Consistent Permission System (Root Unity)**: Uses the `root` user in both development and deployment environments to prevent tricky permission conflicts when mounting host volumes.
+- **Consistent Permission System**: Dynamically maps the host user's UID and GID to a non-root developer user inside the container at build/run time, ensuring seamless file ownership compatibility between the host and container.
 - **Zero-Pollution Cleanup (Sudo-Free Architecture)**: Spawns an ultra-lightweight disposable container to perform deletion tasks without requiring `sudo` privileges when cleaning host storage (`make clean`). The container and image are automatically removed immediately after the task, leaving no trace on your local environment.
 - **Sidecar Architecture**: Maintain a lightweight development image while instantly "attaching" a high-performance environment on-demand.
 - **CI/CD Robustness**: Includes a `FORCE=1` flag that bypasses interactive prompts, combined with auto-detection for the platform's `CI=true` environment variable, ensuring flawless execution without stalling in CI/CD pipelines (e.g., GitHub Actions, GitLab CI).
@@ -169,11 +169,47 @@ graph LR
         NV_INSTALL[("Named Volume<br/>install_data")] === WS_INSTALL["/workspace/install"]
     end
 
-    subgraph "Prod Mode (make *prod)"
+    subgraph "Prod Mode (make bake-prod)"
         BAKED["Compiled Artifacts<br/>(COPY --from=builder)"] === PROD_INSTALL["/workspace/install"]
         NO_SRC["Source Code Excluded"] -.-> PROD_SRC["/workspace/src"]
         style NO_SRC fill:#ffcccc,color:#333,stroke:#f00,stroke-dasharray: 5 5
     end
+```
+
+---
+
+## 🔄 Development Lifecycle
+
+The diagram below maps the typical developer workflow from building the sandbox environment to compiling workspace packages, packaging artifacts, and deploying to production:
+
+```mermaid
+flowchart TD
+    %% 1. Development Phase
+    subgraph DevPhase["1. Development Phase (Interactive Sandbox)"]
+        direction TB
+        A["make build-ros / build-dev<br/>(Build Dev Docker Image)"] --> B["make ros / dev<br/>(Start Container & Enter Shell)"]
+        B --> C["VS Code Attach<br/>(Connect IDE & Plugins)"]
+        C --> D["mksync / cb / mbuild<br/>(Sync Dependencies & Compile Workspace)"]
+        D -->|Iterative Code Editing & Debugging| C
+    end
+
+    %% 2. Packaging Phase
+    subgraph BakePhase["2. Packaging Phase (Bake to SIF)"]
+        direction TB
+        E["make bake / bake-prod<br/>(Freeze Workspace state into a SIF file)"]
+        F["Transfer SIF file<br/>(scp image to target environment/cluster)"]
+        E --> F
+    end
+
+    %% 3. Execution Phase
+    subgraph DeployPhase["3. Execution Phase (Runtime & Deploy)"]
+        direction TB
+        G["make run-sif<br/>(Run SIF locally/edge rootless)"]
+        H["make run-slurm<br/>(Submit Batch Job to SLURM scheduler)"]
+    end
+
+    DevPhase -->|Development Validated| BakePhase
+    BakePhase -->|Infrastructure Choice| DeployPhase
 ```
 
 ---
@@ -682,7 +718,7 @@ Building massive external C++/ROS libraries (Eigen3, GTSAM, Librealsense2, etc.)
 
 ## ⚠️ Security and Architectural Constraints (Security Notes)
 
-1. **`root` Privilege Parity**: Both development and deployment containers operate as the `root` user. This resolves file ownership issues of mounted host volumes and elevates device accessibility.
+1. **Dynamic Permission Mapping**: The container dynamically detects the host user's UID and GID at build/run time and maps them to a non-root developer user inside the container. This solves permission issues with mounted host volumes without exposing the host system to security risks. (Sudo privileges are granted passwordless inside the container for ease of development).
 2. **`privileged: true`**: To freely utilize devices like sensors, USBs, and CAN communications during ROS development, the development container runs in privileged mode.
 3. **`network_mode: host`**: Directly uses the host network for optimal DDS communication performance in ROS. To prevent interference across multiple projects, configure a unique `ROS_DOMAIN_ID` in `.env`.
 

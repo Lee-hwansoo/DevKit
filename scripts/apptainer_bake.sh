@@ -44,11 +44,12 @@ fi
 log_info "[1/2] Internalizing workspace into Docker image..."
 docker build -t "$IMAGE_NAME" --build-arg FULL_CUDA="${FULL_CUDA:-false}" -f - . <<EOF
 FROM ${BASE_IMAGE}
+ARG FULL_CUDA=false
 COPY . ${WS_ROOT}
 RUN bash -i -c "mksync ${SYNC_MODE}"
 RUN if [ "${PROD_MODE}" = "true" ]; then \
         echo "Optimizing and securing production image..." && \
-        if python3 -m compileall -q -b ${WS_ROOT}/src; then \
+        if python3 -m compileall -j 0 -q -b ${WS_ROOT}/src; then \
             find ${WS_ROOT}/src -type f -name "*.py" ! -name "__init__.py" -delete && \
             find ${WS_ROOT}/src -type f \( -name "*.cpp" -o -name "*.cc" -o -name "*.c" \) -delete && \
             echo "Source code selectively stripped. Bytecode compilation completed safely."; \

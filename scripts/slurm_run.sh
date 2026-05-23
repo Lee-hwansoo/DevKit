@@ -49,24 +49,15 @@ CONTAINER_RUN_ROOT="/runs"
 [ -f "${SIF_IMAGE}" ] || { echo "SIF image not found: ${SIF_IMAGE}"; exit 1; }
 
 # =============================================================================
-# Intelligent Bind Mapping (Shadowing Bind Strategy)
+# Intelligent Bind Mapping (Fresh Source & Configs | Fixed Build & Install)
 # =============================================================================
-# SIF 내부에 구워진 빌드본(install, build, .venv)을 보존하기 위한 스마트 필터
-EXCLUDES="^(build|install|devel|log|.docker_cache|colcon.meta|.venv|compile_commands.json|.*\.sif)$"
-BIND_OPTS=()
-
-# Enable nullglob (so unmatched globs return empty rather than literal pattern)
-# and dotglob (to match hidden files, excluding . and ..)
-shopt -s nullglob dotglob
-
-for item in "${HOST_WORKSPACE}"/*; do
-    [ -e "$item" ] || continue
-    name=$(basename "$item")
-    [[ "$name" =~ $EXCLUDES ]] && continue
-    BIND_OPTS+=( "--bind" "${item}:${CONTAINER_WORKSPACE}/${name}" )
-done
-
-shopt -u nullglob dotglob
+BIND_UTIL="${HOST_WORKSPACE}/scripts/util_apptainer_binds.sh"
+if [ -f "$BIND_UTIL" ]; then
+    source "$BIND_UTIL"
+    BIND_OPTS=( $(get_apptainer_binds "${HOST_WORKSPACE}" "${CONTAINER_WORKSPACE}") )
+else
+    BIND_OPTS=( "--bind" "${HOST_WORKSPACE}:${CONTAINER_WORKSPACE}" )
+fi
 
 # Bind custom data and logs if they exist on the host
 if [ -d "${HOST_REAL_DATA_ROOT}" ]; then
@@ -85,8 +76,16 @@ echo " - Workspace: ${HOST_WORKSPACE} -> ${CONTAINER_WORKSPACE}"
 [ -d "${HOST_REAL_DATA_ROOT}" ] && echo " - Data: ${HOST_REAL_DATA_ROOT} -> ${CONTAINER_DATA_ROOT} (ro)"
 [ -d "${HOST_RUN_ROOT}" ] && echo " - Runs: ${HOST_RUN_ROOT} -> ${CONTAINER_RUN_ROOT}"
 
+# Detect GPU acceleration flag for the cluster node
+GPU_FLAG=""
+if command -v nvidia-smi >/dev/null 2>&1; then
+    GPU_FLAG="--nv"
+elif command -v rocm-smi >/dev/null 2>&1; then
+    GPU_FLAG="--rocm"
+fi
+
 # Execute inside the SIF container using GPU acceleration
-apptainer exec --nv \
+apptainer exec $GPU_FLAG \
     "${BIND_OPTS[@]}" \
     "${SIF_IMAGE}" \
     torchrun --standalone --nproc_per_node="${SLURM_GPUS_ON_NODE:-2}" \

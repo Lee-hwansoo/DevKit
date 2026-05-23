@@ -23,21 +23,32 @@ if [ ! -f "$SIF_FILE" ]; then
 fi
 
 # 1. Intelligent Binds (Fresh Source & Configs | Fixed Build & Install)
-EXCLUDES="^(build|install|devel|log|.docker_cache|colcon.meta|.venv|compile_commands.json|.*\.sif)$"
-BIND_OPTS=()
+BIND_UTIL="${WS_SCRIPTS}/util_apptainer_binds.sh"
+[ ! -f "$BIND_UTIL" ] && BIND_UTIL="$(dirname "${BASH_SOURCE[0]}")/util_apptainer_binds.sh"
 
-shopt -s nullglob dotglob
-for item in "${HOST_WORKSPACE_PATH}"/*; do
-    [ -e "$item" ] || continue
-    name=$(basename "$item")
-    [[ "$name" =~ $EXCLUDES ]] && continue
-    BIND_OPTS+=( "--bind" "${item}:${WS_ROOT}/${name}" )
-done
-shopt -u nullglob dotglob
+if [ -f "$BIND_UTIL" ]; then
+    source "$BIND_UTIL"
+    BIND_OPTS=( $(get_apptainer_binds "${HOST_WORKSPACE_PATH}" "${WS_ROOT}") )
+else
+    BIND_OPTS=( "--bind" "${HOST_WORKSPACE_PATH}:${WS_ROOT}" )
+fi
 
 # 2. Hardware & System Acceleration
-GPU_FLAG=$([ "$HAS_NVIDIA" = "true" ] && echo "--nv")
-[ "$IS_WSL" = "true" ] && [ -d "/usr/lib/wsl" ] && BIND_OPTS+=( "--bind" "/usr/lib/wsl:/usr/lib/wsl:ro" )
+GPU_FLAG=""
+if [ "$HAS_NVIDIA" = "true" ]; then
+    GPU_FLAG="--nv"
+elif command -v rocm-smi >/dev/null 2>&1; then
+    GPU_FLAG="--rocm"
+fi
+
+if [ "$HAS_DRI" = "true" ] && [ -d "/dev/dri" ]; then
+    BIND_OPTS+=( "--bind" "/dev/dri:/dev/dri" )
+fi
+
+if [ "$IS_WSL" = "true" ]; then
+    [ -e "/dev/dxg" ] && BIND_OPTS+=( "--bind" "/dev/dxg:/dev/dxg" )
+    [ -d "/usr/lib/wsl" ] && BIND_OPTS+=( "--bind" "/usr/lib/wsl:/usr/lib/wsl:ro" )
+fi
 
 # 3. SSH Agent Forwarding
 if [ -n "$HOST_SSH_AUTH_SOCK" ] && [ -S "$HOST_SSH_AUTH_SOCK" ]; then
