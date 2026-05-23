@@ -78,5 +78,5 @@
     "postAttachCommand": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; source ${WORKSPACE_PATH:-/workspace}/install/setup.bash 2>/dev/null || source ${WORKSPACE_PATH:-/workspace}/devel/setup.bash 2>/dev/null; echo '✅ DevKit environment ready (ROS ${ROS_DISTRO:-humble})'",
 
     // ── Features ─────────────────────────────────────────────────────────────
-    "remoteUser": "root"
+    "remoteUser": "${localEnv:CONTAINER_USER:user}"
 }

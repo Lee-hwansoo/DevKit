@@ -7,6 +7,7 @@
 # Path sync required with internal logic in docker/entrypoint.sh
 x-common-env: &common-env
   COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myproject}
+  CONTAINER_USER: ${CONTAINER_USER:-user}
   WORKSPACE_PATH: ${WORKSPACE_PATH:-/workspace}
   LANG: ${LANG:-C.UTF-8}
   TZ: ${TZ:-UTC}
@@ -54,10 +55,13 @@ x-nvidia-deploy: &nvidia-deploy
 
 # ── ROS Healthcheck Configuration ───────────────────────────────────────────
 x-ros-healthcheck: &ros-healthcheck
-  test: [
-    "CMD", "bash", "-c",
-    ". /opt/ros/$${ROS_DISTRO}/setup.bash 2>/dev/null && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)"
-  ]
+  test:
+    [
+      "CMD",
+      "bash",
+      "-c",
+      ". /opt/ros/$${ROS_DISTRO}/setup.bash 2>/dev/null && (ros2 --help >/dev/null 2>&1 || roscore -h >/dev/null 2>&1)",
+    ]
   interval: 30s
   timeout: 10s
   retries: 3
@@ -95,6 +99,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       args:
+        CONTAINER_USER: ${CONTAINER_USER:-user}
+        USER_UID: ${HOST_UID:-1000}
+        USER_GID: ${HOST_GID:-1000}
         DEBIAN_FRONTEND: ${DEBIAN_FRONTEND:-noninteractive}
         LANG: ${LANG:-C.UTF-8}
         APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}

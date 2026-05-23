@@ -13,7 +13,7 @@ x-dev-volumes: &dev-volumes
   - ${HOST_X11_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix:rw
   - ${HOST_XAUTHORITY:-/tmp/.container_xauth}:/tmp/.container_xauth:ro
   - ${HOST_XDG_RUNTIME_DIR:-/tmp/.container_xdg}:/tmp/.container_xdg:rw
-  - ${GIT_CONFIG_PATH:-${HOST_GITCONFIG:-/dev/null}}:/root/.gitconfig:ro
+  - ${GIT_CONFIG_PATH:-${HOST_GITCONFIG:-/dev/null}}:/home/${CONTAINER_USER:-user}/.gitconfig:ro
   - ${HOST_SSH_AUTH_SOCK:-/dev/null}:${HOST_SSH_AUTH_SOCK:-/tmp/ssh-auth.sock}:ro
   - ${HOST_CACHE_DIR:-${HOST_WORKSPACE_PATH:-.}/.docker_cache}:/cache:rw
   - ${DEV_BUILD_VOL:-dev_build_data}:${WORKSPACE_PATH:-/workspace}/build
@@ -26,7 +26,7 @@ x-ros-volumes: &ros-volumes
   - ${HOST_X11_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix:rw
   - ${HOST_XAUTHORITY:-/tmp/.container_xauth}:/tmp/.container_xauth:ro
   - ${HOST_XDG_RUNTIME_DIR:-/tmp/.container_xdg}:/tmp/.container_xdg:rw
-  - ${GIT_CONFIG_PATH:-${HOST_GITCONFIG:-/dev/null}}:/root/.gitconfig:ro
+  - ${GIT_CONFIG_PATH:-${HOST_GITCONFIG:-/dev/null}}:/home/${CONTAINER_USER:-user}/.gitconfig:ro
   - ${HOST_SSH_AUTH_SOCK:-/dev/null}:${HOST_SSH_AUTH_SOCK:-/tmp/ssh-auth.sock}:ro
   - ${HOST_CACHE_DIR:-${HOST_WORKSPACE_PATH:-.}/.docker_cache}:/cache:rw
   - ${ROS_BUILD_VOL:-ros_build_data}:${WORKSPACE_PATH:-/workspace}/build

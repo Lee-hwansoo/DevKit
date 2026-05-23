@@ -67,6 +67,7 @@ setup_xdg_runtime() {
     local xdg_dir="${XDG_RUNTIME_DIR:-/tmp/.container_xdg}"
     local my_uid
     my_uid="$(id -u)"
+    local target_user="${CONTAINER_USER:-user}"
 
     if [ -d "$xdg_dir" ] && [ "$(stat -c %u "$xdg_dir" 2>/dev/null)" != "$my_uid" ]; then
         local proxy="/tmp/runtime-internal"
@@ -212,6 +213,9 @@ fi
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     mkdir -p /cache/ccache /cache/uv /cache/apt
+    if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
+        chown -R "${CONTAINER_USER}:${CONTAINER_USER}" /cache/ccache /cache/uv /cache/apt 2>/dev/null || true
+    fi
     log_ok "Cache dirs ready: /cache/{ccache,uv,apt}"
 fi
 
@@ -335,4 +339,9 @@ if [ "$IS_DEV" = true ]; then
 fi
 
 # Execute
-exec "$@"
+if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
+    log_ok "Dropping privileges: executing command as user '${CONTAINER_USER}'"
+    exec sudo -E -u "${CONTAINER_USER}" PATH="$PATH" VIRTUAL_ENV="$VIRTUAL_ENV" "$@"
+else
+    exec "$@"
+fi

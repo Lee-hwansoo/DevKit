@@ -181,5 +181,5 @@ print_env_info() {
     local v_rel="${v_path#$root/}"
 
     # 3. Output Unified Dashboard
-    echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | WS: ${GREEN}${root}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | Python: ${CYAN}${v_rel}${NC}(${venv_status})"
+    echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | User: ${PURPLE}$(whoami) (${UID:-$(id -u)})${NC} | WS: ${GREEN}${root}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | Python: ${CYAN}${v_rel}${NC}(${venv_status})"
 }

@@ -75,8 +75,8 @@ if [ -f "${WS_VENV}/bin/activate" ]; then
 fi
 
 # GPU Environment Variables (Sourced after ROS to maintain LD_LIBRARY_PATH priority)
-if [ -f /root/.gpu_env.sh ]; then
-    source /root/.gpu_env.sh
+if [ -f "${HOME}/.gpu_env.sh" ]; then
+    source "${HOME}/.gpu_env.sh"
 fi
 
 # Welcome Message (MOTD)

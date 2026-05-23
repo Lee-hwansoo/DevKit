@@ -113,7 +113,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
     apt-get update && apt-get install -y --no-install-recommends \
     # base-tools
-    bash-completion ca-certificates curl file gnupg2 htop iproute2 jq lsb-release net-tools nvtop software-properties-common tree unzip wget \
+    sudo bash-completion ca-certificates curl file gnupg2 htop iproute2 jq lsb-release net-tools nvtop software-properties-common tree unzip wget \
     fonts-noto-color-emoji fonts-font-awesome \
     # build-tools
     build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev \
@@ -128,6 +128,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     fi; \
     fc-cache -f && \
     apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user with UID/GID and passwordless sudo
+ARG CONTAINER_USER=user
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN groupadd --gid $USER_GID $CONTAINER_USER \
+    && useradd --uid $USER_UID --gid $USER_GID -m $CONTAINER_USER \
+    && echo $CONTAINER_USER ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$CONTAINER_USER \
+    && chmod 0440 /etc/sudoers.d/$CONTAINER_USER
 
 # CUDA Toolkit Installation (Conditional)
 ARG CUDA_VERSION
@@ -182,6 +192,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # ── Stage: dev-core (Python Runtime & Environment Orchestration) ─────────────
 FROM dev-base-tools AS dev-core
 ARG WORKSPACE_PATH
+ARG CONTAINER_USER=user
 ARG SYS_PYTHON_EXE
 ARG UV_VERSION
 ARG UV_PYTHON
@@ -200,7 +211,7 @@ ENV PATH="/usr/lib/ccache:${WORKSPACE_PATH}/install/.venv/bin:$PATH" \
     VIRTUAL_ENV=${WORKSPACE_PATH}/install/.venv \
     CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} \
     SYS_PYTHON_EXE=${SYS_PYTHON_EXE} \
-    BASH_ENV=/root/.bashrc
+    BASH_ENV=/home/${CONTAINER_USER}/.bashrc
 
 RUN mkdir -p ${CCACHE_DIR} ${UV_CACHE_DIR} ${WORKSPACE_PATH}/install
 
@@ -209,7 +220,11 @@ COPY config/  ${WORKSPACE_PATH}/config/
 COPY scripts/ ${WORKSPACE_PATH}/scripts/
 RUN chmod +x /entrypoint.sh ${WORKSPACE_PATH}/scripts/*.sh ${WORKSPACE_PATH}/config/*.sh && \
     cat ${WORKSPACE_PATH}/config/init_bash.sh >> /root/.bashrc && \
-    mkdir -p /root/.config/terminator && cp ${WORKSPACE_PATH}/config/terminator_config /root/.config/terminator/config 2>/dev/null || true
+    cat ${WORKSPACE_PATH}/config/init_bash.sh >> /home/${CONTAINER_USER}/.bashrc && \
+    mkdir -p /root/.config/terminator /home/${CONTAINER_USER}/.config/terminator && \
+    cp ${WORKSPACE_PATH}/config/terminator_config /root/.config/terminator/config 2>/dev/null || true && \
+    cp ${WORKSPACE_PATH}/config/terminator_config /home/${CONTAINER_USER}/.config/terminator/config 2>/dev/null || true && \
+    chown -R ${CONTAINER_USER}:${CONTAINER_USER} /home/${CONTAINER_USER}
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]
 
