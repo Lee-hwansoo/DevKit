@@ -225,7 +225,9 @@ setup:
 	$(call GUARD_HOST_ONLY)
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
-		echo -e "  $(OK) Created .env file. Please edit settings to your needs."; \
+		SAFE_USER=$$(whoami | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-'); \
+		sed -i "s/^COMPOSE_PROJECT_NAME=myproject/COMPOSE_PROJECT_NAME=myproject-$$SAFE_USER/" .env; \
+		echo -e "  $(OK) Created .env file and isolated project name to 'myproject-$$SAFE_USER'."; \
 	else \
 		echo -e "  $(INFO) .env file already exists."; \
 	fi
