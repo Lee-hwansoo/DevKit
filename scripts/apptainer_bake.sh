@@ -48,9 +48,12 @@ COPY . ${WS_ROOT}
 RUN bash -i -c "mksync ${SYNC_MODE}"
 RUN if [ "${PROD_MODE}" = "true" ]; then \
         echo "Optimizing and securing production image..." && \
-        python3 -m compileall -q -b ${WS_ROOT}/src 2>/dev/null || true && \
-        find ${WS_ROOT}/src -type f \( -name "*.py" -o -name "*.cpp" -o -name "*.cc" -o -name "*.c" -o -name "*.hpp" -o -name "*.h" \) -delete && \
-        echo "Source code stripped. Bytecode compilation completed."; \
+        if python3 -m compileall -q -b ${WS_ROOT}/src; then \
+            find ${WS_ROOT}/src -type f \( -name "*.py" -o -name "*.cpp" -o -name "*.cc" -o -name "*.c" -o -name "*.hpp" -o -name "*.h" \) -delete && \
+            echo "Source code stripped. Bytecode compilation completed."; \
+        else \
+            echo "Error: Python bytecode compilation failed. Aborting." && exit 1; \
+        fi \
     fi
 WORKDIR ${WS_ROOT}
 EOF

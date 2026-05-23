@@ -43,10 +43,13 @@ mkdir -p logs
 # 1. 컨테이너 내부의 워크스페이스 루트 경로 (SSOT)
 CONTAINER_WORKSPACE="/workspace"
 
-# 2. 컨테이너 내부에서 데이터셋을 읽어올 매핑 경로
+# 2. 컨테이너 내부에서 실행할 파일 경로
+CONTAINER_ENTRYPOINT="${CONTAINER_WORKSPACE}/scripts/slurm_entrypoint.sh"
+
+# 3. 컨테이너 내부에서 데이터셋을 읽어올 매핑 경로
 CONTAINER_DATA_ROOT="${CONTAINER_WORKSPACE}/src/carmaker_image/data"
 
-# 3. 컨테이너 내부에서 로그를 출력할 매핑 경로
+# 4. 컨테이너 내부에서 로그를 출력할 매핑 경로
 CONTAINER_RUN_ROOT="/runs"
 
 # SIF 파일 존재 유무 검증
@@ -56,15 +59,21 @@ CONTAINER_RUN_ROOT="/runs"
 # Intelligent Bind Mapping (Shadowing Bind Strategy)
 # =============================================================================
 # SIF 내부에 구워진 빌드본(install, build, .venv)을 보존하기 위한 스마트 필터
-EXCLUDES="^(build|install|devel|log|.docker_cache|colcon.meta|.venv|compile_commands.json|.*\.sif|\.|\.\.)$"
+EXCLUDES="^(build|install|devel|log|.docker_cache|colcon.meta|.venv|compile_commands.json|.*\.sif)$"
 BIND_OPTS=()
 
-for item in "${HOST_WORKSPACE}"/{*,.*}; do
+# Enable nullglob (so unmatched globs return empty rather than literal pattern)
+# and dotglob (to match hidden files, excluding . and ..)
+shopt -s nullglob dotglob
+
+for item in "${HOST_WORKSPACE}"/*; do
     [ -e "$item" ] || continue
     name=$(basename "$item")
     [[ "$name" =~ $EXCLUDES ]] && continue
     BIND_OPTS+=( "--bind" "${item}:${CONTAINER_WORKSPACE}/${name}" )
 done
+
+shopt -u nullglob dotglob
 
 # Bind custom data and logs if they exist on the host
 if [ -d "${HOST_REAL_DATA_ROOT}" ]; then
@@ -88,8 +97,6 @@ apptainer exec --nv \
     "${BIND_OPTS[@]}" \
     "${SIF_IMAGE}" \
     torchrun --standalone --nproc_per_node="${SLURM_GPUS_ON_NODE:-2}" \
-        "${CONTAINER_WORKSPACE}/src/segmentation/train.py" \
-        --config "${CONTAINER_WORKSPACE}/src/segmentation/config/segmentation_unet.yaml" \
+        "${CONTAINER_ENTRYPOINT}" \
         --data-root "${CONTAINER_DATA_ROOT}" \
-        --manifest "${CONTAINER_DATA_ROOT}/csv/manifest.csv" \
         --run-base "${CONTAINER_RUN_ROOT}"
