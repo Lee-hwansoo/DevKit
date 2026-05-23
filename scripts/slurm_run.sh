@@ -12,27 +12,20 @@
 
 set -euo pipefail
 
-# Load configurations from .env if available on host
-if [ -f ".env" ]; then
-    # Safely export environment variables from .env
-    export $(grep -v '^#' .env | xargs)
-fi
-
 # =============================================================================
-# Host Path Configurations (호스트 서버의 물리적 경로 설정)
+# User-Defined Configurations (사용자 정의 설정 - 실행 환경에 맞게 직접 수정하세요)
 # =============================================================================
-# 1. 호스트 내 DevKit 프로젝트 워크스페이스 루트 경로
-HOST_WORKSPACE="$(pwd)"
+# 1. 호스트 내 Apptainer SIF 이미지 파일 경로 (빌드된 SIF 파일명 지정)
+SIF_IMAGE="./devkit.sif"
 
 # 2. 호스트 내 대용량 실제 데이터셋 저장소 경로
-HOST_REAL_DATA_ROOT="${HOST_DATA_ROOT:-/home/dataset}"
+HOST_REAL_DATA_ROOT="/home/dataset"
 
-# 3. 호스트 내 학습 Tensorboard 로그/결과물이 저장될 경로
-HOST_RUN_ROOT="${HOST_RUN_ROOT:-/home/runs}"
+# 3. 호스트 내 학습 로그/결과물이 저장될 경로
+HOST_RUN_ROOT="/home/runs"
 
-# 4. 호스트 내 Apptainer SIF 이미지 파일 경로
-PROJ_NAME="${COMPOSE_PROJECT_NAME:-devkit}"
-SIF_IMAGE="./${PROJ_NAME}.sif"
+# 4. 호스트 내 DevKit 프로젝트 워크스페이스 루트 경로 (기본값: 현재 작업 폴더)
+HOST_WORKSPACE="$(pwd)"
 
 # Create a local logs directory on the host if it does not exist
 mkdir -p logs
@@ -44,10 +37,10 @@ mkdir -p logs
 CONTAINER_WORKSPACE="/workspace"
 
 # 2. 컨테이너 내부에서 실행할 파일 경로
-CONTAINER_ENTRYPOINT="${CONTAINER_WORKSPACE}/scripts/slurm_entrypoint.sh"
+CONTAINER_ENTRYPOINT="${CONTAINER_WORKSPACE}/slurm_entrypoint.sh"
 
 # 3. 컨테이너 내부에서 데이터셋을 읽어올 매핑 경로
-CONTAINER_DATA_ROOT="${CONTAINER_WORKSPACE}/src/carmaker_image/data"
+CONTAINER_DATA_ROOT="${CONTAINER_WORKSPACE}/data"
 
 # 4. 컨테이너 내부에서 로그를 출력할 매핑 경로
 CONTAINER_RUN_ROOT="/runs"

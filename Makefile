@@ -226,8 +226,8 @@ setup:
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
 		SAFE_USER=$$(whoami | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-'); \
-		sed -i "s/^COMPOSE_PROJECT_NAME=myproject/COMPOSE_PROJECT_NAME=myproject-$$SAFE_USER/" .env; \
-		echo -e "  $(OK) Created .env file and isolated project name to 'myproject-$$SAFE_USER'."; \
+		sed -i "s/^COMPOSE_PROJECT_NAME=\(.*\)/COMPOSE_PROJECT_NAME=\1-$$SAFE_USER/" .env; \
+		echo -e "  $(OK) Created .env file and dynamically isolated project name to '$$(grep "^COMPOSE_PROJECT_NAME=" .env | cut -d= -f2-)'."; \
 	else \
 		echo -e "  $(INFO) .env file already exists."; \
 	fi

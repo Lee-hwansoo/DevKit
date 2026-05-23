@@ -23,14 +23,17 @@ if [ ! -f "$SIF_FILE" ]; then
 fi
 
 # 1. Intelligent Binds (Fresh Source & Configs | Fixed Build & Install)
-EXCLUDES="^(build|install|devel|log|.docker_cache|colcon.meta|.venv|compile_commands.json|.*\.sif|\.|\.\.)$"
+EXCLUDES="^(build|install|devel|log|.docker_cache|colcon.meta|.venv|compile_commands.json|.*\.sif)$"
 BIND_OPTS=()
-for item in "${HOST_WORKSPACE_PATH}"/{*,.*}; do
+
+shopt -s nullglob dotglob
+for item in "${HOST_WORKSPACE_PATH}"/*; do
     [ -e "$item" ] || continue
     name=$(basename "$item")
     [[ "$name" =~ $EXCLUDES ]] && continue
     BIND_OPTS+=( "--bind" "${item}:${WS_ROOT}/${name}" )
 done
+shopt -u nullglob dotglob
 
 # 2. Hardware & System Acceleration
 GPU_FLAG=$([ "$HAS_NVIDIA" = "true" ] && echo "--nv")
