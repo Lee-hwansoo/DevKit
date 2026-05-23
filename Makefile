@@ -163,7 +163,7 @@ endef
 .PHONY: h help setup check check-host xauth status \
         build-ros build-dev rebuild-ros rebuild-dev \
         ros ros-stop ros-restart dev dev-stop dev-restart ros-shell dev-shell ros-term dev-term \
-		bake bake-share run-sif \
+		bake bake-share bake-prod run-sif run-slurm slurm-status slurm-cancel \
 		update-gpg stats top logs down clean clean-cache clean-all docker-clean env-check
 
 h: help
@@ -374,9 +374,11 @@ dev-term: check xauth
 # Apptainer Baking (Portable Snapshot)
 # =============================================================================
 
-## @section 🧊 | Apptainer Workflow (Bake & Run) | BLUE
-## @target bake / bake-share : Bake workspace into a SIF image (Standard / Shared)
-## @target run-sif : Run SIF with fresh configs (Internal build/install)
+## @section 🧊 | Apptainer Workflow (Local Dev & Runtime) | BLUE
+## @target bake : Bake dev SIF image (isolated Python venv)
+## @target bake-share : Bake dev SIF image (shares system site-packages)
+## @target bake-prod : Bake prod SIF image (compiles source code)
+## @target run-sif : Launch SIF container locally (interactive dev with GUI support)
 bake: check
 	$(call PRINT_SECTION,Baking Apptainer Image)
 	@./scripts/apptainer_bake.sh
@@ -385,9 +387,54 @@ bake-share: check
 	$(call PRINT_SECTION,Baking Shared Apptainer Image)
 	@./scripts/apptainer_bake.sh --share
 
+bake-prod: check
+	$(call PRINT_SECTION,Baking Production Apptainer Image)
+	@./scripts/apptainer_bake.sh --prod
+
 run-sif: check xauth
 	$(call PRINT_SECTION,Running Apptainer Image)
 	@./scripts/apptainer_run.sh
+
+# =============================================================================
+# SLURM Scheduling (HPC)
+# =============================================================================
+
+## @section 🛰️ | SLURM Scheduling (Server) | BLUE
+## @target run-slurm : Submit job to SLURM scheduler
+## @target slurm-status : Query active/pending SLURM jobs of current user
+## @target slurm-cancel : Cancel running/pending SLURM jobs (interactive or all)
+run-slurm: check
+	$(call PRINT_SECTION,Submitting SLURM Job)
+	@if command -v sbatch >/dev/null 2>&1; then \
+		sbatch scripts/slurm_run.sh; \
+	else \
+		echo -e "  $(ERROR) SLURM binary 'sbatch' not found. This command must be run on a SLURM login node."; \
+		exit 1; \
+	fi
+
+slurm-status:
+	$(call GUARD_HOST_ONLY)
+	@if command -v squeue >/dev/null 2>&1; then \
+		squeue -u $$USER; \
+	else \
+		echo -e "  $(ERROR) SLURM binary 'squeue' not found."; \
+		exit 1; \
+	fi
+
+slurm-cancel:
+	$(call GUARD_HOST_ONLY)
+	@if command -v scancel >/dev/null 2>&1; then \
+		echo -en "  $(WARN) Enter Job ID to cancel (or press Enter to cancel all your jobs): "; \
+		read jobid; \
+		if [ -z "$$jobid" ]; then \
+			scancel -u $$USER && echo -e "  $(OK) Cancelled all jobs for $$USER."; \
+		else \
+			scancel $$jobid && echo -e "  $(OK) Cancelled job $$jobid."; \
+		fi; \
+	else \
+		echo -e "  $(ERROR) SLURM binary 'scancel' not found."; \
+		exit 1; \
+	fi
 
 # =============================================================================
 # Maintenance

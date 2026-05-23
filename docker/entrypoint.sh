@@ -180,14 +180,18 @@ persist_env_block() {
         # Replace existing block using sed (idempotent update)
         # We use a temp file to ensure atomic write and handle potential sed differences
         local tmp_file
-        tmp_file=$(mktemp)
-        sed "/$start_mark/,/$end_mark/d" "$target" > "$tmp_file"
-        echo -e "$block_content" >> "$tmp_file"
-        cat "$tmp_file" > "$target"
-        rm -f "$tmp_file"
+        if ! tmp_file=$(mktemp 2>/dev/null); then
+            log_warn "Failed to create temporary file for env block update. Skipping."
+            return 0
+        fi
+        if sed "/$start_mark/,/$end_mark/d" "$target" > "$tmp_file" 2>/dev/null; then
+            echo -e "$block_content" >> "$tmp_file"
+            cat "$tmp_file" > "$target" 2>/dev/null || log_warn "Failed to update $target."
+        fi
+        rm -f "$tmp_file" 2>/dev/null || true
     else
         # Append new block if it doesn't exist
-        echo -e "\n$block_content" >> "$target"
+        echo -e "\n$block_content" >> "$target" 2>/dev/null || log_warn "Failed to append to $target."
     fi
 }
 
@@ -216,7 +220,7 @@ fi
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     if [ -w /cache ] || [ -d /cache/ccache ]; then
-        mkdir -p /cache/ccache /cache/uv /cache/apt
+        mkdir -p /cache/ccache /cache/uv /cache/apt 2>/dev/null || true
         if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
             chown -R "${CONTAINER_USER}:${CONTAINER_USER}" /cache/ccache /cache/uv /cache/apt 2>/dev/null || true
         fi
@@ -350,7 +354,12 @@ fi
 # Execute
 if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
     log_ok "Dropping privileges: executing command as user '${CONTAINER_USER}'"
-    exec sudo -E -u "${CONTAINER_USER}" PATH="$PATH" VIRTUAL_ENV="$VIRTUAL_ENV" "$@"
+    exec sudo -E -u "${CONTAINER_USER}" \
+        PATH="$PATH" \
+        VIRTUAL_ENV="$VIRTUAL_ENV" \
+        LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+        PYTHONPATH="${PYTHONPATH:-}" \
+        "$@"
 else
     exec "$@"
 fi
