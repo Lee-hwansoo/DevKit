@@ -45,11 +45,11 @@ ENV LANG=${LANG} \
 RUN --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
-    chmod +x /tmp/util_apt_helper.sh /tmp/util_logging.sh && \
-    /tmp/util_apt_helper.sh init-apt && \
-    /tmp/util_apt_helper.sh configure-snapshot ${APT_SNAPSHOT_DATE} && \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh init-apt && \
+    bash /tmp/util_apt_helper.sh configure-snapshot ${APT_SNAPSHOT_DATE} && \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
-    /tmp/util_apt_helper.sh setup-cuda-repo ${CUDA_VERSION}; \
+    bash /tmp/util_apt_helper.sh setup-cuda-repo ${CUDA_VERSION}; \
     fi
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -108,6 +108,7 @@ RUN chmod +x /entrypoint.sh
 
 # ── Stage: dev-base-tools (Compilers, GUI & Diagnostics) ─────────────────────
 FROM base AS dev-base-tools
+ARG WORKSPACE_PATH
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
@@ -235,18 +236,30 @@ ARG ROS_DISTRO
 ENV COLCON_HOME=${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/util_apt_helper.sh install-packages all
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh install-packages all
 WORKDIR ${WORKSPACE_PATH}
 
 FROM dev-core AS ros-base
+ARG WORKSPACE_PATH
 ARG ROS_DISTRO
 ENV ROS_DISTRO=${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     (rosdep init || true) && \
     rosdep update --rosdistro ${ROS_DISTRO} && \
     rm -rf /var/lib/apt/lists/*
@@ -287,7 +300,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
-    /tmp/util_apt_helper.sh install-packages all
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh install-packages all
 COPY s[r]c/ src/
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
@@ -316,7 +331,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
-    /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     rosdep update --rosdistro ${ROS_DISTRO} && \
     ${WORKSPACE_PATH}/scripts/util_setup_links.sh && \
     SYNC_TARGET_DIR=src/thirdparty ${WORKSPACE_PATH}/scripts/setup_sync_deps.sh --rosdep && \
@@ -336,7 +353,11 @@ ARG WORKSPACE_PATH
 WORKDIR ${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/util_apt_helper.sh install-packages runtime && \
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh install-packages runtime && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=builder-dev ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
 ENV PATH="${WORKSPACE_PATH}/install/.venv/bin:${WORKSPACE_PATH}/install/bin:$PATH" VIRTUAL_ENV="${WORKSPACE_PATH}/install/.venv"
@@ -348,10 +369,17 @@ ARG WORKSPACE_PATH
 WORKDIR ${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /tmp/util_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
     apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-ros-base \
     && rm -rf /var/lib/apt/lists/*

@@ -103,7 +103,7 @@ endef
 define EXEC_CONTAINER
 	@CONTAINER=$$(docker ps --filter "name=$1" --format "{{.Names}}" | head -n 1); \
 	if [ -n "$$CONTAINER" ]; then \
-		docker exec -it $$CONTAINER $2 || [ $$? -eq 130 ]; \
+		docker exec -it -u $(CONTAINER_USER) $$CONTAINER $2 || [ $$? -eq 130 ]; \
 	else \
 		echo -e "  $(ERROR) No running container found for $3."; \
 		exit 1; \
@@ -114,7 +114,7 @@ endef
 define EXEC_DETACHED
 	@CONTAINER=$$(docker ps --filter "name=$1" --format "{{.Names}}" | head -n 1); \
 	if [ -n "$$CONTAINER" ]; then \
-		docker exec -d $$CONTAINER $2; \
+		docker exec -d -u $(CONTAINER_USER) $$CONTAINER $2; \
 	else \
 		echo "  [ERROR] No running container found for $3."; \
 		exit 1; \
@@ -567,12 +567,12 @@ clean:
 	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
 		echo -e "  $(WARN) CI/FORCE mode: Forcibly deleting host folders without prompting."; ans="y"; \
 	else \
-		echo -e "  $(WARN) Do you want to delete the [build, install, log, .venv, colcon.meta] host folders?"; \
+		echo -e "  $(WARN) Do you want to delete the [build, devel, install, log, .venv, colcon.meta] host folders?"; \
 		echo -en "  $(WARN) If you used bind mounts in [.env], actual data will be lost! [Y/N]: "; \
 		read ans || true; \
 	fi; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
-		$(call SUDO_FREE_RM,$(HOST_WORKSPACE_PATH),build install log .venv colcon.meta); \
+		$(call SUDO_FREE_RM,$(HOST_WORKSPACE_PATH),build devel install log .venv colcon.meta); \
 	else \
 		echo -e "  $(INFO) Safely skipped deleting host folders."; \
 	fi

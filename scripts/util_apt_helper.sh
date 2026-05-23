@@ -145,7 +145,7 @@ setup_cuda_repo() {
 install_packages() {
     local filter=$1  # "all" (dev/builder) or "runtime" (production)
     local distro=$2
-    local dep_dir=${3:-"${WS_DEPS:-/workspace/dependencies"}} # Default dependency directory
+    local dep_dir="${3:-${WS_DEPS:-/workspace/dependencies}}" # Default dependency directory
 
     local apt_file="/tmp/apt.txt"
     local ros_file="/tmp/apt_ros.txt"

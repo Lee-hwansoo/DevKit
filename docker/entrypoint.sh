@@ -228,6 +228,16 @@ if [ "$IS_DEV" = true ]; then
     else
         log_warn "Cache directory /cache is not writable, skipping cache directory setup"
     fi
+
+    # Ensure build, devel, install, and log directories are owned by the container user (handles named volume permissions)
+    if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
+        for dir in "${WS_ROOT}/build" "${WS_ROOT}/devel" "${WS_ROOT}/install" "${WS_ROOT}/log"; do
+            if [ -d "$dir" ]; then
+                chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "$dir" 2>/dev/null || true
+            fi
+        done
+        log_ok "Workspace build, devel, install, and log directories ownership synchronized for ${CONTAINER_USER}."
+    fi
 fi
 
 # =============================================================================
