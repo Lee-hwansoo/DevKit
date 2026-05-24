@@ -101,7 +101,11 @@ fi
 print_section "System Dependencies (rosdep)"
 if [ "$DO_ROSDEP" = true ] && command -v rosdep &>/dev/null && [ -n "${ROS_DISTRO}" ]; then
     log_info "Gathering dependencies for ${ROS_DISTRO}..."
-    apt-get update -qq || true
+    if [ "$(id -u)" -ne 0 ] && command -v sudo &>/dev/null; then
+        sudo -n apt-get update -qq 2>/dev/null || true
+    else
+        apt-get update -qq || true
+    fi
 
     SCAN_PATHS="$TARGET_DIR"
     if [ -d "${WS_SRC}" ] && [ "$TARGET_DIR" != "${WS_SRC}" ]; then

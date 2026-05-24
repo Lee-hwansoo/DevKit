@@ -42,7 +42,9 @@ ENV LANG=${LANG} \
     DEBIAN_FRONTEND=${DEBIAN_FRONTEND} \
     ROS_DISTRO=${ROS_DISTRO}
 
-RUN --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
     export SOURCE_LOG=/tmp/util_logging.sh && \
@@ -98,7 +100,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
     apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
     apt-get autoremove -y || true; \
-    apt-get clean; \
     ldconfig; \
     fi
 
@@ -128,7 +129,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     unzip -q /tmp/d2coding.zip -d /usr/share/fonts/truetype/d2coding && rm -f /tmp/d2coding.zip; \
     fi; \
     fc-cache -f && \
-    apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get autoremove -y
 
 # Create a non-root user with UID/GID and passwordless sudo
 ARG CONTAINER_USER=user
@@ -136,7 +137,7 @@ ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
 RUN groupadd --gid $USER_GID $CONTAINER_USER \
-    && useradd --uid $USER_UID --gid $USER_GID -m $CONTAINER_USER \
+    && useradd --uid $USER_UID --gid $USER_GID -m -s /bin/bash $CONTAINER_USER \
     && echo $CONTAINER_USER ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$CONTAINER_USER \
     && chmod 0440 /etc/sudoers.d/$CONTAINER_USER
 
@@ -175,8 +176,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
     apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
     apt-get autoremove -y || true; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*; \
     ldconfig; \
     fi
 
@@ -187,8 +186,7 @@ ENV CUDA_HOME=/usr/local/cuda
 # Architecture-dependent packages (may not be installed on ARM64)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd || true && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get update && apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd || true
 
 # ── Stage: dev-core (Python Runtime & Environment Orchestration) ─────────────
 FROM dev-base-tools AS dev-core
@@ -262,7 +260,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     bash /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     (rosdep init || true) && \
     rosdep update --rosdistro ${ROS_DISTRO} && \
-    rm -rf /var/lib/apt/lists/*
+    cp -r /root/.ros /opt/ros_cache && \
+    chmod -R 755 /opt/ros_cache
 
 FROM ros-base AS ros
 ARG WORKSPACE_PATH
@@ -270,7 +269,9 @@ ENV COLCON_HOME=${WORKSPACE_PATH}
 WORKDIR ${WORKSPACE_PATH}
 
 RUN mkdir -p src && ${WORKSPACE_PATH}/scripts/util_setup_links.sh
-RUN SYNC_TARGET_DIR=/tmp/staging ${WORKSPACE_PATH}/scripts/setup_sync_deps.sh --rosdep && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    SYNC_TARGET_DIR=/tmp/staging ${WORKSPACE_PATH}/scripts/setup_sync_deps.sh --rosdep && \
     rm -rf /tmp/staging
 
 # ── Stage: python-deps (Python Dependency Caching Layer) ────────────────────
@@ -335,9 +336,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     export SOURCE_LOG=/tmp/util_logging.sh && \
     bash /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
     rosdep update --rosdistro ${ROS_DISTRO} && \
+    cp -r /root/.ros /opt/ros_cache && \
+    chmod -R 755 /opt/ros_cache && \
     ${WORKSPACE_PATH}/scripts/util_setup_links.sh && \
-    SYNC_TARGET_DIR=src/thirdparty ${WORKSPACE_PATH}/scripts/setup_sync_deps.sh --rosdep && \
-    rm -rf /var/lib/apt/lists/*
+    SYNC_TARGET_DIR=src/thirdparty ${WORKSPACE_PATH}/scripts/setup_sync_deps.sh --rosdep
 RUN --mount=type=cache,target=/cache/uv,sharing=locked \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
@@ -357,8 +359,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
     export SOURCE_LOG=/tmp/util_logging.sh && \
-    bash /tmp/util_apt_helper.sh install-packages runtime && \
-    rm -rf /var/lib/apt/lists/*
+    bash /tmp/util_apt_helper.sh install-packages runtime
 COPY --from=builder-dev ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
 ENV PATH="${WORKSPACE_PATH}/install/.venv/bin:${WORKSPACE_PATH}/install/bin:$PATH" VIRTUAL_ENV="${WORKSPACE_PATH}/install/.venv"
 ENTRYPOINT ["/entrypoint.sh"]
@@ -381,8 +382,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     export SOURCE_LOG=/tmp/util_logging.sh && \
     bash /tmp/util_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
     apt-get update && apt-get install -y --no-install-recommends \
-    ros-${ROS_DISTRO}-ros-base \
-    && rm -rf /var/lib/apt/lists/*
+    ros-${ROS_DISTRO}-ros-base
 COPY --from=builder-ros ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]

@@ -118,7 +118,6 @@ setup_wayland() {
     log_ok "Wayland GUI variables initialized"
 }
 
-# =============================================================================
 # Clean up orphaned environment variables injected by Docker Compose V2
 # Prevents empty strings from interfering with logic or ROS node discovery
 for var in ROS_IP WAYLAND_DISPLAY HOST_WAYLAND_DISPLAY; do
@@ -195,7 +194,9 @@ persist_env_block() {
     fi
 }
 
+# =============================================================================
 # [2] Display Protocol & GUI Integration (Development Only)
+# =============================================================================
 if [ "$IS_DEV" = true ]; then
     if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
         # Resolve XDG_RUNTIME_DIR (handles WSL2 uid mismatch via proxy)
@@ -240,6 +241,19 @@ if [ "$IS_DEV" = true ]; then
     fi
 fi
 
+# Initialize ros cache for hybrid environment (Docker/Apptainer)
+if [ -d "/opt/ros_cache" ]; then
+    TARGET_HOME=$(getent passwd "${CONTAINER_USER}" | cut -d: -f6)
+    TARGET_HOME="${TARGET_HOME:-$HOME}"
+
+    if [ ! -d "${TARGET_HOME}/.ros" ]; then
+        mkdir -p "${TARGET_HOME}/.ros"
+        cp -Rp /opt/ros_cache/. "${TARGET_HOME}/.ros/"
+        [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${TARGET_HOME}/.ros" 2>/dev/null
+        log_ok "ros cache initialized."
+    fi
+fi
+
 # =============================================================================
 # [4] Check SSH Key Permissions (Dev Only)
 # =============================================================================
@@ -267,7 +281,9 @@ if [ "$IS_DEV" = true ]; then
     fi
 fi
 
+# =============================================================================
 # [6] SocketCAN Interface Detection
+# =============================================================================
 if ip link show can0 >/dev/null 2>&1; then
     log_ok "SocketCAN can0 available"
 elif ip link show 2>/dev/null | grep -q ": can"; then
@@ -361,10 +377,21 @@ if [ "$IS_DEV" = true ]; then
     fi
 fi
 
+# =============================================================================
 # Execute
+# =============================================================================
 if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
     log_ok "Dropping privileges: executing command as user '${CONTAINER_USER}'"
+    user_home=$(getent passwd "${CONTAINER_USER}" | cut -d: -f6)
+    if [ -z "$user_home" ]; then
+        if [ -d "/home/${CONTAINER_USER}" ]; then
+            user_home="/home/${CONTAINER_USER}"
+        else
+            user_home="${HOME:-/root}"
+        fi
+    fi
     exec sudo -E -u "${CONTAINER_USER}" \
+        HOME="$user_home" \
         PATH="$PATH" \
         VIRTUAL_ENV="$VIRTUAL_ENV" \
         LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \

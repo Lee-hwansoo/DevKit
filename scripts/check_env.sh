@@ -19,7 +19,7 @@ LOG_PREFIX="[Env Detector]"
 
 # 0. Detect Workspace Paths (Host & Container Separation)
 HOST_WORKSPACE_PATH="${HOST_WORKSPACE_PATH:-$(pwd)}"
-WORKSPACE_PATH="${WS_ROOT}"
+WORKSPACE_PATH="${WORKSPACE_PATH:-/workspace}"
 
 # 1. Check Environment and Determine host CPU architecture
 IS_WSL="false"
@@ -184,7 +184,7 @@ fi
 
 # 5. Output for Makefile integration
 echo "HOST_WORKSPACE_PATH=${HOST_WORKSPACE_PATH}"
-echo "WORKSPACE_PATH=${WS_ROOT}"
+echo "WORKSPACE_PATH=${WORKSPACE_PATH}"
 echo "IS_WSL=${IS_WSL}"
 echo "HOST_DXG_MOUNT=${HOST_DXG_MOUNT}"
 echo "HOST_ARCH=${HOST_ARCH}"

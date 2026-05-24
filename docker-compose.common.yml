@@ -80,6 +80,7 @@ x-dev-healthcheck: &dev-healthcheck
 services:
   # Core Configuration Base (Shared across all services)
   base-common:
+    working_dir: ${WORKSPACE_PATH:-/workspace}
     platform: linux/${TARGETARCH:-amd64}
     profiles: [abstract]
     restart: unless-stopped

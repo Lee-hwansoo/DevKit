@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=devkit
-#SBATCH --partition=partition-3090-intel
+#SBATCH --partition=local
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
@@ -70,11 +70,42 @@ fi
 # =============================================================================
 # Execution Context
 # =============================================================================
-echo "Submitting Apptainer Job to SLURM..."
-echo " - SIF: ${SIF_IMAGE}"
-echo " - Workspace: ${HOST_WORKSPACE} -> ${CONTAINER_WORKSPACE}"
-[ -d "${HOST_REAL_DATA_ROOT}" ] && echo " - Data: ${HOST_REAL_DATA_ROOT} -> ${CONTAINER_DATA_ROOT} (ro)"
-[ -d "${HOST_RUN_ROOT}" ] && echo " - Runs: ${HOST_RUN_ROOT} -> ${CONTAINER_RUN_ROOT}"
+CURRENT_JOB_ID="${SLURM_JOB_ID:-LOCAL_TEST}"
+JOB_NAME="${SLURM_JOB_NAME:-devkit}"
+GPUS_PER_NODE="${SLURM_GPUS_ON_NODE:-1}"
+
+if [ -n "${SLURM_JOB_TIME_LIMIT:-}" ]; then
+    TIME_LIMIT="${SLURM_JOB_TIME_LIMIT} minutes"
+else
+    TIME_LIMIT="00:30:00 (Default)"
+fi
+
+echo ""
+echo "====================================================================="
+echo " 🚀 SLURM Job Execution Summary"
+echo "====================================================================="
+echo " - Job ID          : ${CURRENT_JOB_ID}"
+echo " - Job Name        : ${JOB_NAME}"
+echo " - Partition       : ${SLURM_JOB_PARTITION:-local}"
+echo " - Allocated Node  : ${SLURM_JOB_NODELIST:-localhost} (Total: ${SLURM_NNODES:-1} nodes)"
+echo " - Tasks & CPUs    : ${SLURM_NTASKS:-1} tasks, ${SLURM_CPUS_PER_TASK:-4} CPUs/task"
+echo " - GPUs per Node   : ${GPUS_PER_NODE}"
+echo " - Time Limit      : ${TIME_LIMIT}"
+echo " - Comment / Tag   : ${SLURM_JOB_COMMENT:-submitter:devkit}"
+echo "---------------------------------------------------------------------"
+echo " 📝 Log Files"
+echo "---------------------------------------------------------------------"
+echo " - Standard Output : logs/${JOB_NAME}_${CURRENT_JOB_ID}.out"
+echo " - Standard Error  : logs/${JOB_NAME}_${CURRENT_JOB_ID}.err"
+echo "---------------------------------------------------------------------"
+echo " 📦 Container & Path Mapping"
+echo "---------------------------------------------------------------------"
+echo " - SIF Image       : ${SIF_IMAGE}"
+echo " - Workspace       : ${HOST_WORKSPACE} -> ${CONTAINER_WORKSPACE}"
+[ -d "${HOST_REAL_DATA_ROOT}" ] && echo " - Data (ro)       : ${HOST_REAL_DATA_ROOT} -> ${CONTAINER_DATA_ROOT}"
+[ -d "${HOST_RUN_ROOT}" ] && echo " - Runs/Logs       : ${HOST_RUN_ROOT} -> ${CONTAINER_RUN_ROOT}"
+echo "====================================================================="
+echo ""
 
 # Detect GPU acceleration flag for the cluster node
 GPU_FLAG=""
@@ -88,7 +119,8 @@ fi
 apptainer exec $GPU_FLAG \
     "${BIND_OPTS[@]}" \
     "${SIF_IMAGE}" \
-    torchrun --standalone --nproc_per_node="${SLURM_GPUS_ON_NODE:-2}" \
+    /entrypoint.sh \
+    torchrun --standalone --nproc_per_node="${GPUS_PER_NODE}" \
         "${CONTAINER_ENTRYPOINT}" \
         --data-root "${CONTAINER_DATA_ROOT}" \
         --run-base "${CONTAINER_RUN_ROOT}"

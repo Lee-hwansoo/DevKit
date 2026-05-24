@@ -228,7 +228,7 @@
       "type": "shell",
       "command": "ccache -s",
       "options": {
-        "cwd": "${env:WORKSPACE_PATH:/workspace}"
+        "cwd": "${env:WS_ROOT}"
       },
       "problemMatcher": [],
       "detail": "Show ccache hit/miss statistics and cache size usage"
