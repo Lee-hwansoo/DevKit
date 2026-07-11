@@ -11,10 +11,14 @@ x-common-env: &common-env
   WORKSPACE_PATH: ${WORKSPACE_PATH:-/workspace}
   LANG: ${LANG:-C.UTF-8}
   TZ: ${TZ:-UTC}
+  LOG_SHOW_TIME: ${LOG_SHOW_TIME:-false}
+  DEBUG_MODE: ${DEBUG_MODE:-false}
+  LOG_FILE: ${LOG_FILE:-}
   HAS_TOOLKIT: ${HAS_TOOLKIT:-false}
   HAS_NVIDIA: ${HAS_NVIDIA:-false}
   HAS_DRI: ${HAS_DRI:-false}
   GPU_MODE: ${GPU_MODE:-auto}
+  OPENCV_CUDA: ${OPENCV_CUDA:-auto}
   DISPLAY: ${DISPLAY:-:0}
   DISPLAY_TYPE: ${DISPLAY_TYPE:-X11}
   WAYLAND_DISPLAY: ${HOST_WAYLAND_DISPLAY:-}
@@ -26,11 +30,14 @@ x-common-env: &common-env
   UV_SYNC_FLAGS: ${UV_SYNC_FLAGS:-}
   ROS_DISTRO: ${ROS_DISTRO:-humble}
   SYNC_TARGET_DIR: ${SYNC_TARGET_DIR:-src/thirdparty}
+  DEVKIT_VCS_ALLOW_FAILURE: ${DEVKIT_VCS_ALLOW_FAILURE:-0}
+  DEVKIT_ROSDEP_ALLOW_FAILURE: ${DEVKIT_ROSDEP_ALLOW_FAILURE:-0}
   ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
   RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}
   ROS_MASTER_URI: ${ROS_MASTER_URI:-http://localhost:11311}
   ROS_HOSTNAME: ${ROS_HOSTNAME:-localhost}
   ROS_IP: ${ROS_IP:-}
+  CMAKE_C_STANDARD: ${CMAKE_C_STANDARD:-11}
   CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
   CMAKE_EXTRA_ARGS: ${CMAKE_EXTRA_ARGS:-}
   COLCON_EXTRA_FLAGS: ${COLCON_EXTRA_FLAGS:-}
@@ -86,9 +93,9 @@ services:
     restart: unless-stopped
     tty: true
     stdin_open: true
-    network_mode: ${NETWORK_MODE:-bridge}
-    ipc: ${IPC_MODE:-private}
-    privileged: ${PRIVILEGED:-false}
+    network_mode: ${NETWORK_MODE:-host}
+    ipc: ${IPC_MODE:-host}
+    privileged: ${PRIVILEGED:-true}
     ulimits:
       nofile:
         soft: ${ULIMIT_NOFILE:-65535}
@@ -105,9 +112,14 @@ services:
         USER_GID: ${HOST_GID:-1000}
         DEBIAN_FRONTEND: ${DEBIAN_FRONTEND:-noninteractive}
         LANG: ${LANG:-C.UTF-8}
+        TZ: ${TZ:-UTC}
+        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-}
         APT_SNAPSHOT_DATE: ${APT_SNAPSHOT_DATE:-latest}
+        STRICT_GPG_CHECK: ${STRICT_GPG_CHECK:-false}
+        WORKSPACE_PATH: ${WORKSPACE_PATH:-/workspace}
         UV_VERSION: ${UV_VERSION:-0.10.10}
         UV_PYTHON: ${UV_PYTHON:-3.10}
+        CMAKE_C_STANDARD: ${CMAKE_C_STANDARD:-11}
         CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD:-17}
         BASE_IMAGE: ${BASE_IMAGE:-ubuntu:22.04}
         ROS_DISTRO: ${ROS_DISTRO:-humble}
@@ -116,8 +128,11 @@ services:
         CMAKE_EXTRA_ARGS: ${CMAKE_EXTRA_ARGS:-}
         COLCON_EXTRA_FLAGS: ${COLCON_EXTRA_FLAGS:-}
         HAS_NVIDIA: ${HAS_NVIDIA:-false}
+        FULL_CUDA: ${FULL_CUDA:-false}
+        OPENCV_CUDA: ${OPENCV_CUDA:-auto}
         CUDA_VERSION: ${CUDA_VERSION:-}
         CUDNN_VERSION: ${CUDNN_VERSION:-}
+        INSTALL_INTEL_GPU_TOOLS: ${INSTALL_INTEL_GPU_TOOLS:-false}
 
   # Pure Development Template
   base-dev:
@@ -131,6 +146,9 @@ services:
   base-igpu:
     profiles: [abstract]
     extends: base-common
+    build:
+      args:
+        INSTALL_INTEL_GPU_TOOLS: "true"
     environment:
       <<: *common-env
     healthcheck: *dev-healthcheck
@@ -158,6 +176,9 @@ services:
   base-ros-igpu:
     profiles: [abstract]
     extends: base-common
+    build:
+      args:
+        INSTALL_INTEL_GPU_TOOLS: "true"
     environment:
       <<: *common-env
     healthcheck: *ros-healthcheck

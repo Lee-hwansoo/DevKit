@@ -10,14 +10,37 @@
 #   - Automatic fallback to software rendering (llvmpipe) upon acceleration failure
 # =============================================================================
 
-# Load path configuration
-[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
-[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
-
-# Load logging utility
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
+[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[GPU]"
+
+setup_gpu_usage() {
+    cat <<'EOF'
+Usage: source setup_gpu.sh {auto|intel|amd|nvidia|igpu|cpu|status|opencv_args}
+
+Configure or inspect GPU/rendering environment variables.
+
+Modes:
+  auto          Detect and apply the best available GPU mode.
+  intel|amd     Force vendor-specific integrated GPU settings.
+  nvidia        Force NVIDIA/PRIME settings.
+  igpu          Select Intel/AMD/generic DRI when available.
+  cpu|software  Force software rendering.
+  status        Print diagnostics.
+  opencv_args   Print CMake flags for OpenCV CUDA support.
+  -h, --help    Show this help.
+EOF
+}
+
+setup_gpu_finish() {
+    local code="${1:-0}"
+    if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+        exit "$code"
+    fi
+    return "$code"
+}
 
 # Load shared GPU detection helpers (SSOT for GPU detection functions)
 SOURCE_GPU="${WS_SCRIPTS}/util_gpu_detect.sh"
@@ -27,7 +50,7 @@ if [ -f "$SOURCE_GPU" ]; then
     source "$SOURCE_GPU"
 else
     echo "${LOG_PREFIX:-[GPU]} FATAL: util_gpu_detect.sh not found. GPU detection unavailable." >&2
-    exit 1
+    setup_gpu_finish 1
 fi
 
 # =============================================================================
@@ -117,7 +140,14 @@ reset_gpu_env() {
 # =============================================================================
 write_gpu_env() {
     # Persists GPU-specific environment variables for use in future shell sessions
-    local env_file="${HOME}/.gpu_env.sh"
+    local env_file="${GPU_ENV_FILE:-${HOME}/.gpu_env.sh}"
+    local env_dir
+    env_dir="$(dirname "$env_file")"
+
+    if [ ! -d "$env_dir" ] || [ ! -w "$env_dir" ]; then
+        log_warn "GPU environment persistence skipped; directory is not writable: $env_dir"
+        return 0
+    fi
 
     # Determine uv extra (PyTorch selection) based on detectable hardware
     local uv_extra="cpu"
@@ -195,7 +225,7 @@ apply_gpu_setup() {
     if declare -f "$target_setup_func" > /dev/null; then
         "$target_setup_func"
     else
-        log_err "Unknown GPU setup logic requested: $target_setup_func"
+        log_error "Unknown GPU setup logic requested: $target_setup_func"
         setup_software
     fi
 }
@@ -266,31 +296,29 @@ setup_nvidia() {
     log_ok "NVIDIA GPU configured (OpenGL + Vulkan + EGL)"
 }
 
+setup_mesa_driver() {
+    local driver="$1"
+    local label="$2"
+    [ -n "$driver" ] && [ "${MESA_LOADER_DRIVER_OVERRIDE:-}" = "$driver" ] && return
+    reset_gpu_env
+    export LIBGL_ALWAYS_SOFTWARE=0
+    [ -n "$driver" ] && export MESA_LOADER_DRIVER_OVERRIDE="$driver"
+    [ -n "$driver" ] && export GALLIUM_DRIVER="$driver"
+    write_gpu_env
+    log_ok "$label"
+}
+
 setup_intel() {
     if [ -d /sys/module/xe ]; then
-        reset_gpu_env
-        export LIBGL_ALWAYS_SOFTWARE=0
-        write_gpu_env
-        log_ok "Intel GPU configured (xe driver for Arc)"
+        setup_mesa_driver "" "Intel GPU configured (xe driver for Arc)"
         return
     fi
 
-    if [ "${MESA_LOADER_DRIVER_OVERRIDE:-}" = "iris" ]; then return; fi
-    reset_gpu_env
-    export LIBGL_ALWAYS_SOFTWARE=0
-    export MESA_LOADER_DRIVER_OVERRIDE=iris
-    export GALLIUM_DRIVER=iris
-    write_gpu_env
-    log_ok "Intel GPU configured (Mesa/iris driver)"
+    setup_mesa_driver "iris" "Intel GPU configured (Mesa/iris driver)"
 }
 
 setup_amd() {
-    if [ "${MESA_LOADER_DRIVER_OVERRIDE:-}" = "radeonsi" ]; then return; fi
-    reset_gpu_env
-    export LIBGL_ALWAYS_SOFTWARE=0
-    export MESA_LOADER_DRIVER_OVERRIDE=radeonsi
-    write_gpu_env
-    log_ok "AMD GPU configured (Mesa/radeonsi driver)"
+    setup_mesa_driver "radeonsi" "AMD GPU configured (Mesa/radeonsi driver)"
 }
 
 setup_tegra() {
@@ -375,7 +403,7 @@ setup_auto() {
     if [ "$detected" = true ]; then
         if [ "$ds" != "None" ] && command -v glxinfo &>/dev/null; then
             local renderer
-            renderer=$(glxinfo 2>/dev/null | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
+            renderer=$(trim_ws "$(glxinfo 2>/dev/null | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' || true)")
             if [[ "$renderer" =~ (llvmpipe|softpipe|swrast) ]] || [ -z "$renderer" ]; then
                 if has_dxg; then
                     log_warn "Renderer is SOFTWARE ($renderer). This is common on WSL2 when host acceleration is not fully enabled."
@@ -421,6 +449,7 @@ setup_auto() {
         local cuda_v=$(get_cuda_metadata cuda_ver)
         [ -n "$cuda_v" ] && log_info "Active Toolkit: CUDA $cuda_v"
     fi
+    return 0
 }
 
 # =============================================================================
@@ -429,12 +458,17 @@ setup_auto() {
 # Returns CMake flags to enable CUDA acceleration for OpenCV if NVIDIA hardware
 # is detected, otherwise disables CUDA. Extracted as a function so `local` is valid.
 __opencv_cmake_args() {
-    if has_nvidia; then
+    if [ "${OPENCV_CUDA:-auto}" = "off" ]; then
+        echo "-DWITH_CUDA=OFF"
+        return
+    fi
+
+    if can_build_cuda; then
         local args="-DWITH_CUDA=ON -DWITH_CUDNN=ON -DOPENCV_DNN_CUDA=ON"
         args+=" -DENABLE_FAST_MATH=ON -DCUDA_FAST_MATH=ON -DWITH_CUBLAS=ON"
         if command -v nvidia-smi >/dev/null 2>&1; then
             local caps=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | sort -u | paste -sd ";" -)
-            [ -n "$caps" ] && args+="-DCUDA_ARCH_BIN=\"$caps+PTX\" "
+            [ -n "$caps" ] && args+=" -DCUDA_ARCH_BIN=${caps}+PTX"
         fi
         echo "$args"
     else
@@ -448,6 +482,7 @@ __opencv_cmake_args() {
 __gpu_status_impl() {
     print_banner SETUP
     log_info "GPU_MODE env: ${GPU_MODE:-not set}"
+    log_info "OPENCV_CUDA policy: ${OPENCV_CUDA:-auto}"
 
     if has_nvidia; then
         log_ok "NVIDIA: $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
@@ -459,10 +494,10 @@ __gpu_status_impl() {
         [ -n "$cudnn_v" ] && log_ok "cuDNN:  $cudnn_v"
     fi
     if has_intel_dri; then
-        log_ok "Intel GPU: $(ls /dev/dri/renderD* 2>/dev/null | tr '\n' ' ')"
+        log_ok "Intel GPU: $(list_glob_basenames "/dev/dri/renderD*")"
     fi
     if has_amd_dri; then
-        log_ok "AMD GPU: $(ls /dev/dri/renderD* 2>/dev/null | tr '\n' ' ')"
+        log_ok "AMD GPU: $(list_glob_basenames "/dev/dri/renderD*")"
     fi
 
     local renderer
@@ -470,8 +505,8 @@ __gpu_status_impl() {
     if command -v glxinfo &>/dev/null; then
         GLX_OUT=$(glxinfo 2>/dev/null || true)
         # Robustly extract renderer and vendor using regex to handle different glxinfo labels
-        RENDERER=$(echo "$GLX_OUT" | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
-        VENDOR=$(echo "$GLX_OUT" | grep -Ei "OpenGL vendor" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
+        RENDERER=$(trim_ws "$(echo "$GLX_OUT" | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' || true)")
+        VENDOR=$(trim_ws "$(echo "$GLX_OUT" | grep -Ei "OpenGL vendor" | sed -E 's/.*:\s*(.*)/\1/' || true)")
 
         if [ -n "$RENDERER" ]; then
             if echo "$RENDERER" | grep -qi "llvmpipe"; then
@@ -482,7 +517,7 @@ __gpu_status_impl() {
             [ -n "$VENDOR" ] && log_info "Vendor:   $VENDOR"
         else
             # Try fallback to glxinfo -B (brief mode)
-            RENDERER=$(glxinfo -B 2>/dev/null | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' | xargs || true)
+            RENDERER=$(trim_ws "$(glxinfo -B 2>/dev/null | grep -Ei "OpenGL renderer" | sed -E 's/.*:\s*(.*)/\1/' || true)")
             if [ -n "$RENDERER" ]; then
                 log_ok "Renderer: $RENDERER (Detected via Brief Mode)"
             else
@@ -508,6 +543,14 @@ __gpu_status_impl() {
             log_warn "  No critical GL libraries found in ldconfig cache."
         fi
     fi
+
+    log_info "=== Build Capability ==="
+    if can_build_cuda; then
+        log_ok "CUDA build: available (nvcc: $(command -v nvcc))"
+    else
+        log_info "CUDA build: unavailable (NVIDIA runtime and nvcc are both required)"
+    fi
+    log_info "OpenCV CMake args: $(__opencv_cmake_args)"
 }
 
 # =============================================================================
@@ -520,10 +563,7 @@ setup_igpu() {
     elif has_amd_dri; then
         apply_gpu_setup setup_amd
     elif has_any_dri; then
-        reset_gpu_env
-        export LIBGL_ALWAYS_SOFTWARE=0
-        write_gpu_env
-        log_ok "Generic DRI GPU configured"
+        setup_mesa_driver "" "Generic DRI GPU configured"
     else
         setup_software
         log_warn "igpu mode requested but no DRI device found. Falling back to software."
@@ -542,7 +582,9 @@ case "${1:-auto}" in
     status)             __gpu_status_impl ;;
     opencv_args)        __opencv_cmake_args ;;
     auto|"")            setup_auto ;;
+    -h|--help)          setup_gpu_usage; setup_gpu_finish 0 ;;
     *)
-        echo "Usage: source setup_gpu.sh {auto|intel|amd|nvidia|igpu|cpu|status|opencv_args}"
+        setup_gpu_usage >&2
+        setup_gpu_finish 2
         ;;
 esac

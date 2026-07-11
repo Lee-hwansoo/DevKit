@@ -4,9 +4,24 @@
 # Detects the appropriate Python interpreter for the current project context
 # =============================================================================
 
-# Load path configuration
-[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
-[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
+
+case "${1:-}" in
+    "" ) ;;
+    -h|--help)
+        cat <<'EOF'
+Usage: util_get_python.sh
+
+Print the Python interpreter selected for the current DevKit context.
+EOF
+        exit 0
+        ;;
+    *)
+        echo "Unknown option: $1" >&2
+        exit 2
+        ;;
+esac
 
 # 1. Prioritize active virtual environment (User explicit activation)
 [ -n "$VIRTUAL_ENV" ] && [ -x "$VIRTUAL_ENV/bin/python" ] && echo "$VIRTUAL_ENV/bin/python" && exit 0

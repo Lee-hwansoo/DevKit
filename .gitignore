@@ -7,11 +7,15 @@
 build/
 install/
 log/
+logs/
+-logs/
 .ccache/
 
 # --- Thirdparty (vcs import) -------------------------
 src/thirdparty/*
 !src/thirdparty/.gitkeep
+thirdparty/
+third party deps/
 
 # --- Python ------------------------------------------
 __pycache__/
@@ -49,6 +53,7 @@ compile_commands.json
 .env.local
 .env.*.local
 .docker_cache/
+*.sif
 
 # --- IDE ---------------------------------------------
 .vscode/*.log

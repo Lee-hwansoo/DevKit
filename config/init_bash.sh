@@ -13,32 +13,35 @@ export LANGUAGE=${LANG:-en_US.UTF-8}
 # Suppress AT-SPI accessibility bus warnings in GUI applications (like Terminator)
 export NO_AT_BRIDGE=1
 
-# Fix for "detected dubious ownership" git error in Docker/WSL2 (Optimized for Read-Only .gitconfig)
-export GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0="safe.directory"
-export GIT_CONFIG_VALUE_0="*"
-export GIT_CONFIG_PARAMETERS="'safe.directory=*'"
-git config --system --get-all safe.directory 2>/dev/null | grep -q "^[*]$" || \
-git config --system --add safe.directory "*" 2>/dev/null || true
+# Fix for "detected dubious ownership" git error in Docker/WSL2 without mutating system config.
+if declare -f configure_git_safe_directory >/dev/null 2>&1; then
+    configure_git_safe_directory
+else
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0="safe.directory"
+    export GIT_CONFIG_VALUE_0="*"
+fi
 
 # ccache
 export PATH="/usr/lib/ccache:$PATH"
-export CCACHE_DIR="${WS_CCACHE_DIR}"
+export CCACHE_DIR="${WS_CCACHE_DIR:-/cache/ccache}"
 
 # uv (Python)
-export UV_CACHE_DIR="${WS_UV_CACHE_DIR}"
+export UV_CACHE_DIR="${WS_UV_CACHE_DIR:-/cache/uv}"
 export UV_PYTHON=${UV_PYTHON:-3.10}
-export UV_PROJECT_ENVIRONMENT="${WS_VENV}"
+export UV_PROJECT_ENVIRONMENT="${WS_VENV:-${WS_ROOT}/install/.venv}"
 
-# C++ Standard
+# C/C++ Standard
+export CMAKE_C_STANDARD=${CMAKE_C_STANDARD:-11}
 export CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD:-17}
 
 # Custom Aliases
-source "${WS_CONFIG}/util_aliases.sh"
+[ -f "${WS_CONFIG}/util_aliases.sh" ] && source "${WS_CONFIG}/util_aliases.sh"
+[ -f "${WS_CONFIG}/devkit_make_completion.bash" ] && source "${WS_CONFIG}/devkit_make_completion.bash"
 
 # Synchronize workspace links
 if [ -f "${WS_SCRIPTS}/util_setup_links.sh" ]; then
-    "${WS_SCRIPTS}/util_setup_links.sh"
+    "${WS_SCRIPTS}/util_setup_links.sh" --skip-compile-commands
 fi
 
 # Shell Prompt

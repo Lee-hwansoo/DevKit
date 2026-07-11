@@ -3,6 +3,10 @@
 # Exclude files and directories from the Docker build context
 # =============================================================================
 
+# AI
+.agents/
+.codex/
+
 # Git
 .git/
 .gitignore
@@ -12,16 +16,27 @@
 build/
 install/
 log/
+logs/
+-logs/
 .ccache/
+.docker_cache/
+*.sif
 
 # Thirdparty (Cloned inside the container via vcs import)
 thirdparty/
+third party deps/
+src/thirdparty/*
+!src/thirdparty/.gitkeep
 
 # Python
 __pycache__/
 *.pyc
 .venv/
+venv/
+env/
 *.egg-info/
+.eggs/
+dist/
 .python-version
 .pytest_cache/
 .ruff_cache/
@@ -33,8 +48,11 @@ nosetests.xml
 # C++ CMake cache
 CMakeCache.txt
 CMakeFiles/
+cmake_install.cmake
+_build/
 
 # IDE
+.devcontainer/
 .vscode/
 .idea/
 

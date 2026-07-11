@@ -3,32 +3,51 @@
 # Core ROS and Desktop utilities (Single Source of Truth)
 #
 # Filtering Tag System Guide:
-#   - # runtime : Packages to include in the production (runtime) image
+#   - # runtime : Packages required by deployment artifacts
+#   - # dev     : Full development image only; excluded from production builders
+#   - # gui     : Interactive desktop tools excluded from production builders
 #   - # ros1    : Packages for ROS 1 (Noetic) environments only
 #   - # ros2    : Packages for ROS 2 (Humble) environments only
-#   - (No tag)  : Installed in all dev environments, excluded from production
+#   - (No tag)  : Installed in dev and production builder environments
 # =============================================================================
 
-ros-${ROS_DISTRO}-ros-base # runtime
-ros-${ROS_DISTRO}-xacro # runtime
-ros-${ROS_DISTRO}-cv-bridge # runtime
-python3-colcon-common-extensions # runtime
-python3-rosdep # runtime
-python3-argcomplete # runtime
-python3-vcstool # runtime
-
-# Desktop & GUI utilities (Comment out for headless/lightweight environments)
-ros-${ROS_DISTRO}-rviz # runtime,ros1
-ros-${ROS_DISTRO}-rviz2 # runtime,ros2
-ros-${ROS_DISTRO}-rqt # runtime
-ros-${ROS_DISTRO}-tf # runtime,ros1
-ros-${ROS_DISTRO}-tf2-ros # runtime,ros2
-ros-${ROS_DISTRO}-gazebo-ros-pkgs
+# Runtime floor: keep production artifacts small and predictable.
+# Project-specific runtime packages should be tagged explicitly below.
+ros-${ROS_DISTRO}-ros-core # runtime,ros2
+ros-${ROS_DISTRO}-roslaunch # runtime,ros1
+ros-${ROS_DISTRO}-rospy # runtime,ros1
+ros-${ROS_DISTRO}-roscpp # runtime,ros1
+ros-${ROS_DISTRO}-std-msgs # runtime
+ros-${ROS_DISTRO}-tf2-ros # runtime
+ros-${ROS_DISTRO}-tf2-ros-py # runtime,ros2
 ros-${ROS_DISTRO}-rmw-cyclonedds-cpp # runtime,ros2
+
+# Production builder baseline: enough for normal source workspace builds without
+# pulling desktop, simulation, perception, or broad ROS convenience metapackages.
+ros-${ROS_DISTRO}-xacro
+python3-colcon-common-extensions
+python3-rosdep
+python3-argcomplete
+python3-vcstool
 python3-catkin-tools # ros1
+
+# Full development conveniences. Keep production builders smaller and make
+# project-specific build/runtime needs explicit below.
+ros-${ROS_DISTRO}-ros-base # dev
+
+# Desktop & GUI utilities (dev-only by default; add # runtime only if deployed UI is required)
+ros-${ROS_DISTRO}-rviz # gui,ros1
+ros-${ROS_DISTRO}-rviz2 # gui,ros2
+ros-${ROS_DISTRO}-rqt # gui
 
 # =============================================================================
 # Project-specific ROS Dependencies (User Defined)
 # =============================================================================
 # Add extra project-specific packages here.
+# Example: ros-${ROS_DISTRO}-image-transport
 # Example: ros-${ROS_DISTRO}-pcl-ros # runtime
+# Example: ros-${ROS_DISTRO}-tf # ros1
+# Example: ros-${ROS_DISTRO}-cv-bridge
+# Example: ros-${ROS_DISTRO}-cv-bridge # runtime
+# Example: ros-${ROS_DISTRO}-xacro # runtime
+# Example: ros-${ROS_DISTRO}-gazebo-ros-pkgs

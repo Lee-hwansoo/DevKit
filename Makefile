@@ -18,7 +18,11 @@ WARN   := $(YELLOW)[WARN]$(NC)
 ERROR  := $(RED)[ERROR]$(NC)
 
 # Load Environment Variables
+USER_GPU_MODE := $(shell printf '%s' "$$GPU_MODE")
 -include .env
+ifneq ($(strip $(USER_GPU_MODE)),)
+GPU_MODE := $(USER_GPU_MODE)
+endif
 
 # Workspace Path Architecture (Separation of Host and Container)
 # HOST_WORKSPACE_PATH: Physical path on the host machine (Source)
@@ -33,19 +37,33 @@ export
 
 # Environment Detection Engine (Auto-detection — triggered by relevant targets)
 # Applied to Docker-related operations to ensure hardware and display compatibility
-NEEDS_DETECTOR := $(filter-out help setup env-check%,$(MAKECMDGOALS))
+NEEDS_DETECTOR := $(filter-out help setup env-check% verify,$(MAKECMDGOALS))
 ifneq ($(NEEDS_DETECTOR),)
-$(foreach line,$(shell bash scripts/check_env.sh),$(eval $(line)))
+DETECTED_ENV_FILE := .docker_cache/detected-env.mk
+$(shell mkdir -p .docker_cache && tmp=$$(mktemp "$(DETECTED_ENV_FILE).XXXXXX") && { bash scripts/check_env.sh --makefile > "$$tmp" && mv "$$tmp" "$(DETECTED_ENV_FILE)" || { rm -f "$$tmp"; printf '%s\n' '$$(error Environment detection failed. Run scripts/check_env.sh for details.)' > "$(DETECTED_ENV_FILE)"; }; })
+-include $(DETECTED_ENV_FILE)
 endif
 
 COMPOSE := docker compose
 COMPOSE_DEV := -f docker-compose.dev.yml
 TERMINAL ?= terminator
+ENV ?= ros
+SIF_MODE ?= dev
+truthy = $(filter 1 true yes on,$(shell printf '%s' '$(strip $1)' | tr '[:upper:]' '[:lower:]'))
+
+SERVICE_PREFIX := $(if $(filter ros,$(ENV)),ros,$(if $(filter dev,$(ENV)),basic,))
+SERVICE_LABEL := $(if $(filter ros,$(ENV)),ROS Development,$(if $(filter dev,$(ENV)),Pure Development,))
+SERVICE_FILTER := ^$(SERVICE_PREFIX)-(cpu|igpu|nvidia)$$
+FIND_CONTAINER = docker ps --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)" --format '{{.Names}}\t{{.Label "com.docker.compose.service"}}' | awk -F '\t' '$$2 ~ /$1/ {print $$1; exit}'
 
 # Macros (Deduplication & SSOT)
 # Integrated GPU Mode Detection Logic
 DETECT_MODE := \
 	CHOSEN_MODE=$(GPU_MODE); \
+	case "$$CHOSEN_MODE" in \
+		""|auto|cpu|igpu|intel|amd|nvidia) ;; \
+		*) echo -e "  $(ERROR) GPU_MODE must be auto, cpu, igpu, intel, amd, or nvidia (current: $$CHOSEN_MODE)."; exit 1 ;; \
+	esac; \
 	if [ -z "$$CHOSEN_MODE" ] || [ "$$CHOSEN_MODE" = "auto" ]; then \
 		if [ "$(HAS_NVIDIA)" = "true" ] && [ "$(HAS_TOOLKIT)" = "true" ]; then CHOSEN_MODE=nvidia; \
 		elif [ "$(HAS_DRI)" = "true" ]; then CHOSEN_MODE=igpu; \
@@ -72,14 +90,6 @@ define STOP_SERVICE
 	$(COMPOSE) $1 --profile $$TARGET_SVC stop $$TARGET_SVC
 endef
 
-# $1: ENV_VAR_NAME
-define CHECK_ENV
-	@if [ -z "$($1)" ]; then \
-		echo -e "  $(ERROR) Variable $1 is not set in .env. It is strictly required for production."; \
-		exit 1; \
-	fi
-endef
-
 define VALIDATE_ROS_ENV
 	@if [ -n "$(ROS_DOMAIN_ID)" ]; then \
 		if ! [ "$(ROS_DOMAIN_ID)" -eq "$(ROS_DOMAIN_ID)" ] 2>/dev/null || [ "$(ROS_DOMAIN_ID)" -lt 0 ] || [ "$(ROS_DOMAIN_ID)" -gt 101 ]; then \
@@ -93,15 +103,210 @@ define VALIDATE_ROS_ENV
 endef
 
 define VALIDATE_COMPOSE_NAME
-	@if echo "$(COMPOSE_PROJECT_NAME)" | grep -q '[^a-z0-9_-]'; then \
-		echo -e "  $(ERROR) COMPOSE_PROJECT_NAME must contain only lowercase letters, dashes (-), or underscores (_)."; \
+	@if [[ ! "$(COMPOSE_PROJECT_NAME)" =~ ^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$$ ]]; then \
+		echo -e "  $(ERROR) COMPOSE_PROJECT_NAME must start and end with a lowercase letter or digit, using only lowercase letters, digits, dashes (-), or underscores (_)."; \
 		exit 1; \
 	fi
 endef
 
+define VALIDATE_IMAGE_TAG
+	@if [[ ! "$(IMAGE_TAG)" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$$ ]]; then \
+		echo -e "  $(ERROR) IMAGE_TAG must be a valid Docker tag (start with alnum/_; use alnum, _, ., -; max 128 chars)."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_ROS_DISTRO
+	@if [ "$(ROS_DISTRO)" != "humble" ] && [ "$(ROS_DISTRO)" != "noetic" ]; then \
+		echo -e "  $(ERROR) ROS_DISTRO must be 'humble' or 'noetic' (current: $(ROS_DISTRO))."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_ROS_BASE_IMAGE
+	@case "$(BASE_IMAGE)" in \
+		"") \
+			echo -e "  $(ERROR) BASE_IMAGE must not be empty."; \
+			exit 1 ;; \
+		*[[:space:]]*) \
+			echo -e "  $(ERROR) BASE_IMAGE must not contain whitespace (current: $(BASE_IMAGE))."; \
+			exit 1 ;; \
+		ubuntu:22.04|ubuntu:22.04@*) \
+			if [ "$(ROS_DISTRO)" != "humble" ]; then \
+				echo -e "  $(ERROR) BASE_IMAGE=ubuntu:22.04 must be paired with ROS_DISTRO=humble (current: $(ROS_DISTRO))."; \
+				exit 1; \
+			fi ;; \
+		ubuntu:20.04|ubuntu:20.04@*) \
+			if [ "$(ROS_DISTRO)" != "noetic" ]; then \
+				echo -e "  $(ERROR) BASE_IMAGE=ubuntu:20.04 must be paired with ROS_DISTRO=noetic (current: $(ROS_DISTRO))."; \
+				exit 1; \
+			fi ;; \
+		ubuntu:*) \
+			echo -e "  $(ERROR) Official Ubuntu BASE_IMAGE must be ubuntu:22.04 for ROS_DISTRO=humble or ubuntu:20.04 for ROS_DISTRO=noetic (current: $(BASE_IMAGE))."; \
+			exit 1 ;; \
+	esac
+endef
+
+define VALIDATE_WORKSPACE_PATHS
+	@if [ -z "$(HOST_WORKSPACE_PATH)" ] || [ "$(HOST_WORKSPACE_PATH)" = "/" ] || [[ "$(HOST_WORKSPACE_PATH)" != /* ]]; then \
+		echo -e "  $(ERROR) HOST_WORKSPACE_PATH must be an absolute non-root path (current: $(HOST_WORKSPACE_PATH))."; \
+		exit 1; \
+	fi
+	@if [ -z "$(WORKSPACE_PATH)" ] || [ "$(WORKSPACE_PATH)" = "/" ] || [[ "$(WORKSPACE_PATH)" != /* ]]; then \
+		echo -e "  $(ERROR) WORKSPACE_PATH must be an absolute non-root path inside the container (current: $(WORKSPACE_PATH))."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_TARGETARCH
+	@if [ -n "$(TARGETARCH)" ] && [ "$(TARGETARCH)" != "amd64" ] && [ "$(TARGETARCH)" != "arm64" ]; then \
+		echo -e "  $(ERROR) TARGETARCH must be 'amd64' or 'arm64' (current: $(TARGETARCH))."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_C_STANDARDS
+	@if [ -n "$(CMAKE_C_STANDARD)" ] && [ "$(CMAKE_C_STANDARD)" != "11" ] && [ "$(CMAKE_C_STANDARD)" != "17" ]; then \
+		echo -e "  $(ERROR) CMAKE_C_STANDARD must be '11' or '17' (current: $(CMAKE_C_STANDARD))."; \
+		exit 1; \
+	fi
+	@if [ -n "$(CMAKE_CXX_STANDARD)" ] && [ "$(CMAKE_CXX_STANDARD)" != "17" ] && [ "$(CMAKE_CXX_STANDARD)" != "20" ]; then \
+		echo -e "  $(ERROR) CMAKE_CXX_STANDARD must be '17' or '20' (current: $(CMAKE_CXX_STANDARD))."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_OPENCV_CUDA
+	@if [ "$(OPENCV_CUDA)" != "auto" ] && [ "$(OPENCV_CUDA)" != "off" ]; then \
+		echo -e "  $(ERROR) OPENCV_CUDA must be 'auto' or 'off' (current: $(OPENCV_CUDA))."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_COMPOSE_RUNTIME
+	@if [ -n "$(NETWORK_MODE)" ] && [ "$(NETWORK_MODE)" != "host" ] && [ "$(NETWORK_MODE)" != "bridge" ] && [ "$(NETWORK_MODE)" != "none" ]; then \
+		echo -e "  $(ERROR) NETWORK_MODE must be 'host', 'bridge', or 'none' (current: $(NETWORK_MODE))."; \
+		exit 1; \
+	fi
+	@if [ -n "$(IPC_MODE)" ] && [ "$(IPC_MODE)" != "host" ] && [ "$(IPC_MODE)" != "private" ] && [ "$(IPC_MODE)" != "shareable" ] && [ "$(IPC_MODE)" != "none" ]; then \
+		echo -e "  $(ERROR) IPC_MODE must be 'host', 'private', 'shareable', or 'none' (current: $(IPC_MODE))."; \
+		exit 1; \
+	fi
+	@if [ -n "$(PRIVILEGED)" ] && [ "$(PRIVILEGED)" != "true" ] && [ "$(PRIVILEGED)" != "false" ]; then \
+		echo -e "  $(ERROR) PRIVILEGED must be 'true' or 'false' (current: $(PRIVILEGED))."; \
+		exit 1; \
+	fi
+	@if [ -n "$(ULIMIT_NOFILE)" ] && { ! [[ "$(ULIMIT_NOFILE)" =~ ^[0-9]+$$ ]] || [ "$(ULIMIT_NOFILE)" -lt 1 ]; }; then \
+		echo -e "  $(ERROR) ULIMIT_NOFILE must be a positive integer (current: $(ULIMIT_NOFILE))."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_HOST_INTEGRATION_PATHS
+	@if [ -n "$(GIT_CONFIG_PATH)" ] && [ "$(GIT_CONFIG_PATH)" != "/dev/null" ] && [ ! -f "$(GIT_CONFIG_PATH)" ]; then \
+		echo -e "  $(ERROR) GIT_CONFIG_PATH must point to an existing git config file (current: $(GIT_CONFIG_PATH))."; \
+		exit 1; \
+	fi
+	@if [ -n "$(HOST_XAUTHORITY)" ] && [ ! -f "$(HOST_XAUTHORITY)" ]; then \
+		echo -e "  $(ERROR) HOST_XAUTHORITY must point to an existing Xauthority file (current: $(HOST_XAUTHORITY))."; \
+		exit 1; \
+	fi
+	@if [ -n "$(HOST_XDG_RUNTIME_DIR)" ] && [ ! -d "$(HOST_XDG_RUNTIME_DIR)" ]; then \
+		echo -e "  $(ERROR) HOST_XDG_RUNTIME_DIR must point to an existing runtime directory (current: $(HOST_XDG_RUNTIME_DIR))."; \
+		exit 1; \
+	fi
+	@if [ -n "$(HOST_X11_DIR)" ] && [ ! -d "$(HOST_X11_DIR)" ]; then \
+		echo -e "  $(ERROR) HOST_X11_DIR must point to an existing X11 socket directory (current: $(HOST_X11_DIR))."; \
+		exit 1; \
+	fi
+	@if [ -n "$(HOST_SSH_AUTH_SOCK)" ] && [ "$(HOST_SSH_AUTH_SOCK)" != "/dev/null" ] && [ ! -S "$(HOST_SSH_AUTH_SOCK)" ]; then \
+		echo -e "  $(ERROR) HOST_SSH_AUTH_SOCK must point to an existing SSH agent UNIX socket (current: $(HOST_SSH_AUTH_SOCK))."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_PROJECT_CONFIG
+	$(call VALIDATE_WORKSPACE_PATHS)
+	$(call VALIDATE_HOST_INTEGRATION_PATHS)
+	$(call VALIDATE_COMPOSE_NAME)
+	$(call VALIDATE_IMAGE_TAG)
+	$(call VALIDATE_ROS_DISTRO)
+	$(call VALIDATE_ROS_BASE_IMAGE)
+	$(call VALIDATE_TARGETARCH)
+	$(call VALIDATE_C_STANDARDS)
+	$(call VALIDATE_OPENCV_CUDA)
+	$(call VALIDATE_COMPOSE_RUNTIME)
+	$(call VALIDATE_ROS_ENV)
+endef
+
+define REQUIRE_ENV_FILE
+	@if [ ! -f .env ]; then echo -e "  $(ERROR) .env not found. Please run 'make setup' first."; exit 1; fi
+endef
+
+define REQUIRE_HOST_WORKSPACE_DIR
+	@if [ ! -d "$(HOST_WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) HOST_WORKSPACE_PATH ($(HOST_WORKSPACE_PATH)) does not exist."; exit 1; fi
+endef
+
+# Reusable helper: run a command, capture stdout/stderr to temp files, display
+# the output on success or a warning with stderr on failure, then clean up.
+# $1: temp file prefix, $2: command to run, $3: warning message on failure
+COMMA := ,
+define DOCKER_QUERY
+	@OUT=$$(mktemp /tmp/devkit_$(1).out.XXXXXX); ERR=$$(mktemp /tmp/devkit_$(1).err.XXXXXX); \
+	if $(2) >"$$OUT" 2>"$$ERR"; then \
+		sed 's/^/  /' "$$OUT"; \
+	else \
+		echo -e "  $(WARN) $(3)"; \
+		sed 's/^/  /' "$$ERR"; \
+	fi; \
+	rm -f "$$OUT" "$$ERR"
+endef
+
+define VALIDATE_ENV_FILE_VALUES
+	@awk -F= '\
+		$$1 == "COMPOSE_PROJECT_NAME" || $$1 == "IMAGE_TAG" { \
+			key=$$1; value=$$2; \
+			gsub(/^[[:space:]]+|[[:space:]]+$$/, "", value); \
+			gsub(/^"|"$$/, "", value); \
+			gsub(/^'\''|'\''$$/, "", value); \
+			values[key]=value; \
+		} \
+		END { \
+			if (values["COMPOSE_PROJECT_NAME"] !~ /^[a-z0-9]([a-z0-9_-]*[a-z0-9])?$$/) { \
+				print "  $(ERROR) COMPOSE_PROJECT_NAME must start and end with a lowercase letter or digit, using only lowercase letters, digits, dashes (-), or underscores (_)."; \
+				exit 1; \
+			} \
+			if (values["IMAGE_TAG"] !~ /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$$/) { \
+				print "  $(ERROR) IMAGE_TAG must be a valid Docker tag (start with alnum/_; use alnum, _, ., -; max 128 chars)."; \
+				exit 1; \
+			} \
+		}' .env
+endef
+
+define VALIDATE_ENV_MODE
+	@if [ "$(ENV)" != "ros" ] && [ "$(ENV)" != "dev" ]; then \
+		echo -e "  $(ERROR) ENV must be 'ros' or 'dev' (current: $(ENV))."; \
+		exit 1; \
+	fi
+endef
+
+define VALIDATE_SIF_MODE
+	@if [ "$(SIF_MODE)" != "dev" ] && [ "$(SIF_MODE)" != "prod" ] && [ "$(SIF_MODE)" != "slurm" ]; then \
+		echo -e "  $(ERROR) SIF_MODE must be 'dev', 'prod', or 'slurm' (current: $(SIF_MODE))."; \
+		exit 1; \
+	fi
+endef
+
+define CHECK_SIF_READY
+	$(call GUARD_HOST_ONLY)
+	$(call REQUIRE_ENV_FILE)
+	$(call VALIDATE_PROJECT_CONFIG)
+	$(call REQUIRE_HOST_WORKSPACE_DIR)
+endef
+
 # $1: FILTER, $2: COMMAND, $3: MSG (For error display)
 define EXEC_CONTAINER
-	@CONTAINER=$$(docker ps --filter "name=$1" --format "{{.Names}}" | head -n 1); \
+	@CONTAINER=$$($(call FIND_CONTAINER,$1)); \
 	if [ -n "$$CONTAINER" ]; then \
 		docker exec -it -u $(CONTAINER_USER) $$CONTAINER $2 || [ $$? -eq 130 ]; \
 	else \
@@ -112,7 +317,7 @@ endef
 
 # $1: FILTER, $2: COMMAND, $3: MSG (For error display)
 define EXEC_DETACHED
-	@CONTAINER=$$(docker ps --filter "name=$1" --format "{{.Names}}" | head -n 1); \
+	@CONTAINER=$$($(call FIND_CONTAINER,$1)); \
 	if [ -n "$$CONTAINER" ]; then \
 		docker exec -d -u $(CONTAINER_USER) $$CONTAINER $2; \
 	else \
@@ -141,12 +346,20 @@ define SUDO_FREE_RM
 		echo -e "  $(ERROR) Critical Safety: Refusing to delete from root directory!"; \
 		exit 1; \
 	fi; \
+	if [ ! -d "$1" ]; then \
+		echo -e "  $(ERROR) Refusing to clean missing directory: $1"; \
+		exit 1; \
+	fi; \
 	echo -e "  $(INFO) Performing sudo-free deletion: $2 in $1"; \
-	docker run --rm -v "$1:/mnt" alpine sh -c "cd /mnt && rm -rf $2" 2>/dev/null || true; \
+	docker run --rm -v "$1:/mnt" alpine sh -c 'cd /mnt || exit 1; for target do rm -rf -- "$$target"; done' sh $2; \
 	if [ "$(SKIP_ALPINE_RM)" != "1" ]; then \
-		echo -e "  $(INFO) Cleaning up the temporary alpine image used for sudo-free deletion..."; \
-		docker rmi alpine:latest 2>/dev/null || true; \
+		$(call CLEAN_ALPINE_IMAGE); \
 	fi
+endef
+
+define CLEAN_ALPINE_IMAGE
+	echo -e "  $(INFO) Cleaning up the temporary alpine image used for sudo-free deletion..."; \
+	docker rmi alpine:latest 2>/dev/null || true
 endef
 
 # Core Infrastructure Variables Export
@@ -160,10 +373,9 @@ define PRINT_SECTION
 	@bash -c "source scripts/util_logging.sh && print_section \"$1\""
 endef
 
-.PHONY: h help setup check check-host xauth status \
-        build-ros build-dev rebuild-ros rebuild-dev \
-        ros ros-stop ros-restart dev dev-stop dev-restart ros-shell dev-shell ros-term dev-term \
-		bake bake-share bake-prod run-sif run-slurm slurm-status slurm-cancel \
+.PHONY: h help completion completion-install setup check check-host xauth status verify \
+        build start stop restart shell term \
+		bake-dev bake-prod run-sif slurm-status slurm-cancel \
 		update-gpg stats top logs down clean clean-cache clean-all docker-clean env-check
 
 h: help
@@ -191,46 +403,93 @@ help:
 	else \
 		bash -c ' \
 			source scripts/util_logging.sh && \
+			trim_ws() { local value="$$1"; value="$${value#"$${value%%[![:space:]]*}"}"; value="$${value%"$${value##*[![:space:]]}"}"; printf "%s" "$$value"; }; \
 			print_banner WELCOME && \
 			while IFS= read -r line; do \
 				if [[ $$line =~ ^[[:space:]]*"## @section" ]]; then \
 					section_data="$${line#*## @section }"; \
-					emoji=$$(echo "$$section_data" | cut -d"|" -f1 | xargs); \
-					title=$$(echo "$$section_data" | cut -d"|" -f2 | xargs); \
-					color_name=$$(echo "$$section_data" | cut -d"|" -f3 | xargs); \
+					IFS="|" read -r emoji title color_name <<< "$$section_data"; \
+					emoji=$$(trim_ws "$$emoji"); \
+					title=$$(trim_ws "$$title"); \
+					color_name=$$(trim_ws "$$color_name"); \
 					color=$${!color_name:-$$BLUE}; \
 					printf "\n  $${color}%s  %s:$${NC}\n" "$$emoji" "$$title"; \
-				elif [[ $$line =~ ^[[:space:]]*"## @target" ]]; then \
-					content="$${line#*## @target }"; \
-					cmd=$$(echo "$${content%%:*}" | xargs); \
-					desc=$$(echo "$${content#*:}" | xargs); \
-					printf "    $${GREEN}make %-22s$${NC} : %s\n" "$$cmd" "$$desc"; \
-				fi; \
-			done < Makefile; \
-			echo -e "\n  ${CYAN}Notice:${NC} All commands auto-detect GPU.\n" \
-		'; \
+					elif [[ $$line =~ ^[[:space:]]*"## @target" ]]; then \
+						content="$${line#*## @target }"; \
+						cmd=$$(trim_ws "$${content%%:*}"); \
+						desc=$$(trim_ws "$${content#*:}"); \
+						if [ $${#cmd} -gt 52 ]; then \
+							printf "    $${GREEN}make %s$${NC}\n      : %s\n" "$$cmd" "$$desc"; \
+						else \
+							printf "    $${GREEN}make %-52s$${NC} : %s\n" "$$cmd" "$$desc"; \
+						fi; \
+					fi; \
+				done < Makefile; \
+				echo -e "\n  ${CYAN}Defaults:${NC} ENV=ros, SIF_MODE=dev, IMAGE_TAG=latest"; \
+				echo -e "  ${CYAN}Modes:${NC}    ENV=ros|dev selects the Docker/SIF family; SIF_MODE=dev|prod|slurm selects SIF execution."; \
+				echo -e "\n  ${CYAN}Common flows:${NC}"; \
+				echo -e "    $${GREEN}make build ENV=ros && make start ENV=ros && make shell ENV=ros$${NC}"; \
+				echo -e "    $${GREEN}make bake-dev ENV=ros SHARE=1$${NC}"; \
+				echo -e "    $${GREEN}make bake-prod ENV=ros$${NC}"; \
+				echo -e "    $${GREEN}PROD_FULL_CUDA=1 make bake-prod ENV=ros$${NC}"; \
+				echo -e "    $${GREEN}APP_COMMAND=\"python3 -V\" make run-sif SIF_MODE=prod ENV=ros$${NC}"; \
+				echo -e "    $${GREEN}APP_COMMAND=\"python3 -V\" DEVKIT_SLURM_PARTITION=gpu DEVKIT_SLURM_GRES=gpu:1 make run-sif SIF_MODE=slurm ENV=ros$${NC}"; \
+				echo -e "\n  ${CYAN}Notice:${NC} Run make commands on the host. Inside a container, use ${GREEN}h${NC} or ${GREEN}help${NC} for aliases.\n" \
+			'; \
 	fi
+
+completion:
+	@cat config/devkit_make_completion.bash
+
+completion-install:
+	$(call GUARD_HOST_ONLY)
+	@set -e; \
+	COMPLETION_DIR="$${HOME}/.bash_completion.d"; \
+	COMPLETION_FILE="$$COMPLETION_DIR/devkit_make_completion.bash"; \
+	BASH_COMPLETION_FILE="$${HOME}/.bash_completion"; \
+	mkdir -p "$$COMPLETION_DIR"; \
+	cp config/devkit_make_completion.bash "$$COMPLETION_FILE"; \
+	touch "$$BASH_COMPLETION_FILE"; \
+	if ! grep -Fq "$$COMPLETION_FILE" "$$BASH_COMPLETION_FILE"; then \
+		{ \
+			echo ""; \
+			echo "# DevKit make completion"; \
+			echo "[ -f \"$$COMPLETION_FILE\" ] && source \"$$COMPLETION_FILE\""; \
+		} >> "$$BASH_COMPLETION_FILE"; \
+	fi; \
+	echo -e "  $(OK) Installed DevKit make completion for new Bash sessions."; \
+	echo -e "  $(INFO) Open a new terminal, or run: source ~/.bash_completion"
 
 # =============================================================================
 # Initial Setup and Status Check
 # =============================================================================
 
 ## @section 🛠️ | Setup & Infrastructure | BLUE
+## @target h : Alias for help
+## @target help : Show this command guide
+## @target completion : Print bash completion script for make commands
+## @target completion-install : Install host bash completion for make commands
 ## @target setup : Initialize .env and host prerequisites
 ## @target status : Diagnose overall project & GPU state
+## @target check : Validate host prerequisites before running workflows
 ## @target check-host : Deep audit of WSL2/Host permissions
 ## @target env-check : Verify .env synchronization with example
+## @target verify : Run fast repository validation checks
 ## @target xauth : Refresh X11/GUI authentication
 setup:
 	$(call GUARD_HOST_ONLY)
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
 		SAFE_USER=$$(whoami | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-'); \
-		sed -i "s/^COMPOSE_PROJECT_NAME=\(.*\)/COMPOSE_PROJECT_NAME=\1-$$SAFE_USER/" .env; \
-		echo -e "  $(OK) Created .env file and dynamically isolated project name to '$$(grep "^COMPOSE_PROJECT_NAME=" .env | cut -d= -f2-)'."; \
+		TMP_ENV=$$(mktemp /tmp/devkit_env.XXXXXX); \
+		sed "s/^COMPOSE_PROJECT_NAME=\(.*\)/COMPOSE_PROJECT_NAME=\1-$$SAFE_USER/" .env > "$$TMP_ENV"; \
+		mv "$$TMP_ENV" .env; \
+		PROJECT_NAME=$$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' .env); \
+		echo -e "  $(OK) Created .env file and dynamically isolated project name to '$$PROJECT_NAME'."; \
 	else \
 		echo -e "  $(INFO) .env file already exists."; \
 	fi
+	@$(MAKE) --no-print-directory completion-install || echo -e "  $(WARN) Completion install skipped."
 	@$(MAKE) xauth
 
 status: check
@@ -248,17 +507,19 @@ status: check
 	@echo "  ROS Version:       $(ROS_DISTRO)"
 	@echo "  Python Interpreter: $(PYTHON_EXECUTABLE)"
 	$(call PRINT_SECTION,Running Containers)
-	@docker ps --filter "name=$(COMPOSE_PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | sed 's/^/  /'
+	$(call DOCKER_QUERY,status_docker_ps,docker ps --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}",Unable to query Docker containers. Check Docker daemon/socket permissions.)
 	$(call PRINT_SECTION,Created Docker Volumes)
-	@docker volume ls --filter "name=$(COMPOSE_PROJECT_NAME)" --format "table {{.Name}}\t{{.Driver}}" | sed 's/^/  /'
+	$(call DOCKER_QUERY,status_docker_volume,docker volume ls --filter "name=$(COMPOSE_PROJECT_NAME)" --format "table {{.Name}}\t{{.Driver}}",Unable to query Docker volumes. Check Docker daemon/socket permissions.)
 	@if [ "$(HAS_NVIDIA)" = "true" ]; then \
 		bash -c "source scripts/util_logging.sh && print_section 'NVIDIA GPU Details'"; \
-		nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader,nounits | sed 's/^/  /'; \
 	fi
+	$(if $(filter true,$(HAS_NVIDIA)),$(call DOCKER_QUERY,status_nvidia,nvidia-smi --query-gpu=name$(COMMA)driver_version$(COMMA)memory.total --format=csv$(COMMA)noheader$(COMMA)nounits,Unable to query NVIDIA GPU details.))
 
 check-host:
 	$(call GUARD_HOST_ONLY)
-	@if [ "$(HAS_NVIDIA)" = "true" ]; then \
+	@REQUESTED_GPU=$$(printf '%s' "$(GPU_MODE)" | tr '[:upper:]' '[:lower:]'); \
+	case "$$REQUESTED_GPU" in ""|auto|nvidia) CHECK_NVIDIA=true ;; *) CHECK_NVIDIA=false ;; esac; \
+	if [ "$$CHECK_NVIDIA" = "true" ] && [ "$(HAS_NVIDIA)" = "true" ]; then \
 		if [ "$(HAS_TOOLKIT_BIN)" = "false" ]; then \
 			echo -e "  $(WARN) NVIDIA GPU detected but NVIDIA Container Toolkit is not installed."; \
 			echo -e "  $(INFO) Refer to README.md for installation instructions."; \
@@ -272,21 +533,47 @@ check-host:
 xauth:
 	$(call GUARD_HOST_ONLY)
 	@if [ -n "$(DISPLAY)" ]; then \
-		if command -v xauth >/dev/null 2>&1; then \
-			[ -f "$(HOST_XAUTHORITY)" ] || touch "$(HOST_XAUTHORITY)" 2>/dev/null || true; \
-			xauth nlist $(DISPLAY) 2>/dev/null | sed -e 's/^..../ffff/' | xauth -f $(HOST_XAUTHORITY) nmerge - 2>/dev/null || true; \
+		if command -v xauth >/dev/null 2>&1 || command -v xhost >/dev/null 2>&1; then \
+			TMP_DIR=$$(mktemp -d /tmp/devkit_xauth.XXXXXX); \
+			trap 'rm -rf "$$TMP_DIR"' EXIT; \
+			ERR="$$TMP_DIR/err"; \
+			XAUTH_DATA="$$TMP_DIR/data"; \
+			if command -v xauth >/dev/null 2>&1; then \
+				if [ ! -f "$(HOST_XAUTHORITY)" ] && ! touch "$(HOST_XAUTHORITY)" 2> "$$ERR"; then \
+					echo -e "  $(WARN) Unable to create Xauthority file: $(HOST_XAUTHORITY)"; \
+					while read -r line; do echo "    $$line"; done < "$$ERR"; \
+				elif ! xauth nlist "$(DISPLAY)" > "$$XAUTH_DATA" 2> "$$ERR"; then \
+					echo -e "  $(WARN) Unable to read X11 authentication for DISPLAY=$(DISPLAY). GUI apps may not open."; \
+					while read -r line; do echo "    $$line"; done < "$$ERR"; \
+				elif ! (while read -r line; do echo "ffff$${line#????}"; done < "$$XAUTH_DATA") | xauth -f "$(HOST_XAUTHORITY)" nmerge - 2>> "$$ERR"; then \
+					echo -e "  $(WARN) Unable to merge X11 authentication for DISPLAY=$(DISPLAY). GUI apps may not open."; \
+					while read -r line; do echo "    $$line"; done < "$$ERR"; \
+				fi; \
+			fi; \
+			if command -v xhost >/dev/null 2>&1; then \
+				if ! xhost +local:root > /dev/null 2> "$$ERR"; then \
+					echo -e "  $(WARN) Unable to grant X11 local root access."; \
+					while read -r line; do echo "    $$line"; done < "$$ERR"; \
+				fi; \
+				if ! xhost +si:localuser:root > /dev/null 2> "$$ERR"; then \
+					echo -e "  $(WARN) Unable to grant X11 root user access."; \
+					while read -r line; do echo "    $$line"; done < "$$ERR"; \
+				fi; \
+				if ! xhost +si:localuser:$(shell whoami) > /dev/null 2> "$$ERR"; then \
+					echo -e "  $(WARN) Unable to grant X11 access for user $(shell whoami)."; \
+					while read -r line; do echo "    $$line"; done < "$$ERR"; \
+				fi; \
+			fi; \
 		fi; \
 	fi
-	@if [ -n "$(DISPLAY)" ] && command -v xhost >/dev/null 2>&1; then \
-		xhost +local:root > /dev/null 2>&1 || true; \
-		xhost +si:localuser:root > /dev/null 2>&1 || true; \
-		xhost +si:localuser:$(shell whoami) > /dev/null 2>&1 || true; \
-	fi
 
-check: check-host
+
+check:
 	$(call GUARD_HOST_ONLY)
-	@if [ ! -f .env ]; then echo -e "  $(ERROR) .env not found. Please run 'make setup' first."; exit 1; fi
-	@if [ ! -d "$(HOST_WORKSPACE_PATH)" ]; then echo -e "  $(ERROR) HOST_WORKSPACE_PATH ($(HOST_WORKSPACE_PATH)) does not exist."; exit 1; fi
+	$(call REQUIRE_ENV_FILE)
+	$(call VALIDATE_PROJECT_CONFIG)
+	$(call REQUIRE_HOST_WORKSPACE_DIR)
+	@$(MAKE) --no-print-directory check-host
 	@if [ "$(IS_WSL)" = "true" ]; then \
 		bash scripts/check_wsl.sh; \
 		if [[ "$(CURDIR)" == /mnt/* ]]; then \
@@ -295,125 +582,101 @@ check: check-host
 			echo -e "  $(INFO) Recommendation: Move the project to the WSL home directory (e.g., ~/work/)."; \
 		fi \
 	fi
-	$(call VALIDATE_COMPOSE_NAME)
-	$(call VALIDATE_ROS_ENV)
 
 # Verify environment variables synchronization
 env-check:
 	$(call GUARD_HOST_ONLY)
+	$(call REQUIRE_ENV_FILE)
 	@echo -e "  $(INFO) Comparing .env settings against .env.example..."
-	@MISSING=$$(comm -23 <(grep -E "^[^#]+=" .env.example | cut -d= -f1 | sort) <(grep -E "^[^#]+=" .env | cut -d= -f1 | sort)); \
+	@MISSING=$$(awk -F= 'FNR == NR { if ($$0 ~ /^[^#][^=]*=/) expected[$$1] = 1; next } $$0 ~ /^[^#][^=]*=/ { delete expected[$$1] } END { for (key in expected) print key }' .env.example .env | sort); \
 	if [ -n "$$MISSING" ]; then \
-		echo -e "  $(WARN) The following environment variables are missing in your .env:\n$$MISSING"; \
+		echo -e "  $(ERROR) The following environment variables are missing in your .env:\n$$MISSING"; \
+		exit 1; \
 	else \
 		echo -e "  $(OK) All required environment variables are properly set."; \
 	fi
+	$(call VALIDATE_ENV_FILE_VALUES)
+	$(call VALIDATE_PROJECT_CONFIG)
+	@echo -e "  $(OK) Environment variable values are valid."
+
+verify:
+	$(call GUARD_HOST_ONLY)
+	$(call PRINT_SECTION,Repository Validation)
+	@VERIFY_DOCKER="$(VERIFY_DOCKER)" bash scripts/verify_repo.sh
 
 # =============================================================================
 # Build
 # =============================================================================
 
 ## @section 🏗️ | Image Building | BLUE
-## @target build-ros / dev : Build development images
-## @target rebuild-ros / dev : Full rebuild (no cache)
-build-ros: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,ROS Development,,Build finished! Please run 'make ros' to start the container.)
-
-build-dev: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Pure Development,,Build finished! Please run 'make dev' to start the container.)
-
-rebuild-ros: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),ros,Rebuild ROS without cache,--no-cache,Build finished! Please run 'make ros' to start the container.)
-
-rebuild-dev: check
-	$(call BUILD_SERVICE,$(COMPOSE_DEV),basic,Rebuild Pure Dev without cache,--no-cache,Build finished! Please run 'make dev' to start the container.)
+## @target build ENV=ros|dev [NO_CACHE=1] : Build development image
+build: check
+	$(call VALIDATE_ENV_MODE)
+	$(call BUILD_SERVICE,$(COMPOSE_DEV),$(SERVICE_PREFIX),$(SERVICE_LABEL),$(if $(call truthy,$(NO_CACHE)),--no-cache,),Build finished! Run 'make start ENV=$(ENV)' to start the container.)
 
 # =============================================================================
 # Execution and Shell Access (Dev) - Auto GPU Detection
 # =============================================================================
 
 ## @section 💻 | Development (Interactive) | BLUE
-## @target ros / dev : Run ROS or Pure Dev environment
-## @target ros-shell / dev-shell : Enter container shell
-## @target ros-stop / dev-stop : Stop specific service
-## @target ros-restart / dev-restart : Restart specific service
-## @target ros-term / dev-term : Open container in new window
-ros: check xauth
-	$(call RUN_SERVICE,$(COMPOSE_DEV),ros,ROS Development)
-	@echo -e "\n  $(INFO) [Hint] Container started! Use 'make ros-shell' or 'make ros-term' to attach to the container."
+## @target start ENV=ros|dev : Run ROS or Pure Dev environment
+## @target stop ENV=ros|dev : Stop environment
+## @target restart ENV=ros|dev : Restart environment
+## @target shell ENV=ros|dev : Enter container shell
+## @target term ENV=ros|dev : Open container in new window
+start: check xauth
+	$(call VALIDATE_ENV_MODE)
+	$(call RUN_SERVICE,$(COMPOSE_DEV),$(SERVICE_PREFIX),$(SERVICE_LABEL))
+	@echo -e "\n  $(INFO) [Hint] Container started! Use 'make shell ENV=$(ENV)' or 'make term ENV=$(ENV)' to attach."
 
-dev: check xauth
-	$(call RUN_SERVICE,$(COMPOSE_DEV),basic,Pure Development)
-	@echo -e "\n  $(INFO) [Hint] Container started! Use 'make dev-shell' or 'make dev-term' to attach to the container."
+stop:
+	$(call GUARD_HOST_ONLY)
+	$(call VALIDATE_ENV_MODE)
+	$(call STOP_SERVICE,$(COMPOSE_DEV),$(SERVICE_PREFIX),$(SERVICE_LABEL))
 
-# Stop and Restart Services Individually
-ros-stop:
-	$(call STOP_SERVICE,$(COMPOSE_DEV),ros,ROS Development)
+restart: stop start
 
-dev-stop:
-	$(call STOP_SERVICE,$(COMPOSE_DEV),basic,Pure Development)
+shell: check xauth
+	$(call VALIDATE_ENV_MODE)
+	$(call EXEC_CONTAINER,$(SERVICE_FILTER),bash,$(SERVICE_LABEL))
 
-ros-restart: ros-stop ros
-dev-restart: dev-stop dev
-
-# Filter Definitions
-ROS_FILTER := ^$(COMPOSE_PROJECT_NAME)[-_]ros-(cpu|igpu|nvidia)
-DEV_FILTER := ^$(COMPOSE_PROJECT_NAME)[-_]basic-(cpu|igpu|nvidia)
-
-ros-shell: check xauth
-	$(call EXEC_CONTAINER,$(ROS_FILTER),bash,ROS)
-
-ros-term: check xauth
-	$(call EXEC_DETACHED,$(ROS_FILTER),$(TERMINAL),ROS)
-
-dev-shell: check xauth
-	$(call EXEC_CONTAINER,$(DEV_FILTER),bash,Development)
-
-dev-term: check xauth
-	$(call EXEC_DETACHED,$(DEV_FILTER),$(TERMINAL),Development)
+term: check xauth
+	$(call VALIDATE_ENV_MODE)
+	$(call EXEC_DETACHED,$(SERVICE_FILTER),$(TERMINAL),$(SERVICE_LABEL))
 
 # =============================================================================
 # Apptainer Baking (Portable Snapshot)
 # =============================================================================
 
-## @section 🧊 | Apptainer Workflow (Local Dev & Runtime) | BLUE
-## @target bake : Bake dev SIF image (isolated Python venv)
-## @target bake-share : Bake dev SIF image (shares system site-packages)
-## @target bake-prod : Bake prod SIF image (compiles source code)
-## @target run-sif : Launch SIF container locally (interactive dev with GUI support)
-bake: check
-	$(call PRINT_SECTION,Baking Apptainer Image)
-	@./scripts/apptainer_bake.sh
-
-bake-share: check
-	$(call PRINT_SECTION,Baking Shared Apptainer Image)
-	@./scripts/apptainer_bake.sh --share
+## @section 🧊 | Apptainer Workflow (Dev Snapshot & Production & Server) | BLUE
+## @target bake-dev ENV=ros|dev [SHARE=1] : Bake development SIF snapshot
+## @target bake-prod ENV=ros|dev [PROD_FULL_CUDA=1] : Bake user-facing production SIF
+## @target run-sif SIF_MODE=dev|prod|slurm [ENV=ros|dev] [SHARE=1] [RUN_ARGS='cmd'] : Run or submit a SIF artifact
+bake-dev: check
+	$(call VALIDATE_ENV_MODE)
+	$(call PRINT_SECTION,Baking Development Apptainer Snapshot)
+	@./scripts/apptainer_bake.sh --mode dev --env $(ENV) $(if $(call truthy,$(SHARE)),--share,)
 
 bake-prod: check
+	$(call VALIDATE_ENV_MODE)
 	$(call PRINT_SECTION,Baking Production Apptainer Image)
-	@./scripts/apptainer_bake.sh --prod
+	@./scripts/apptainer_bake.sh --mode prod --env $(ENV)
 
-run-sif: check xauth
+run-sif:
+	$(call CHECK_SIF_READY)
+	$(call VALIDATE_SIF_MODE)
+	$(call VALIDATE_ENV_MODE)
 	$(call PRINT_SECTION,Running Apptainer Image)
-	@./scripts/apptainer_run.sh
+	$(if $(and $(filter dev,$(SIF_MODE)),$(if $(call truthy,$(DEVKIT_DRY_RUN)),,1)),@$(MAKE) xauth,)
+	@SHARE="$(SHARE)" ./scripts/apptainer_run.sh --mode $(SIF_MODE) --env $(ENV) -- $(RUN_ARGS)
 
 # =============================================================================
 # SLURM Scheduling (HPC)
 # =============================================================================
 
 ## @section 🛰️ | SLURM Scheduling (Server) | BLUE
-## @target run-slurm : Submit job to SLURM scheduler
 ## @target slurm-status : Query active/pending SLURM jobs
 ## @target slurm-cancel : Cancel running/pending SLURM jobs
-run-slurm: check
-	$(call PRINT_SECTION,Submitting SLURM Job)
-	@if command -v sbatch >/dev/null 2>&1; then \
-		sbatch scripts/slurm_run.sh; \
-	else \
-		echo -e "  $(ERROR) SLURM binary 'sbatch' not found. This command must be run on a SLURM login node."; \
-		exit 1; \
-	fi
-
 slurm-status:
 	$(call GUARD_HOST_ONLY)
 	@if command -v squeue >/dev/null 2>&1; then \
@@ -487,13 +750,15 @@ stats:
 # Detailed Expert Monitoring (Per CPU Core + Per GPU Process)
 top:
 	$(call GUARD_HOST_ONLY)
-	@CONTAINER=$$(docker ps --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)" --format "{{.Names}}" | head -n 1); \
+	$(call VALIDATE_ENV_MODE)
+	@CONTAINER=$$($(call FIND_CONTAINER,$(SERVICE_FILTER))); \
 	if [ -n "$$CONTAINER" ]; then \
-		echo -e "  $(INFO) Initiating granular container-level monitoring ($$CONTAINER)..."; \
-		docker exec -it $$CONTAINER bash -c " \
+		echo -e "  $(INFO) Initiating granular $(SERVICE_LABEL) container monitoring ($$CONTAINER)..."; \
+		docker exec -it -u $(CONTAINER_USER) $$CONTAINER bash -c " \
 			FOUND=0; \
 			if command -v nvtop >/dev/null 2>&1; then \
-				if ! nvtop 2>&1 | head -n 1 | grep -q 'No GPU'; then \
+				NVTOP_PROBE=\$$(nvtop 2>&1 | awk 'NR == 1 {print; exit}'); \
+				if [[ \"\$$NVTOP_PROBE\" != *'No GPU'* ]]; then \
 					nvtop; FOUND=1; \
 				fi; \
 			fi; \
@@ -505,10 +770,11 @@ top:
 			if [ \"\$$FOUND\" = \"0\" ]; then htop; fi; \
 		" || [ $$? -eq 130 ]; \
 	else \
-		echo -e "  $(ERROR) No running project container found. Trying host tools instead..."; \
+		echo -e "  $(ERROR) No running $(SERVICE_LABEL) container found. Trying host tools instead..."; \
 		FOUND=0; \
 		if command -v nvtop >/dev/null 2>&1; then \
-			if nvtop 2>&1 | head -n 1 | grep -q "No GPU"; then \
+			NVTOP_PROBE=$$(nvtop 2>&1 | awk 'NR == 1 {print; exit}'); \
+			if [[ "$$NVTOP_PROBE" == *"No GPU"* ]]; then \
 				echo -e "  $(WARN) Host nvtop failed to detect a GPU. Trying an alternative..."; \
 			else \
 				nvtop || [ $$? -eq 130 ]; FOUND=1; \
@@ -540,6 +806,8 @@ logs:
 	@if [ -n "$$($(COMPOSE) $(COMPOSE_DEV) ps --status running -q 2>/dev/null)" ]; then \
 		echo -e "  $(INFO) [Dev] Streaming development logs..."; \
 		$(COMPOSE) $(COMPOSE_DEV) logs -f --tail 100; \
+	else \
+		echo -e "  $(WARN) No running development containers found."; \
 	fi
 
 down:
@@ -562,9 +830,11 @@ clean:
 	@echo -e "  $(INFO) Removing all named volumes related to $(COMPOSE_PROJECT_NAME)..."
 	@VOLUMES=$$(docker volume ls -q --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)"); \
 	if [ -n "$$VOLUMES" ]; then \
-		docker volume rm $$VOLUMES 2>/dev/null || true; \
+		docker volume rm $$VOLUMES; \
+	else \
+		echo -e "  $(INFO) No project-related volumes to delete."; \
 	fi
-	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
+	@if [ -n "$(call truthy,$(FORCE))" ] || [ -n "$(call truthy,$(CI))" ]; then \
 		echo -e "  $(WARN) CI/FORCE mode: Forcibly deleting host folders without prompting."; ans="y"; \
 	else \
 		echo -e "  $(WARN) Do you want to delete the [build, devel, install, log, .venv, colcon.meta] host folders?"; \
@@ -580,23 +850,35 @@ clean:
 
 clean-cache:
 	$(call GUARD_HOST_ONLY)
-	@CACHE_DIR=$(HOST_CACHE_DIR); \
-	if [ -z "$$CACHE_DIR" ] || [ "$$CACHE_DIR" = "/" ]; then \
-		echo -e "  $(ERROR) Cache directory ($$CACHE_DIR) is invalid or unsafe."; \
-		exit 1; \
-	fi; \
-	if ! (echo "$$CACHE_DIR" | grep -q "$(COMPOSE_PROJECT_NAME)" || echo "$$CACHE_DIR" | grep -q "$(HOST_WORKSPACE_PATH)"); then \
-		echo -e "  $(WARN) This cache string ($$CACHE_DIR) points to a shared global cache. Proceeding here affects all projects."; \
-	fi; \
+	@CACHE_DIR="$(HOST_CACHE_DIR)"; \
+		CACHE_DIR="$${CACHE_DIR%/}"; \
+		HOST_ROOT="$(HOST_WORKSPACE_PATH)"; \
+		HOST_ROOT="$${HOST_ROOT%/}"; \
+		if [ -z "$$CACHE_DIR" ] || [ "$$CACHE_DIR" = "/" ] || [[ "$$CACHE_DIR" != /* ]]; then \
+			echo -e "  $(ERROR) Cache directory must be an absolute non-root path (current: $$CACHE_DIR)."; \
+			exit 1; \
+		fi; \
+		if [ "$$CACHE_DIR" = "$$HOST_ROOT" ]; then \
+			echo -e "  $(ERROR) Refusing to clean the workspace root as a cache directory: $$CACHE_DIR"; \
+			exit 1; \
+		fi; \
+		case "$$CACHE_DIR" in \
+			*"$(COMPOSE_PROJECT_NAME)"*|"$$HOST_ROOT"/*) ;; \
+			*) echo -e "  $(WARN) This cache string ($$CACHE_DIR) points to a shared global cache. Proceeding here affects all projects." ;; \
+		esac; \
 	if [ -d "$$CACHE_DIR" ]; then \
-		if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
+		if [ -n "$(call truthy,$(FORCE))" ] || [ -n "$(call truthy,$(CI))" ]; then \
 			ans="y"; \
 		else \
 			echo -en "  $(WARN) Are you sure you want to delete the host cache directory ($$CACHE_DIR)? [Y/N]: "; \
 			read ans || true; \
 		fi; \
 		if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then echo -e "  $(INFO) Deletion cancelled."; exit 1; fi; \
-		$(call SUDO_FREE_RM,$$(dirname "$$CACHE_DIR"),$$(basename "$$CACHE_DIR")); \
+		echo -e "  $(INFO) Clearing cache directory contents: $$CACHE_DIR"; \
+		docker run --rm -v "$$CACHE_DIR:/mnt" alpine sh -c 'find /mnt -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +'; \
+		if [ "$(SKIP_ALPINE_RM)" != "1" ]; then \
+			$(call CLEAN_ALPINE_IMAGE); \
+		fi; \
 	fi
 	@echo -e "  $(OK) Docker local cache clean up (clean-cache) completed."
 
@@ -605,12 +887,11 @@ clean-all:
 	$(call GUARD_HOST_ONLY)
 	@$(MAKE) clean SKIP_ALPINE_RM=1
 	@$(MAKE) clean-cache SKIP_ALPINE_RM=1
-	@echo -e "  $(INFO) Cleaning up the temporary alpine image used for sudo-free deletion..."
-	@docker rmi alpine:latest 2>/dev/null || true
+	@$(call CLEAN_ALPINE_IMAGE)
 	@echo -e "  $(INFO) Cleaning up all images related to project $(COMPOSE_PROJECT_NAME)..."
 	@IMAGES=$$(docker images -q --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)"); \
 	if [ -n "$$IMAGES" ]; then \
-		docker rmi -f $$IMAGES 2>/dev/null || true; \
+		docker rmi -f $$IMAGES; \
 		echo -e "  $(OK) Project-related images removed."; \
 	else \
 		echo -e "  $(INFO) No project-related images to delete."; \
@@ -620,7 +901,7 @@ clean-all:
 # Global Docker cleanup (Warning: affects build caches across all projects on the system)
 docker-clean:
 	$(call GUARD_HOST_ONLY)
-	@if [ "$(FORCE)" = "1" ] || [ "$(CI)" = "true" ]; then \
+	@if [ -n "$(call truthy,$(FORCE))" ] || [ -n "$(call truthy,$(CI))" ]; then \
 		ans="y"; \
 	else \
 		echo -en "  $(WARN) Do you want to globally clean Docker on this host? (Deletes all build cache and unused images) [Y/N]: "; \

@@ -11,8 +11,10 @@ set -eo pipefail
 [ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
 
 # Load logging utility
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG" || true
+[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+if [ -f "$SOURCE_LOG" ]; then
+    source "$SOURCE_LOG"
+fi
 LOG_PREFIX="[GPG Update]"
 
 TARGET_FILE="${WS_SCRIPTS}/util_apt_helper.sh"
@@ -21,6 +23,19 @@ TARGET_FILE="${WS_SCRIPTS}/util_apt_helper.sh"
 ROS_KEY_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
 ROS_ASC_URL="https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc"
 
+usage() {
+    cat <<'EOF'
+Usage: setup_ros_gpg.sh [--check|--update]
+
+Verify the ROS repository GPG fingerprint used by util_apt_helper.sh.
+
+Options:
+  --check    Exit non-zero if the recorded fingerprint is stale.
+  --update   Update util_apt_helper.sh without an interactive prompt.
+  -h, --help Show this help.
+EOF
+}
+
 # Command line arguments
 CHECK_ONLY=false
 AUTO_UPDATE=false
@@ -28,6 +43,8 @@ for arg in "$@"; do
     case $arg in
         --check) CHECK_ONLY=true ;;
         --update) AUTO_UPDATE=true ;;
+        -h|--help) usage; exit 0 ;;
+        *) log_error "Unknown option: $arg"; usage; exit 2 ;;
     esac
 done
 
@@ -36,16 +53,19 @@ fetch_fingerprint() {
     local tmp_key
     tmp_key=$(mktemp /tmp/ros_key_update.XXXXXX)
 
-    # Use trap for cleanup
-    trap 'rm -f "$tmp_key"' RETURN
-
-    if ! curl -sSL "$url" -o "$tmp_key"; then
+    if ! curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "$url" -o "$tmp_key"; then
+        rm -f "$tmp_key"
         log_error "Failed to download key from $url"
         return 1
     fi
 
     local fp
     fp=$(gpg --with-colons --import-options show-only --import "$tmp_key" 2>/dev/null | awk -F: '/^fpr/{print $10; exit}')
+    rm -f "$tmp_key"
+    if [ -z "$fp" ]; then
+        log_error "Downloaded key has no readable fingerprint: $url"
+        return 1
+    fi
     echo "$fp"
 }
 
@@ -101,7 +121,9 @@ if [ "$AUTO_UPDATE" != "true" ]; then
 fi
 
 log_info "Updating $TARGET_FILE..."
-# Replace the fingerprint in the file
-sed -i "s/local ROS_GPG_FINGERPRINT=\"$CURRENT_FP\"/local ROS_GPG_FINGERPRINT=\"$LATEST_FP\"/" "$TARGET_FILE"
+tmp_target=$(mktemp /tmp/ros_gpg_update.XXXXXX)
+sed "s/local ROS_GPG_FINGERPRINT=\"$CURRENT_FP\"/local ROS_GPG_FINGERPRINT=\"$LATEST_FP\"/" "$TARGET_FILE" > "$tmp_target"
+cat "$tmp_target" > "$TARGET_FILE"
+rm -f "$tmp_target"
 
 log_ok "Fingerprint successfully updated to $LATEST_FP"

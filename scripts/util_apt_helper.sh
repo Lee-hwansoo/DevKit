@@ -4,21 +4,103 @@
 # Build-time APT management utility for automated package installation
 #
 # Handles APT initialization, snapshot configuration, ROS repository setup,
-# and filtered package installation (all vs runtime) during the Docker build
+# and filtered package installation during the Docker build
 # process.
 # =============================================================================
 
 set -eo pipefail
-COMMAND=$1
+COMMAND="${1:-}"
 
 # Load path configuration
 [ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
 [ -z "$WS_ROOT" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
 
 # Load logging utility
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="${WS_SCRIPTS}/util_logging.sh"
+[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${WS_SCRIPTS:-$(dirname "${BASH_SOURCE[0]}")}/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[APT Helper]"
+
+if ! declare -F log_info >/dev/null 2>&1; then
+    log_info() { echo "[INFO] $*"; }
+    log_warn() { echo "[WARN] $*" >&2; }
+    log_error() { echo "[ERROR] $*" >&2; }
+fi
+
+usage() {
+    cat <<'EOF'
+Usage: util_apt_helper.sh <command> [args...]
+
+Build-time APT helper commands:
+  init-apt
+  configure-snapshot <latest|YYYYMMDDTHHMMSSZ>
+  setup-ros-repo <ros_distro>
+  setup-cuda-repo <cuda_version>
+  update-rosdep <ros_distro>
+  install-packages <all|builder|runtime> [ros_distro] [dependency_dir]
+    Set DEVKIT_DRY_RUN=1 to print selected packages without installing.
+  -h, --help
+EOF
+}
+
+require_command() {
+    local missing=0
+    local cmd
+    for cmd in "$@"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            log_error "Required command not found: $cmd"
+            missing=1
+        fi
+    done
+    return "$missing"
+}
+
+require_arg() {
+    local name="$1"
+    local value="${2:-}"
+    if [ -z "$value" ]; then
+        log_error "$name is required."
+        return 2
+    fi
+}
+
+validate_ros_distro() {
+    local distro="${1:-}"
+    case "$distro" in
+        noetic|humble) return 0 ;;
+        "")
+            log_error "ROS_DISTRO is required for this command."
+            return 2
+            ;;
+        *)
+            log_error "Unsupported ROS_DISTRO: $distro. Supported values: noetic, humble."
+            return 2
+            ;;
+    esac
+}
+
+ros_major_tag() {
+    case "$1" in
+        noetic) printf '%s\n' ros1 ;;
+        humble) printf '%s\n' ros2 ;;
+    esac
+}
+
+download_file() {
+    local url=$1
+    local output=$2
+    curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "$url" -o "$output"
+}
+
+read_gpg_fingerprint() {
+    local key_file=$1
+    gpg --with-colons --import-options show-only --import "$key_file" 2>/dev/null \
+        | awk -F: '/^fpr/{print $10; exit}'
+}
+
+install_repo_prereqs() {
+    apt-get update
+    apt-get install -y --no-install-recommends curl gnupg2 ca-certificates
+}
 
 # 0. Initialize APT for Docker Container (Enable caching for BuildKit mount compatibility)
 init_apt() {
@@ -29,8 +111,14 @@ init_apt() {
 
 # 1. Configure APT Snapshot Repository and Disable Valid-Until Checks
 setup_snapshot() {
-    local date=$1
+    local date="${1:-}"
+    require_arg "APT_SNAPSHOT_DATE" "$date" || return $?
     if [ "$date" != "latest" ] && [ -n "$date" ]; then
+        if [[ ! "$date" =~ ^[0-9]{8}T[0-9]{6}Z$ ]]; then
+            log_error "APT_SNAPSHOT_DATE must be 'latest' or UTC format YYYYMMDDTHHMMSSZ (current: $date)"
+            return 2
+        fi
+
         # Disable Valid-Until verification for historical snapshots
         echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99-disable-valid-until
 
@@ -39,9 +127,15 @@ setup_snapshot() {
             echo "APT::Snapshot \"$date\";" > /etc/apt/apt.conf.d/99-snapshot
         elif [ -f /etc/apt/sources.list ]; then
             # [Ubuntu 20.04 / 22.04 (Legacy Format)]
-            sed -i "s|http://archive.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/$date/|g" /etc/apt/sources.list
-            sed -i "s|http://security.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/$date/|g" /etc/apt/sources.list
-            sed -i "s|http://ports.ubuntu.com/ubuntu-ports/|http://snapshot.ubuntu.com/ubuntu-ports/$date/|g" /etc/apt/sources.list
+            local tmp_sources
+            tmp_sources=$(mktemp /tmp/apt_sources.XXXXXX)
+            sed \
+                -e "s|http://archive.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/$date/|g" \
+                -e "s|http://security.ubuntu.com/ubuntu/|http://snapshot.ubuntu.com/ubuntu/$date/|g" \
+                -e "s|http://ports.ubuntu.com/ubuntu-ports/|http://snapshot.ubuntu.com/ubuntu-ports/$date/|g" \
+                /etc/apt/sources.list > "$tmp_sources"
+            cat "$tmp_sources" > /etc/apt/sources.list
+            rm -f "$tmp_sources"
         fi
         log_info "Snapshot configured for: $date"
     fi
@@ -49,11 +143,11 @@ setup_snapshot() {
 
 # 1-1. Configure ROS Repository (Import GPG keys and setup source lists)
 setup_ros_repo() {
-    local distro=$1
-    [ -z "$distro" ] && return
+    local distro="${1:-}"
+    validate_ros_distro "$distro" || return $?
 
-    # Ensure minimal prerequisites for repository management (curl, gnupg2, ca-certificates)
-    apt-get update && apt-get install -y --no-install-recommends curl gnupg2 ca-certificates
+    install_repo_prereqs
+    require_command curl gpg dpkg awk grep || return 1
 
     # Get Ubuntu codename without lsb_release
     local codename
@@ -63,27 +157,30 @@ setup_ros_repo() {
     # Known GPG fingerprint for ROS repository key
     local ROS_GPG_FINGERPRINT="C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654"
 
-    # Use mktemp for safe temp file (prevents symlink attacks in multi-user environments)
     local TMP_KEY
     TMP_KEY=$(mktemp /tmp/ros_repo_key.XXXXXX)
-    trap 'rm -f "$TMP_KEY"' RETURN
+    local key_url="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
+    [ "$distro" = "noetic" ] && key_url="https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc"
 
-    if [ "$distro" = "noetic" ]; then
-        curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc -o "$TMP_KEY"
-    else
-        curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o "$TMP_KEY"
+    if ! download_file "$key_url" "$TMP_KEY"; then
+        rm -f "$TMP_KEY"
+        log_error "Failed to download ROS repository key: $key_url"
+        return 1
     fi
 
-    # Verify GPG key fingerprint (supply-chain attack mitigation)
-    # Policy: STRICT_GPG_CHECK=true → Fail-Closed (abort on mismatch, for high-security environments)
-    #         STRICT_GPG_CHECK=false/unset → Fail-Open (warn only, resilient to key rotations)
     local ACTUAL_FP
-    ACTUAL_FP=$(gpg --with-colons --import-options show-only --import "$TMP_KEY" 2>/dev/null \
-        | awk -F: '/^fpr/{print $10; exit}')
-    if [ -n "$ROS_GPG_FINGERPRINT" ] && [ "$ACTUAL_FP" != "$ROS_GPG_FINGERPRINT" ]; then
+    ACTUAL_FP=$(read_gpg_fingerprint "$TMP_KEY")
+    if [ -z "$ACTUAL_FP" ]; then
+        rm -f "$TMP_KEY"
+        log_error "Downloaded ROS key has no readable GPG fingerprint: $key_url"
+        return 1
+    fi
+
+    if [ "$ACTUAL_FP" != "$ROS_GPG_FINGERPRINT" ]; then
         if [ "${STRICT_GPG_CHECK:-false}" = "true" ]; then
             log_error "FATAL: GPG fingerprint mismatch! Expected: $ROS_GPG_FINGERPRINT, Got: $ACTUAL_FP"
             log_error "Aborting (STRICT_GPG_CHECK=true). To update, run 'make update-gpg' on the host."
+            rm -f "$TMP_KEY"
             return 1
         else
             log_warn "GPG fingerprint mismatch! Expected: $ROS_GPG_FINGERPRINT, Got: $ACTUAL_FP"
@@ -92,7 +189,8 @@ setup_ros_repo() {
     else
         log_info "GPG key fingerprint verified: $ACTUAL_FP"
     fi
-    gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg < "$TMP_KEY"
+    gpg --dearmor --yes -o /usr/share/keyrings/ros-archive-keyring.gpg < "$TMP_KEY"
+    rm -f "$TMP_KEY"
 
     if [ "$distro" = "noetic" ]; then
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros/ubuntu $codename main" > /etc/apt/sources.list.d/ros1-latest.list
@@ -107,8 +205,8 @@ setup_cuda_repo() {
     local cuda_version=$1
     if [ -z "$cuda_version" ]; then return; fi
 
-    # Ensure minimal prerequisites for repository management (curl, gnupg2, ca-certificates)
-    apt-get update && apt-get install -y --no-install-recommends curl gnupg2 ca-certificates
+    install_repo_prereqs
+    require_command curl gpg dpkg grep tr || return 1
 
     # Get OS version ID (e.g., 22.04 -> 2204)
     local os_version
@@ -123,17 +221,30 @@ setup_cuda_repo() {
 
     # 1. Download pinning (recommended by NVIDIA to prioritize their repo)
     local pin_url="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${os_version}/${cuda_repo_arch}/cuda-ubuntu${os_version}.pin"
-    curl -sSL "$pin_url" -o /etc/apt/preferences.d/cuda-repository-pin-600
+    download_file "$pin_url" /etc/apt/preferences.d/cuda-repository-pin-600
 
     # 2. Setup repository URL
     local repo_url="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${os_version}/${cuda_repo_arch}"
 
     # 3. Add repository key
     # Try current and legacy keys as NVIDIA rotated them recently
-    curl -sSL "${repo_url}/3bf863cc.pub" -o /tmp/cuda-key.pub 2>/dev/null || \
-    curl -sSL "${repo_url}/7fa2af80.pub" -o /tmp/cuda-key.pub
+    local cuda_key
+    cuda_key=$(mktemp /tmp/cuda_repo_key.XXXXXX)
+    if ! download_file "${repo_url}/3bf863cc.pub" "$cuda_key"; then
+        download_file "${repo_url}/7fa2af80.pub" "$cuda_key"
+    fi
 
-    gpg --dearmor --yes -o /usr/share/keyrings/cuda-archive-keyring.gpg < /tmp/cuda-key.pub
+    local cuda_fp
+    cuda_fp=$(read_gpg_fingerprint "$cuda_key")
+    if [ -z "$cuda_fp" ]; then
+        rm -f "$cuda_key"
+        log_error "Downloaded NVIDIA CUDA key has no readable GPG fingerprint."
+        return 1
+    fi
+    log_info "NVIDIA CUDA repository key fingerprint: $cuda_fp"
+
+    gpg --dearmor --yes -o /usr/share/keyrings/cuda-archive-keyring.gpg < "$cuda_key"
+    rm -f "$cuda_key"
 
     # 4. Add to sources list
     echo "deb [arch=${arch} signed-by=/usr/share/keyrings/cuda-archive-keyring.gpg] ${repo_url}/ /" > /etc/apt/sources.list.d/cuda.list
@@ -141,11 +252,46 @@ setup_cuda_repo() {
     log_info "NVIDIA CUDA repository configured successfully."
 }
 
+update_rosdep() {
+    local distro="${1:-}"
+    validate_ros_distro "$distro" || return $?
+    require_command rosdep find sleep || return 1
+
+    if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
+        rosdep init
+    fi
+
+    local attempt
+    for attempt in 1 2 3; do
+        if rosdep update --rosdistro "$distro"; then
+            return 0
+        fi
+        log_warn "rosdep update failed (attempt ${attempt}/3)."
+        [ "$attempt" = "3" ] || sleep $((attempt * 3))
+    done
+
+    if [ -d /root/.ros/rosdep/sources.cache ] && find /root/.ros/rosdep/sources.cache -type f -print -quit 2>/dev/null | grep -q .; then
+        log_warn "Continuing with the existing rosdep cache after update failures."
+        return 0
+    fi
+
+    log_error "rosdep update failed and no usable cache exists."
+    return 1
+}
+
 # 2. Install user-defined packages with conditional tag-based filtering
 install_packages() {
-    local filter=$1  # "all" (dev/builder) or "runtime" (production)
-    local distro=$2
+    local filter="${1:-}"  # "all" (dev), "builder" (prod build), or "runtime" (deployment)
+    local distro="${2:-}"
     local dep_dir="${3:-${WS_DEPS:-/workspace/dependencies}}" # Default dependency directory
+
+    case "$filter" in
+        all|builder|runtime) ;;
+        *)
+            log_error "install-packages mode must be 'all', 'builder', or 'runtime' (current: ${filter:-<empty>})"
+            return 2
+            ;;
+    esac
 
     local apt_file="/tmp/apt.txt"
     local ros_file="/tmp/apt_ros.txt"
@@ -153,53 +299,76 @@ install_packages() {
     # Fallback to centralized dependency directory if /tmp files don't exist
     [ ! -f "$apt_file" ] && [ -f "${dep_dir}/apt.txt" ] && apt_file="${dep_dir}/apt.txt"
     [ ! -f "$ros_file" ] && [ -f "${dep_dir}/apt_ros.txt" ] && ros_file="${dep_dir}/apt_ros.txt"
+    if [ ! -f "$apt_file" ] && { [ -z "$distro" ] || [ ! -f "$ros_file" ]; }; then
+        log_error "No APT dependency files found. Checked /tmp and ${dep_dir}."
+        return 1
+    fi
 
     # Detect target ROS version tag
     local target_tag="none"
     local other_tag="ros1|ros2"
     if [ -n "$distro" ]; then
-        if [ "$distro" == "noetic" ]; then
-            target_tag="ros1"
+        validate_ros_distro "$distro" || return $?
+        target_tag="$(ros_major_tag "$distro")"
+        if [ "$target_tag" = "ros1" ]; then
             other_tag="ros2"
         else
-            target_tag="ros2"
             other_tag="ros1"
         fi
     fi
 
-    local grep_pattern='^[^#]+'
-    [ "$filter" == "runtime" ] && grep_pattern='^[^#]+ # runtime'
-
     local pkgs=""
 
-    # Internal helper for package list extraction and tag filtering
     filter_pkg_list() {
         local file=$1
-        local pattern=$2
+        local mode=$2
         if [ -f "$file" ]; then
-            # 1. Get lines matching basic pattern (e.g. # runtime)
-            # 2. Exclude lines explicitly tagged for the "other" version (e.g. # runtime,ros1)
-            # 3. Handle variables (${ROS_DISTRO}) and clean up comments
-            grep -E "$pattern" "$file" | \
-            grep -v -E " #.*,(${other_tag})| # (${other_tag})" | \
-            sed "s/\${ROS_DISTRO}/$distro/g" | \
-            sed 's/ #.*//' | xargs || true
+            awk -v mode="$mode" -v distro="$distro" -v other_tag="$other_tag" '
+                /^[[:space:]]*($|#)/ { next }
+                {
+                    comment = ""
+                    line = $0
+                    if (match(line, /#/)) {
+                        comment = substr(line, RSTART + 1)
+                        line = substr(line, 1, RSTART - 1)
+                    }
+                    if (mode == "runtime" && comment !~ /(^|[[:space:],])runtime([[:space:],]|$)/) {
+                        next
+                    }
+                    if (mode == "builder" && comment ~ /(^|[[:space:],])(dev|gui)([[:space:],]|$)/) {
+                        next
+                    }
+                    if (other_tag != "none" && comment ~ "(^|[[:space:],])" other_tag "([[:space:],]|$)") {
+                        next
+                    }
+                    gsub(/\$\{ROS_DISTRO\}/, distro, line)
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+                    if (line != "") {
+                        print line
+                    }
+                }
+            ' "$file"
         fi
     }
 
     # Extract packages from apt.txt
     if [ -f "$apt_file" ]; then
-        pkgs=$(filter_pkg_list "$apt_file" "$grep_pattern")
+        pkgs=$(filter_pkg_list "$apt_file" "$filter")
     fi
 
     # Extract packages from apt_ros.txt
     if [ -n "$distro" ] && [ -f "$ros_file" ]; then
         local ros_pkgs
-        ros_pkgs=$(filter_pkg_list "$ros_file" "$grep_pattern")
+        ros_pkgs=$(filter_pkg_list "$ros_file" "$filter")
         pkgs="$pkgs $ros_pkgs"
     fi
 
-    pkgs=$(echo "$pkgs" | xargs) # Clean whitespace
+    pkgs=$(printf '%s\n' "$pkgs" | awk 'NF { for (i = 1; i <= NF; i++) { printf "%s%s", sep, $i; sep = " " } } END { print "" }')
+
+    if [ "${DEVKIT_DRY_RUN:-}" = "1" ]; then
+        [ -n "$pkgs" ] && printf '%s\n' $pkgs
+        return 0
+    fi
 
     if [ -n "$pkgs" ]; then
         if [ -n "$distro" ]; then
@@ -222,23 +391,30 @@ install_packages() {
 }
 
 case "$COMMAND" in
+    "-h"|"--help")
+        usage
+        ;;
     "init-apt")
         init_apt
         ;;
     "configure-snapshot")
-        setup_snapshot "$2"
+        setup_snapshot "${2:-}"
         ;;
     "setup-ros-repo")
-        setup_ros_repo "$2"
+        setup_ros_repo "${2:-}"
         ;;
     "setup-cuda-repo")
-        setup_cuda_repo "$2"
+        require_arg "CUDA_VERSION" "${2:-}" && setup_cuda_repo "$2"
+        ;;
+    "update-rosdep")
+        update_rosdep "${2:-}"
         ;;
     "install-packages")
-        install_packages "$2" "$3" "$4"
+        install_packages "${2:-}" "${3:-}" "${4:-}"
         ;;
     *)
-        echo "Usage: $0 {init-apt|configure-snapshot|setup-ros-repo|install-packages} [args...]"
-        exit 1
+        log_error "Unknown command: ${COMMAND:-<empty>}"
+        usage >&2
+        exit 2
         ;;
 esac

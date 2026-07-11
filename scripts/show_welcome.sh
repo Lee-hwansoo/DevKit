@@ -4,13 +4,15 @@
 # Container Welcome Message (MOTD) and quick-start guide
 # =============================================================================
 
-# Load path configuration
-[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
-[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
-
-# Load logging utility
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
+[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+
+case "${1:-}" in
+    ""|-h|--help) ;;
+    *) log_error "Unknown option: $1"; exit 2 ;;
+esac
 
 print_banner WELCOME
 print_env_info
@@ -19,7 +21,8 @@ print_section "Quick Start"
 echo -e "    ${GREEN}mksync${NC}           : Fully initialize workspace (venv + deps + build)"
 
 print_section "Build & Sync"
-echo -e "    ${GREEN}cb${NC} / ${GREEN}cbr${NC}         : colcon build (Dev / Release)"
+echo -e "    ${GREEN}cbuild${NC}           : colcon build (--debug, --release, --pkg, --meta)"
+echo -e "    ${GREEN}cbt${NC} / ${GREEN}cbtr${NC}        : colcon test / test results"
 echo -e "    ${GREEN}sync_deps${NC}        : Sync external repos from .repos file"
 echo -e "    ${GREEN}check_deps${NC}       : Verify missing runtime libraries in install/"
 
@@ -33,7 +36,7 @@ echo -e "    ${GREEN}uvs${NC} / ${GREEN}uvr${NC}        : uv sync / uv run"
 
 print_section "Diagnostics"
 echo -e "    ${GREEN}hw_check${NC}         : Run full hardware & environment diagnostics"
-echo -e "    ${GREEN}gpu_status${NC}       : Show detailed GPU & Display info"
+echo -e "    ${GREEN}gpu status${NC}       : Show detailed GPU & Display info"
 
 echo -e ""
 echo -e "  Type ${CYAN}h${NC} or ${CYAN}help${NC} to see the full alias & shortcut guide."

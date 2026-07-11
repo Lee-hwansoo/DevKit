@@ -3,16 +3,23 @@
 # User-defined system package extensions for the development environment
 #
 # Filtering Tag System Guide:
-#   - # runtime : Packages to include in the production (runtime) image
+#   - # runtime : Packages required by deployment artifacts
+#   - # dev     : Full development image only; excluded from production builders
+#   - # gui     : Interactive desktop tools excluded from production builders
 #   - # ros1    : Packages for ROS 1 (Noetic) environments only
 #   - # ros2    : Packages for ROS 2 (Humble) environments only
-#   - (No tag)  : Installed in all dev environments, excluded from production
+#   - (No tag)  : Installed in dev and production builder environments
 #
 # Examples:
-#   - libyaml-cpp-dev # runtime,ros2 (Installed in ROS2 runtime & dev)
+#   - libyaml-cpp-dev # runtime,ros2 (Installed in ROS2 dev and deployment)
 #   - python3-catkin-tools # ros1    (ROS1 dev-only tool)
 # =============================================================================
 
 # Build & Utilities
 ccache
 ninja-build
+
+# Runtime graphics (opt-in for deployed apps that need OpenGL/EGL or non-headless OpenCV)
+# libegl1-mesa # runtime
+# libgl1-mesa-dri # runtime
+# libglx-mesa0 # runtime

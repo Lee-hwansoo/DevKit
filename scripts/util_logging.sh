@@ -26,7 +26,7 @@ _log_base() {
 
     # 1. Resolve Log Path & Ensure Directory (Once per function call)
     local log_out=""
-    if [[ -n "${LOG_FILE}" ]]; then
+    if [[ -n "${LOG_FILE:-}" ]]; then
         log_out="${LOG_FILE}"
         [[ "${log_out}" != /* ]] && log_out="${WORKSPACE_PATH:-/workspace}/${log_out}"
         mkdir -p "$(dirname "$log_out")"
@@ -35,7 +35,7 @@ _log_base() {
     # 2. Metadata Pre-calculation
     local timestamp="" prefix=""
     [[ "${LOG_SHOW_TIME}" == "true" ]] && timestamp="${CYAN}[$(date '+%H:%M:%S')]${NC} "
-    [[ -n "${LOG_PREFIX}" ]] && prefix="${CYAN}${LOG_PREFIX}${NC} "
+    [[ -n "${LOG_PREFIX:-}" ]] && prefix="${CYAN}${LOG_PREFIX}${NC} "
 
     # 3. Stream Processing (Clean & Fast)
     while IFS= read -r line || [[ -n "$line" ]]; do

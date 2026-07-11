@@ -9,47 +9,92 @@
 #   3. Automatic verification of missing system dependencies based on rosdep
 # =============================================================================
 
-# Load path configuration
-[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
-[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
+set -eo pipefail
 
-# Load logging utility
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
+[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
 LOG_PREFIX="[Sync Deps]"
 
-# Fix for "detected dubious ownership" git error in Docker/WSL2
-export GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0="safe.directory"
-export GIT_CONFIG_VALUE_0="*"
-export GIT_CONFIG_PARAMETERS="'safe.directory=*'"
-git config --system --get-all safe.directory 2>/dev/null | grep -q "^[*]$" || \
-git config --system --add safe.directory "*" 2>/dev/null || true
+if ! declare -F log_info >/dev/null 2>&1; then
+    log_info() { echo "[INFO] $*"; }
+    log_warn() { echo "[WARN] $*" >&2; }
+    log_error() { echo "[ERROR] $*" >&2; }
+    print_section() { echo "[ $* ]"; }
+    log_step_done() { echo "[OK] $*"; }
+fi
+
+truthy() {
+    case "${1,,}" in
+        1|true|yes|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Fix for "detected dubious ownership" git error in Docker/WSL2 without mutating system config.
+if declare -F configure_git_safe_directory >/dev/null 2>&1; then
+    configure_git_safe_directory
+fi
 
 # 0. Argument Parsing
 FORCE_MODE=false
 DO_ROSDEP=false
 
+usage() {
+    cat <<'EOF'
+Usage: setup_sync_deps.sh [--force] [--rosdep]
+
+Synchronize third-party repositories, apply dependency overlays, and optionally
+run rosdep for workspace system dependencies.
+
+Options:
+  --force    Reset imported third-party repositories before updating them.
+  --rosdep   Run rosdep install after source synchronization.
+  -h, --help Show this help.
+
+Environment:
+  DEVKIT_ROSDEP_ALLOW_FAILURE=1  Warn instead of failing when rosdep install fails.
+  DEVKIT_VCS_ALLOW_FAILURE=1     Warn instead of failing when vcs import/pull fails.
+EOF
+}
+
 for arg in "$@"; do
     case "$arg" in
         --force)  FORCE_MODE=true ;;
         --rosdep) DO_ROSDEP=true ;;
+        -h|--help) usage; exit 0 ;;
+        *) log_error "Unknown option: $arg"; usage; exit 2 ;;
     esac
 done
 
 REPOS_FILE="${WS_DEPS}/dependencies.repos"
 OVERLAY_DIR="${WS_DEPS}/overlay"
 
+is_safe_force_target() {
+    local root_real target_real
+    root_real="$(realpath -m "${WS_ROOT}")"
+    target_real="$(realpath -m "$1")"
+
+    [ "$target_real" != "/" ] || return 1
+    [ "$target_real" != "$root_real" ] || return 1
+    case "$target_real" in
+        "$root_real"/*) return 0 ;;
+        *) [ "${DEVKIT_ALLOW_EXTERNAL_SYNC_TARGET:-}" = "1" ] ;;
+    esac
+}
+
 # 1. Path Architecture Setup
+SYNC_TARGET_DIR="${SYNC_TARGET_DIR:-src/thirdparty}"
 if [[ "$SYNC_TARGET_DIR" == /* ]]; then
     TARGET_DIR="$SYNC_TARGET_DIR"
 else
-    TARGET_DIR="${WS_ROOT}/${SYNC_TARGET_DIR:-src/thirdparty}"
+    TARGET_DIR="${WS_ROOT}/${SYNC_TARGET_DIR}"
 fi
 
 # Sanitize double slashes
 TARGET_DIR="${TARGET_DIR//\/\//\/}"
-mkdir -p "$TARGET_DIR"
+mkdir -p -- "$TARGET_DIR"
 
 # 1. vcstool Integration
 print_section "VCS Repository Import"
@@ -57,11 +102,32 @@ if ! command -v vcs &>/dev/null; then
     log_warn "vcstool (vcs) not found. Skipping repository import."
 elif [ -f "$REPOS_FILE" ]; then
     log_info "Running vcs import to $TARGET_DIR ..."
-    vcs import "$TARGET_DIR" < "$REPOS_FILE" || log_warn "vcs import completed with some warnings."
+    if ! vcs import "$TARGET_DIR" < "$REPOS_FILE"; then
+        if truthy "${DEVKIT_VCS_ALLOW_FAILURE:-false}"; then
+            log_warn "vcs import failed. Continuing because DEVKIT_VCS_ALLOW_FAILURE=1."
+        else
+            log_error "vcs import failed. Fix dependencies/dependencies.repos or set DEVKIT_VCS_ALLOW_FAILURE=1 to continue intentionally."
+            exit 1
+        fi
+    fi
 
     if [ "$FORCE_MODE" = true ]; then
         log_warn "Force mode: resetting all third-party repos to HEAD..."
-        find "$TARGET_DIR" -type d -name ".git" -prune -execdir git reset --hard HEAD \; -execdir git clean -fd \; &>/dev/null || true
+        if ! is_safe_force_target "$TARGET_DIR"; then
+            log_error "Refusing --force reset for unsafe target: $TARGET_DIR"
+            log_error "Use a workspace subdirectory, or set DEVKIT_ALLOW_EXTERNAL_SYNC_TARGET=1 for an explicit external target."
+            exit 1
+        fi
+        reset_failed=0
+        while IFS= read -r -d '' git_dir; do
+            repo_dir="$(dirname "$git_dir")"
+            repo_name="$(basename "$repo_dir")"
+            if ! (cd "$repo_dir" && git reset --hard HEAD && git clean -ffdx); then
+                log_warn "Failed to reset third-party repo: $repo_name"
+                reset_failed=1
+            fi
+        done < <(find "$TARGET_DIR" -type d -name ".git" -prune -print0)
+        [ "$reset_failed" = "0" ] || exit 1
     else
         DIRTY_REPOS=$(find "$TARGET_DIR" -type d -name ".git" -execdir git status --porcelain \; 2>/dev/null)
         if [ -n "$DIRTY_REPOS" ]; then
@@ -70,17 +136,29 @@ elif [ -f "$REPOS_FILE" ]; then
     fi
 
     log_info "Performing vcs pull to update only branch-tracking repositories..."
+    pull_failed=0
     for repo_dir in "$TARGET_DIR"/*; do
         if [ -d "$repo_dir" ]; then
             REPO_NAME=$(basename "$repo_dir")
             if (cd "$repo_dir" && git symbolic-ref -q HEAD > /dev/null); then
                 log_info "Pulling updates for $REPO_NAME (on branch)..."
-                vcs pull "$repo_dir" || log_warn "vcs pull failed for $REPO_NAME"
+                if ! vcs pull "$repo_dir"; then
+                    log_warn "vcs pull failed for $REPO_NAME"
+                    pull_failed=1
+                fi
             else
                 log_info "Skipping pull for $REPO_NAME (fixed version / detached HEAD)."
             fi
         fi
     done
+    if [ "$pull_failed" != "0" ]; then
+        if truthy "${DEVKIT_VCS_ALLOW_FAILURE:-false}"; then
+            log_warn "One or more vcs pull operations failed. Continuing because DEVKIT_VCS_ALLOW_FAILURE=1."
+        else
+            log_error "One or more vcs pull operations failed. Fix the repository state/network or set DEVKIT_VCS_ALLOW_FAILURE=1 to continue intentionally."
+            exit 1
+        fi
+    fi
 else
     log_info "No .repos file found at $REPOS_FILE."
 fi
@@ -89,9 +167,12 @@ fi
 print_section "Overlay Application"
 if [ -d "$OVERLAY_DIR" ]; then
     log_info "Applying overlays from $OVERLAY_DIR ..."
-    find "$OVERLAY_DIR" -mindepth 1 -maxdepth 1 \
-        ! \( -name "CATKIN_IGNORE" -o -name "COLCON_IGNORE" -o -name "*.md" \) -print0 | \
-        xargs -0 -r cp -a -t "$TARGET_DIR/"
+    while IFS= read -r -d '' overlay_item; do
+        cp -a -- "$overlay_item" "$TARGET_DIR/"
+    done < <(
+        find "$OVERLAY_DIR" -mindepth 1 -maxdepth 1 \
+            ! \( -name "CATKIN_IGNORE" -o -name "COLCON_IGNORE" -o -name "*.md" \) -print0
+    )
     log_step_done "Overlays applied successfully."
 else
     log_info "Overlay directory not found."
@@ -102,21 +183,30 @@ print_section "System Dependencies (rosdep)"
 if [ "$DO_ROSDEP" = true ] && command -v rosdep &>/dev/null && [ -n "${ROS_DISTRO}" ]; then
     log_info "Gathering dependencies for ${ROS_DISTRO}..."
     if [ "$(id -u)" -ne 0 ] && command -v sudo &>/dev/null; then
-        sudo -n apt-get update -qq 2>/dev/null || true
+        if ! sudo -n apt-get update -qq 2>/dev/null; then
+            log_warn "apt-get update failed or sudo is unavailable; rosdep will continue with existing APT metadata."
+        fi
     else
-        apt-get update -qq || true
+        if ! apt-get update -qq; then
+            log_warn "apt-get update failed; rosdep will continue with existing APT metadata."
+        fi
     fi
 
-    SCAN_PATHS="$TARGET_DIR"
+    SCAN_PATHS=( "$TARGET_DIR" )
     if [ -d "${WS_SRC}" ] && [ "$TARGET_DIR" != "${WS_SRC}" ]; then
-        SCAN_PATHS="${WS_SRC} $SCAN_PATHS"
+        SCAN_PATHS=( "${WS_SRC}" "${SCAN_PATHS[@]}" )
     fi
 
-    log_info "Running rosdep install for: $SCAN_PATHS"
-    if ! rosdep install --from-paths $SCAN_PATHS --ignore-src -r -y --rosdistro "$ROS_DISTRO"; then
-        log_warn "Some rosdep packages failed to install. Check the output above."
+    log_info "Running rosdep install for: ${SCAN_PATHS[*]}"
+    if ! rosdep install --from-paths "${SCAN_PATHS[@]}" --ignore-src -r -y --rosdistro "$ROS_DISTRO"; then
+        if truthy "${DEVKIT_ROSDEP_ALLOW_FAILURE:-false}"; then
+            log_warn "Some rosdep packages failed to install. Continuing because DEVKIT_ROSDEP_ALLOW_FAILURE=1."
+        else
+            log_error "rosdep install failed. Fix the missing system dependencies or set DEVKIT_ROSDEP_ALLOW_FAILURE=1 to continue intentionally."
+            exit 1
+        fi
     else
-        log_step_done "rosdep check completed for: $SCAN_PATHS"
+        log_step_done "rosdep check completed for: ${SCAN_PATHS[*]}"
     fi
 elif [ "$DO_ROSDEP" = true ]; then
     log_info "ROS environment not detected. Skipping rosdep system dependency check."

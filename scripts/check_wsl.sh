@@ -11,8 +11,27 @@ set -e
 [ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
 
 # Load logging utilities
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG" || true
+[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+if [ -f "$SOURCE_LOG" ]; then
+    source "$SOURCE_LOG"
+fi
+
+usage() {
+    cat <<'EOF'
+Usage: check_wsl.sh
+
+Audit WSL2-specific systemd, mirrored networking, and GPU acceleration settings.
+
+Options:
+  -h, --help Show this help.
+EOF
+}
+
+case "${1:-}" in
+    "" ) ;;
+    -h|--help) usage; exit 0 ;;
+    *) log_error "Unknown option: $1"; usage >&2; exit 2 ;;
+esac
 
 # Section-aware INI value checker
 _ini_has() {
@@ -59,7 +78,10 @@ if [ -z "${WIN_USERPROFILE}" ] && command -v cmd.exe >/dev/null 2>&1; then
 fi
 
 if [ -z "${WIN_USERPROFILE}" ]; then
-    _win_user=$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r' 2>/dev/null || whoami)
+    if command -v cmd.exe >/dev/null 2>&1; then
+        _win_user=$(cmd.exe /c 'echo %USERNAME%' 2>/dev/null | tr -d '\r' || true)
+    fi
+    _win_user="${_win_user:-$(whoami)}"
     for _drive in /mnt/*; do
         if [ -d "${_drive}/Users/${_win_user}" ]; then
             WIN_USERPROFILE="${_drive}/Users/${_win_user}"
@@ -117,7 +139,7 @@ else
 fi
 
 if [ "${IS_WSL}" = "true" ] && command -v glxinfo &>/dev/null; then
-    host_renderer=$(glxinfo -B 2>/dev/null | grep -Ei "OpenGL renderer string" | head -n 1 | sed -E 's/.*:[[:space:]]*(.*)/\1/' | xargs || true)
+    host_renderer=$(trim_ws "$(glxinfo -B 2>/dev/null | grep -Ei "OpenGL renderer string" | head -n 1 | sed -E 's/.*:[[:space:]]*(.*)/\1/' || true)")
 
     if [ -n "$host_renderer" ]; then
         if [[ "$host_renderer" == *"llvmpipe"* ]]; then

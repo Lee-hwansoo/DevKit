@@ -3,7 +3,7 @@
   // .vscode/tasks.json
   // Build, test, and utility tasks for DevKit projects
   //
-  // Supports ROS 1/2 (colcon) & cmake build system.
+  // Supports ROS 1/2 workspace builds and CMake projects.
   // ROS version is auto-detected via the ROS_DISTRO environment variable.
   //
   // Execution Strategy:
@@ -25,12 +25,12 @@
   ],
   "tasks": [
     // =====================================================================
-    // ROS Build Tasks (colcon)
+    // ROS Workspace Build Tasks
     // =====================================================================
     {
       "label": "🔨 colcon: Build (Debug)",
       "type": "shell",
-      "command": "(bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true); source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; colcon build --symlink-install --install-base ${env:WS_INSTALL} --build-base ${env:WS_BUILD} --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${env:WS_SCRIPTS}/util_get_python.sh) $(bash ${env:WS_SCRIPTS}/setup_gpu.sh opencv_args 2>/dev/null || echo -DWITH_CUDA=OFF) && (bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true)",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && cbuild --debug'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -38,12 +38,12 @@
       "problemMatcher": [
         "$gcc"
       ],
-      "detail": "Build all ROS 2 packages with Debug symbols (required for GDB debugging)"
+      "detail": "Build all ROS packages with Debug symbols (required for GDB debugging)"
     },
     {
       "label": "🔨 colcon: Build (RelWithDebInfo)",
       "type": "shell",
-      "command": "(bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true); source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; colcon build --symlink-install --install-base ${env:WS_INSTALL} --build-base ${env:WS_BUILD} --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${env:WS_SCRIPTS}/util_get_python.sh) $(bash ${env:WS_SCRIPTS}/setup_gpu.sh opencv_args 2>/dev/null || echo -DWITH_CUDA=OFF) && (bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true)",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && cbuild'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -59,7 +59,7 @@
     {
       "label": "🔨 colcon: Build Package",
       "type": "shell",
-      "command": "(bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true); source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; colcon build --symlink-install --install-base ${env:WS_INSTALL} --build-base ${env:WS_BUILD} --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${env:WS_SCRIPTS}/util_get_python.sh) $(bash ${env:WS_SCRIPTS}/setup_gpu.sh opencv_args 2>/dev/null || echo -DWITH_CUDA=OFF) --packages-select ${input:packageName} && (bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true)",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && cbuild --debug --pkg ${input:packageName}'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -67,12 +67,12 @@
       "problemMatcher": [
         "$gcc"
       ],
-      "detail": "Build a single specific ROS 2 package with Debug symbols"
+      "detail": "Build a single specific ROS package with Debug symbols"
     },
     {
       "label": "🔨 colcon: Build (Release)",
       "type": "shell",
-      "command": "(bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true); source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; colcon build --symlink-install --install-base ${env:WS_INSTALL} --build-base ${env:WS_BUILD} --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${env:WS_SCRIPTS}/util_get_python.sh) $(bash ${env:WS_SCRIPTS}/setup_gpu.sh opencv_args 2>/dev/null || echo -DWITH_CUDA=OFF) && (bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true)",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && cbuild --release'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -86,7 +86,7 @@
     {
       "label": "🧪 colcon: Test",
       "type": "shell",
-      "command": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash && source ${env:WS_INSTALL}/setup.bash && colcon test --build-base ${env:WS_BUILD} --install-base ${env:WS_INSTALL} --event-handlers console_direct+",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && cbt'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -97,7 +97,7 @@
     {
       "label": "🧪 colcon: Test Results",
       "type": "shell",
-      "command": "colcon test-result --build-base ${env:WS_BUILD} --verbose",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && cbtr --verbose'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -111,7 +111,7 @@
     {
       "label": "🔨 cmake: Build (Debug)",
       "type": "shell",
-      "command": "mkdir -p ${env:WS_BUILD} && cd ${env:WS_BUILD} && cmake ../src -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=${env:WS_INSTALL} -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${env:WS_SCRIPTS}/util_get_python.sh) && make -j$(nproc) install && (bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true)",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && __mbuild_impl --debug'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -124,7 +124,7 @@
     {
       "label": "🔨 cmake: Build (Release)",
       "type": "shell",
-      "command": "mkdir -p ${env:WS_BUILD} && cd ${env:WS_BUILD} && cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${env:WS_INSTALL} -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${env:WS_SCRIPTS}/util_get_python.sh) && make -j$(nproc) install && (bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true)",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && __mbuild_impl --release'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -140,22 +140,22 @@
     {
       "label": "🐍 Python: uv sync",
       "type": "shell",
-      "command": "uv sync --project ${env:WS_SRC} --extra ${UV_EXTRA:-cpu}",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && __uvs_impl'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
       "problemMatcher": [],
-      "detail": "Synchronize Python dependencies from pyproject.toml via uv"
+      "detail": "Synchronize Python dependencies through the DevKit uvs alias logic"
     },
     {
       "label": "🐍 Python: Create venv",
       "type": "shell",
-      "command": "mkdir -p ${env:WS_INSTALL} && uv venv \"${env:WS_VENV}\" --python ${env:UV_PYTHON:3.10} --seed --prompt \"${env:COMPOSE_PROJECT_NAME:-.venv}\" && bash ${env:WS_SCRIPTS}/util_setup_links.sh",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && mkenv'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
       "problemMatcher": [],
-      "detail": "Create Python virtual environment in install/.venv (artifact separation)"
+      "detail": "Create Python virtual environment through the DevKit mkenv alias logic"
     },
     // =====================================================================
     // Dependency Management
@@ -163,7 +163,7 @@
     {
       "label": "🔄 Sync Dependencies",
       "type": "shell",
-      "command": "bash ${env:WS_SCRIPTS}/setup_sync_deps.sh",
+      "command": "bash \"${env:WS_SCRIPTS}/setup_sync_deps.sh\"",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -173,7 +173,7 @@
     {
       "label": "🔍 Check Dependencies (Sanity)",
       "type": "shell",
-      "command": "bash ${env:WS_SCRIPTS}/check_deps.sh ${env:WS_INSTALL}",
+      "command": "bash \"${env:WS_SCRIPTS}/check_deps.sh\" \"${env:WS_INSTALL}\"",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -196,7 +196,7 @@
     {
       "label": "🚀 Full Hardware & GPU Check",
       "type": "shell",
-      "command": "bash ${env:WS_SCRIPTS}/check_hardware.sh",
+      "command": "bash \"${env:WS_SCRIPTS}/check_hardware.sh\"",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -206,7 +206,7 @@
     {
       "label": "📦 Sync Workspace Dependencies",
       "type": "shell",
-      "command": "bash ${env:WS_SCRIPTS}/setup_sync_deps.sh --rosdep",
+      "command": "bash \"${env:WS_SCRIPTS}/setup_sync_deps.sh\" --rosdep",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -216,12 +216,22 @@
     {
       "label": "⚡ GPU Status & Diagnostics",
       "type": "shell",
-      "command": "bash ${env:WS_SCRIPTS}/setup_gpu.sh status",
+      "command": "bash \"${env:WS_SCRIPTS}/setup_gpu.sh\" status",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
       "problemMatcher": [],
       "detail": "Quick check of the active rendering mode and GPU driver visibility"
+    },
+    {
+      "label": "✅ DevKit: Verify (Script-only)",
+      "type": "shell",
+      "command": "bash -lc 'ws_scripts=\"$WS_SCRIPTS\"; [ -n \"$ws_scripts\" ] || ws_scripts=/workspace/scripts; VERIFY_DOCKER=0 bash \"$ws_scripts/verify_repo.sh\"'",
+      "options": {
+        "cwd": "${env:WS_ROOT}"
+      },
+      "problemMatcher": [],
+      "detail": "Run DevKit repository validation without Docker socket access"
     },
     {
       "label": "📊 Build Cache Statistics (ccache)",
@@ -236,22 +246,12 @@
     {
       "label": "🧹 Clean Workspace",
       "type": "shell",
-      "command": "rm -rf ${env:WS_BUILD} ${env:WS_INSTALL} ${env:WS_ROOT}/log && echo '✅ Workspace cleaned (build, install, log removed)'",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && mclean && __remove_workspace_path \"$WS_LOGS\"'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
       "problemMatcher": [],
       "detail": "⚠️ WARNING: Removes all build artifacts — use with caution"
-    },
-    {
-      "label": "🏥 Hardware Check",
-      "type": "shell",
-      "command": "bash ${env:WS_SCRIPTS}/check_hardware.sh",
-      "options": {
-        "cwd": "${env:WS_ROOT}"
-      },
-      "problemMatcher": [],
-      "detail": "Run full GPU/Display hardware diagnostics inside the container"
     },
     // =====================================================================
     // Pre-Debug Helper Tasks
@@ -259,7 +259,7 @@
     {
       "label": "⚙️ Source & Build (Debug, pre-launch)",
       "type": "shell",
-      "command": "(bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true); source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; if command -v colcon &>/dev/null; then colcon build --symlink-install --install-base ${env:WS_INSTALL} --build-base ${env:WS_BUILD} ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${env:WS_SCRIPTS}/util_get_python.sh) ${CMAKE_EXTRA_ARGS}; elif command -v catkin &>/dev/null; then catkin build --workspace ${env:WS_ROOT} -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPYTHON_EXECUTABLE=$(bash ${env:WS_SCRIPTS}/util_get_python.sh) ${CMAKE_EXTRA_ARGS}; fi && (bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true) && source ${env:WS_INSTALL}/setup.bash 2>/dev/null || source ${env:WS_ROOT}/devel/setup.bash 2>/dev/null || true",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && cbuild --debug && (__smart_source || true)'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },
@@ -276,7 +276,7 @@
     {
       "label": "⚡ Source & Build Package (Debug, pre-launch)",
       "type": "shell",
-      "command": "(bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true); source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; if command -v colcon &>/dev/null; then colcon build --symlink-install --install-base ${env:WS_INSTALL} --build-base ${env:WS_BUILD} ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_EXTRA_ARGS} --packages-select ${input:packageName}; elif command -v catkin &>/dev/null; then catkin build --workspace ${env:WS_ROOT} --packages-select ${input:packageName} -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_STANDARD=${env:CMAKE_CXX_STANDARD:17} -DCMAKE_C_STANDARD=${env:CMAKE_C_STANDARD:11} -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ${CMAKE_EXTRA_ARGS}; fi && (bash ${env:WS_SCRIPTS}/util_setup_links.sh 2>/dev/null || true) && (source ${env:WS_INSTALL}/setup.bash 2>/dev/null || source ${env:WS_ROOT}/devel/setup.bash 2>/dev/null || true)",
+      "command": "bash -lc 'source \"$WORKSPACE_PATH/config/util_aliases.sh\" && cbuild --debug --pkg ${input:packageName} && (__smart_source || true)'",
       "options": {
         "cwd": "${env:WS_ROOT}"
       },

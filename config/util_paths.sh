@@ -6,7 +6,7 @@
 
 # Root Workspace Path
 # Priority: 1. Env Var, 2. Script location, 3. Default
-if [ -z "${WORKSPACE_PATH}" ]; then
+if [ -z "${WORKSPACE_PATH:-}" ]; then
     _INFERRED_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     export WS_ROOT="${_INFERRED_ROOT:-/workspace}"
 else
@@ -19,7 +19,8 @@ export WS_CONFIG="${WS_ROOT}/config"
 export WS_DEPS="${WS_ROOT}/dependencies"
 export WS_INSTALL="${WS_ROOT}/install"
 export WS_SRC="${WS_ROOT}/src"
-export WS_LOGS="${WS_ROOT}/logs"
+export WS_BUILD="${WS_ROOT}/build"
+export WS_LOGS="${WS_ROOT}/log"
 
 # Python & Environment
 export WS_VENV="${VENV_PATH:-${WS_INSTALL}/.venv}"
@@ -28,5 +29,11 @@ export WS_UV_CACHE_DIR="/cache/uv"
 
 # Logging Utility
 export SOURCE_LOG="${WS_SCRIPTS}/util_logging.sh"
+
+configure_git_safe_directory() {
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0="safe.directory"
+    export GIT_CONFIG_VALUE_0="*"
+}
 
 unset _INFERRED_ROOT

@@ -4,13 +4,36 @@
 # Centralized management for workspace symlinks (colcon.meta, dependencies, etc.)
 # =============================================================================
 
-# Load path configuration
-[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
-[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
-
-# Load logging utility
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
+[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
 [ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+
+usage() {
+    cat <<'EOF'
+Usage: util_setup_links.sh [--verbose] [--skip-compile-commands]
+
+Synchronize workspace helper links such as colcon.meta, .venv, and
+compile_commands.json.
+
+Options:
+  --verbose                Print link synchronization messages.
+  --skip-compile-commands  Skip compile_commands.json aggregation for fast shell startup.
+  -h, --help               Show this help.
+EOF
+}
+
+VERBOSE=false
+SYNC_COMPILE_COMMANDS=true
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --verbose) VERBOSE=true; shift ;;
+        --skip-compile-commands) SYNC_COMPILE_COMMANDS=false; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) log_error "Unknown option: $1"; usage >&2; exit 2 ;;
+    esac
+done
 
 COLCON_META_SRC="${WS_CONFIG}/colcon.meta"
 VENV_DIR_SRC="${WS_VENV}"
@@ -48,9 +71,6 @@ safe_link() {
     fi
 }
 
-VERBOSE=false
-[ "$1" = "--verbose" ] && VERBOSE=true
-
 # 1. colcon.meta (Build Optimization Configuration)
 safe_link "$COLCON_META_SRC" "${WS_ROOT}/colcon.meta" "Colcon configuration"
 
@@ -60,13 +80,13 @@ safe_link "$VENV_DIR_SRC" "${WS_ROOT}/.venv" "Virtual environment"
 
 # 3. compile_commands.json (C++ IntelliSense)
 # If we have multiple package-specific build directories (e.g. ROS colcon), merge them into a single compile_commands.json
-if [ -d "${WS_ROOT}/build" ]; then
+if [ "$SYNC_COMPILE_COMMANDS" = true ] && [ -d "${WS_ROOT}/build" ]; then
     if [ "$VERBOSE" == true ]; then
         log_info "Aggregating compile_commands.json from all sub-packages..."
     fi
-    python3 -c "
+    if ! BUILD_DIR="${WS_ROOT}/build" python3 -c "
 import json, glob, os
-build_dir = '${WS_ROOT}/build'
+build_dir = os.environ['BUILD_DIR']
 output_file = os.path.join(build_dir, 'compile_commands.json')
 sub_files = [f for f in glob.glob(os.path.join(build_dir, '**/compile_commands.json'), recursive=True)
              if os.path.abspath(f) != os.path.abspath(output_file)]
@@ -74,16 +94,15 @@ sub_files = [f for f in glob.glob(os.path.join(build_dir, '**/compile_commands.j
 if sub_files:
     all_commands = []
     for f in sub_files:
-        try:
-            with open(f, 'r') as file:
-                data = json.load(file)
-                if isinstance(data, list):
-                    all_commands.extend(data)
-        except Exception:
-            pass
+        with open(f, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+            if isinstance(data, list):
+                all_commands.extend(data)
     with open(output_file, 'w') as file:
         json.dump(all_commands, file, indent=2)
-" 2>/dev/null || true
+"; then
+        log_warn "Failed to aggregate compile_commands.json. Check package build outputs for invalid JSON."
+    fi
 fi
 
 COMPILE_COMMANDS_SRC="${WS_ROOT}/build/compile_commands.json"

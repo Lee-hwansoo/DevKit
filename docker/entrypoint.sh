@@ -32,7 +32,10 @@ else
 fi
 
 # Locate logging utility (Standard Project Path)
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${WS_SCRIPTS}/util_logging.sh"
+if [ -f "$SOURCE_LOG" ]; then
+    source "$SOURCE_LOG"
+fi
 
 # Fallback: Define logging stubs if utility functions are unavailable (Safety net for production)
 if ! declare -f log_info > /dev/null 2>&1; then
@@ -42,22 +45,48 @@ if ! declare -f log_info > /dev/null 2>&1; then
     log_error() { echo "[ERROR] $1" >&2; }
 fi
 LOG_PREFIX="[Entrypoint]"
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
 
 # =============================================================================
 # Workspace & Environment Setup
 # =============================================================================
 
-# Fix for "detected dubious ownership" git error in Docker/WSL2 (Optimized for Read-Only .gitconfig)
-export GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0="safe.directory"
-export GIT_CONFIG_VALUE_0="*"
-export GIT_CONFIG_PARAMETERS="'safe.directory=*'"
-git config --system --get-all safe.directory 2>/dev/null | grep -q "^[*]$" || \
-git config --system --add safe.directory "*" 2>/dev/null || true
+# Fix for "detected dubious ownership" git error in Docker/WSL2 without mutating system config.
+if declare -f configure_git_safe_directory >/dev/null 2>&1; then
+    configure_git_safe_directory
+else
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0="safe.directory"
+    export GIT_CONFIG_VALUE_0="*"
+fi
 
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+get_user_home() {
+    local user="${1:-root}"
+    local home
+    home="$(getent passwd "$user" 2>/dev/null | cut -d: -f6)"
+    if [ -z "$home" ] && [ -d "/home/$user" ]; then
+        home="/home/$user"
+    fi
+    printf '%s\n' "${home:-${HOME:-/root}}"
+}
+
+sync_owner_if_root() {
+    local path="$1"
+    local desc="${2:-$1}"
+
+    [ "$(id -u)" = "0" ] || return 0
+    [ -n "${CONTAINER_USER:-}" ] || return 0
+    [ "${CONTAINER_USER}" != "root" ] || return 0
+    [ -e "$path" ] || return 0
+
+    if ! chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "$path" 2>/dev/null; then
+        log_warn "Could not synchronize ownership for ${desc}: ${path}"
+    fi
+}
 
 # Resolves XDG_RUNTIME_DIR, proxying to /tmp/runtime-internal when the mounted
 # directory is owned by a different UID (e.g. WSL2 host user=1000, container=root).
@@ -67,13 +96,12 @@ setup_xdg_runtime() {
     local xdg_dir="${XDG_RUNTIME_DIR:-/tmp/.container_xdg}"
     local my_uid
     my_uid="$(id -u)"
-    local target_user="${CONTAINER_USER:-user}"
 
     if [ -d "$xdg_dir" ] && [ "$(stat -c %u "$xdg_dir" 2>/dev/null)" != "$my_uid" ]; then
         local proxy="/tmp/runtime-internal"
         mkdir -p "$proxy" && chmod 700 "$proxy"
         # Remove stale symlinks before re-linking (handles socket recreation by compositor)
-        find "$proxy" -maxdepth 1 -type l -exec rm -f {} \;
+        find "$proxy" -maxdepth 1 -type l -exec rm -f {} +
         find "$xdg_dir" -maxdepth 1 -not -path "$xdg_dir" -exec ln -sf {} "$proxy/" 2>/dev/null \;
         log_ok "XDG_RUNTIME_DIR proxied for security compliance: $proxy" >&2
         echo "$proxy"
@@ -135,7 +163,7 @@ if [ -d "${WS_SCRIPTS}" ]; then
     log_info "Environment: Development/Baked (Project scripts active)"
 else
     IS_DEV=false
-    log_info "Environment: Production (Minimal runtime)"
+    log_info "Environment: Minimal runtime"
 fi
 
 # Move to workspace root
@@ -145,22 +173,23 @@ if [ -d "${WS_ROOT}" ]; then
     # Synchronize workspace links (handles host mount overwrites)
     if [ "$IS_DEV" = true ]; then
         SETUP_LINKS="${WS_SCRIPTS}/util_setup_links.sh"
-        [ -f "$SETUP_LINKS" ] && "$SETUP_LINKS" --verbose
+        if [ -f "$SETUP_LINKS" ]; then
+            "$SETUP_LINKS" --verbose --skip-compile-commands || log_warn "Workspace link synchronization failed."
+        fi
     fi
 
     # Clean up any conflicting libraries leaked from the host via bind mounts
     if [ "$IS_DEV" = true ]; then
-        LEAKED_LIBS=$(find . -maxdepth 1 \( -name "libnvidia-*.so*" -o -name "libcuda.so*" \) 2>/dev/null)
-        if [ -n "$LEAKED_LIBS" ]; then
-            log_warn "Detected host-leaked libraries in workspace root. Cleaning up for driver stability:"
-            echo "$LEAKED_LIBS" | xargs rm -fv
+        LEAKED_GPU_LIB="$(find . -maxdepth 1 \( -name "libnvidia-*.so*" -o -name "libcuda.so*" \) -type f -print -quit 2>/dev/null)"
+        if [ -n "$LEAKED_GPU_LIB" ]; then
+            log_warn "Detected host-leaked libraries in workspace root. Cleaning up for driver stability."
+            find . -maxdepth 1 \( -name "libnvidia-*.so*" -o -name "libcuda.so*" \) -type f -print0 2>/dev/null | xargs -0 -r rm -f --
         fi
     fi
 fi
 
 # Detect actual home directory of the current user (root in dev, devkit in prod)
-DEV_HOME=$(getent passwd "${SUDO_USER:-${USER:-root}}" | cut -d: -f6)
-[ -z "$DEV_HOME" ] && DEV_HOME=$(eval echo "~${SUDO_USER:-${USER:-root}}")
+DEV_HOME="$(get_user_home "${SUDO_USER:-${USER:-root}}")"
 
 # Helper to robustly inject environment bridge into /etc/bash.bashrc
 # Usage: persist_env_block <marker_name> <profile_script_path>
@@ -187,7 +216,9 @@ persist_env_block() {
             echo -e "$block_content" >> "$tmp_file"
             cat "$tmp_file" > "$target" 2>/dev/null || log_warn "Failed to update $target."
         fi
-        rm -f "$tmp_file" 2>/dev/null || true
+        if ! rm -f "$tmp_file" 2>/dev/null; then
+            log_warn "Failed to remove temporary file: $tmp_file"
+        fi
     else
         # Append new block if it doesn't exist
         echo -e "\n$block_content" >> "$target" 2>/dev/null || log_warn "Failed to append to $target."
@@ -202,7 +233,7 @@ if [ "$IS_DEV" = true ]; then
         # Resolve XDG_RUNTIME_DIR (handles WSL2 uid mismatch via proxy)
         export XDG_RUNTIME_DIR="$(setup_xdg_runtime)"
 
-        # Persist for 'docker exec' sessions (e.g. make ros-shell)
+        # Persist for 'docker exec' sessions (e.g. make shell ENV=ros)
         if [ -w /etc/profile.d ]; then
             echo "export XDG_RUNTIME_DIR=\"$XDG_RUNTIME_DIR\"" > /etc/profile.d/devkit-xdg.sh
             chmod 644 /etc/profile.d/devkit-xdg.sh
@@ -221,10 +252,12 @@ fi
 # =============================================================================
 if [ "$IS_DEV" = true ]; then
     if [ -w /cache ] || [ -d /cache/ccache ]; then
-        mkdir -p /cache/ccache /cache/uv /cache/apt 2>/dev/null || true
-        if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
-            chown -R "${CONTAINER_USER}:${CONTAINER_USER}" /cache/ccache /cache/uv /cache/apt 2>/dev/null || true
+        if ! mkdir -p /cache/ccache /cache/uv /cache/apt 2>/dev/null; then
+            log_warn "Failed to create one or more cache directories under /cache"
         fi
+        sync_owner_if_root /cache/ccache "ccache cache"
+        sync_owner_if_root /cache/uv "uv cache"
+        sync_owner_if_root /cache/apt "APT cache"
         log_ok "Cache dirs ready: /cache/{ccache,uv,apt}"
     else
         log_warn "Cache directory /cache is not writable, skipping cache directory setup"
@@ -232,10 +265,8 @@ if [ "$IS_DEV" = true ]; then
 
     # Ensure build, devel, install, and log directories are owned by the container user (handles named volume permissions)
     if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
-        for dir in "${WS_ROOT}/build" "${WS_ROOT}/devel" "${WS_ROOT}/install" "${WS_ROOT}/log"; do
-            if [ -d "$dir" ]; then
-                chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "$dir" 2>/dev/null || true
-            fi
+        for dir in "${WS_BUILD:-${WS_ROOT}/build}" "${WS_ROOT}/devel" "${WS_INSTALL:-${WS_ROOT}/install}" "${WS_LOGS:-${WS_ROOT}/log}"; do
+            sync_owner_if_root "$dir" "workspace directory"
         done
         log_ok "Workspace build, devel, install, and log directories ownership synchronized for ${CONTAINER_USER}."
     fi
@@ -243,13 +274,12 @@ fi
 
 # Initialize ros cache for hybrid environment (Docker/Apptainer)
 if [ -d "/opt/ros_cache" ]; then
-    TARGET_HOME=$(getent passwd "${CONTAINER_USER}" | cut -d: -f6)
-    TARGET_HOME="${TARGET_HOME:-$HOME}"
+    TARGET_HOME="$(get_user_home "${CONTAINER_USER:-${USER:-root}}")"
 
     if [ ! -d "${TARGET_HOME}/.ros" ]; then
         mkdir -p "${TARGET_HOME}/.ros"
         cp -Rp /opt/ros_cache/. "${TARGET_HOME}/.ros/"
-        [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "${TARGET_HOME}/.ros" 2>/dev/null
+        sync_owner_if_root "${TARGET_HOME}/.ros" "ROS cache"
         log_ok "ros cache initialized."
     fi
 fi
@@ -258,7 +288,7 @@ fi
 # [4] Check SSH Key Permissions (Dev Only)
 # =============================================================================
 if [ "$IS_DEV" = true ] && [ -d "${DEV_HOME}/.ssh" ]; then
-    BAD_PERMS=$(find "${DEV_HOME}/.ssh" -name "id_*" ! -perm 600 2>/dev/null | head -1)
+    BAD_PERMS=$(find "${DEV_HOME}/.ssh" -name "id_*" ! -perm 600 -print -quit 2>/dev/null)
     if [ -n "${BAD_PERMS}" ]; then
         log_warn "SSH key permissions may cause issues (read-only mount)."
         log_warn "On host: chmod 600 ~/.ssh/id_*"
@@ -274,7 +304,7 @@ if [ "$IS_DEV" = true ]; then
     if [ ! -f "${WS_INSTALL}/setup.bash" ] && [ ! -d "${WS_VENV}" ]; then
         log_warn "Workspace not yet built or environment not set up."
         if [ -f "$ROS_SETUP" ]; then
-            log_warn "  Run: cb     (colcon build for ROS)"
+            log_warn "  Run: cbuild (colcon build for ROS)"
         else
             log_warn "  Run: mbuild (for C++) or mkenv (for Python)"
         fi
@@ -293,16 +323,11 @@ fi
 # =============================================================================
 # [7] Environment Sourcing (ROS and Python venv)
 # =============================================================================
-
-# [7.1] Development Aliases & Tools (Project Path)
-ALIASES_SH="${WS_CONFIG}/util_aliases.sh"
-if [ -f "$ALIASES_SH" ]; then
-    source "$ALIASES_SH"
-    log_ok "Development tools integrated from: $ALIASES_SH"
-fi
+# NOTE: Development aliases (cbuild, mksync, etc.) are loaded via
+# config/init_bash.sh for interactive shells, not here. The entrypoint
+# stays minimal to avoid polluting non-interactive exec sessions.
 
 # ROS environment source
-ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
 if [ -f "$ROS_SETUP" ]; then
     source "$ROS_SETUP"
     log_ok "ROS ${ROS_DISTRO:-humble} sourced"
@@ -312,16 +337,16 @@ if [ -f "$ROS_SETUP" ]; then
         log_ok "Workspace overlay sourced"
     fi
 else
-    log_info "ROS2 not installed or not in /opt/ros, skipping ROS2 setup"
+    log_info "ROS not installed or not in /opt/ros, skipping ROS setup"
 fi
 
-# [7.2] ROS Version-specific Configuration
+# [7.1] ROS Version-specific Configuration
 ROS_ENV_INIT="${WS_CONFIG}/init_ros_env.sh"
 if [ -f "$ROS_ENV_INIT" ]; then
     source "$ROS_ENV_INIT"
 fi
 
-# [7.3] Auto-activate Python virtual environment
+# [7.2] Auto-activate Python virtual environment
 if [ -f "${WS_VENV}/bin/activate" ]; then
     source "${WS_VENV}/bin/activate"
 fi
@@ -334,7 +359,10 @@ log_info "GPU mode: ${GPU_MODE:-auto}"
 GPU_SETUP="${WS_SCRIPTS}/setup_gpu.sh"
 
 if [ -f "$GPU_SETUP" ]; then
-    source "$GPU_SETUP" "${GPU_MODE:-auto}" || log_warn "GPU setup encountered errors, continuing with defaults."
+    if ! source "$GPU_SETUP" "${GPU_MODE:-auto}"; then
+        log_error "GPU setup failed. Check GPU_MODE=${GPU_MODE:-auto} and ${GPU_SETUP}."
+        exit 1
+    fi
 fi
 
 # Persist GPU environment for non-interactive shells (docker exec)
@@ -369,9 +397,9 @@ if [ "$IS_DEV" = true ]; then
     # Keep src/thirdparty as default, but run only if dependencies file exists
     TARGET_DIR="${SYNC_TARGET_DIR:-src/thirdparty}"
     if [ "$PWD" == "$WS_ROOT" ] && [ -f "dependencies/dependencies.repos" ]; then
-        if [ ! -d "$TARGET_DIR" ] || [ -z "$(ls -A $TARGET_DIR 2>/dev/null)" ]; then
+        if [ ! -d "$TARGET_DIR" ] || [ -z "$(find "$TARGET_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
             SYNC_DEPS="${WS_SCRIPTS}/setup_sync_deps.sh"
-            log_info "Dependency directory ($TARGET_DIR) is empty. Running $(basename $SYNC_DEPS)..."
+            log_info "Dependency directory ($TARGET_DIR) is empty. Running $(basename "$SYNC_DEPS")..."
             bash "$SYNC_DEPS"
         fi
     fi
@@ -382,21 +410,43 @@ fi
 # =============================================================================
 if [ "$(id -u)" = "0" ] && [ -n "${CONTAINER_USER}" ] && [ "${CONTAINER_USER}" != "root" ]; then
     log_ok "Dropping privileges: executing command as user '${CONTAINER_USER}'"
-    user_home=$(getent passwd "${CONTAINER_USER}" | cut -d: -f6)
-    if [ -z "$user_home" ]; then
-        if [ -d "/home/${CONTAINER_USER}" ]; then
-            user_home="/home/${CONTAINER_USER}"
-        else
-            user_home="${HOME:-/root}"
-        fi
+    user_home="$(get_user_home "${CONTAINER_USER}")"
+    user_uid="$(id -u "${CONTAINER_USER}")"
+    user_gid="$(id -g "${CONTAINER_USER}")"
+    runtime_env=(
+        "HOME=$user_home"
+        "USER=${CONTAINER_USER}"
+        "LOGNAME=${CONTAINER_USER}"
+        "PATH=$PATH"
+        "WORKSPACE_PATH=$WS_ROOT"
+        "LANG=$LANG"
+        "LC_ALL=$LC_ALL"
+        "LANGUAGE=$LANGUAGE"
+        "VIRTUAL_ENV=$VIRTUAL_ENV"
+        "DISPLAY=${DISPLAY:-}"
+        "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}"
+        "XAUTHORITY=${XAUTHORITY:-}"
+        "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}"
+        "QT_X11_NO_MITSHM=${QT_X11_NO_MITSHM:-}"
+        "QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-}"
+        "GDK_BACKEND=${GDK_BACKEND:-}"
+        "SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-}"
+        "ROS_DISTRO=${ROS_DISTRO:-}"
+        "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-}"
+        "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-}"
+        "ROS_MASTER_URI=${ROS_MASTER_URI:-}"
+        "ROS_HOSTNAME=${ROS_HOSTNAME:-}"
+        "ROS_IP=${ROS_IP:-}"
+        "GPU_MODE=${GPU_MODE:-}"
+        "NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-}"
+        "NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-}"
+        "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+        "PYTHONPATH=${PYTHONPATH:-}"
+    )
+    if command -v setpriv >/dev/null 2>&1; then
+        exec setpriv --reuid "$user_uid" --regid "$user_gid" --init-groups env "${runtime_env[@]}" "$@"
     fi
-    exec sudo -E -u "${CONTAINER_USER}" \
-        HOME="$user_home" \
-        PATH="$PATH" \
-        VIRTUAL_ENV="$VIRTUAL_ENV" \
-        LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
-        PYTHONPATH="${PYTHONPATH:-}" \
-        "$@"
+    exec sudo -E -u "${CONTAINER_USER}" env "${runtime_env[@]}" "$@"
 else
     exec "$@"
 fi

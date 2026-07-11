@@ -9,23 +9,24 @@
 // The active ROS version is determined by ROS_DISTRO in .env.
 //
 // Usage:
-//   1. Start the container first: `make ros` (or `make dev`)
+//   1. Start the container first: `make start ENV=ros` (or `make start ENV=dev`)
 //   2. Open Command Palette → "Dev Containers: Attach to Running Container..."
 //   OR
 //   3. Use this file to auto-configure the attachment settings
 //
 // Note: This file works WITH the existing Docker Compose workflow,
-//       it does NOT replace `make ros` / `make dev`.
+//       it does NOT replace `make start ENV=ros|dev`.
 // =============================================================================
 {
     "name": "DevKit (ROS ${localEnv:ROS_DISTRO:humble})",
 
     // ── Container Connection ─────────────────────────────────────────────────
-    // Attach to the container started by `make ros` or `make dev`
+    // Attach to the container started by `make start ENV=ros` or `make start ENV=dev`
     "dockerComposeFile": [
         "../docker-compose.dev.yml"
     ],
-    // Use the ROS CPU service as the default target (GPU variants auto-detected by Makefile)
+    // Use the ROS CPU service as the default target for direct VSCode attach.
+    // GPU variants are selected by Makefile when starting containers from the host.
     // Change to "basic-cpu" for pure C++/Python development without ROS
     "service": "ros-cpu",
     "workspaceFolder": "${containerEnv:WORKSPACE_PATH:/workspace}",
@@ -75,7 +76,7 @@
     // ── Lifecycle Commands ───────────────────────────────────────────────────
     // Source the ROS and workspace environments after VSCode attaches
     // Auto-detects ROS 1 (devel/setup.bash) vs ROS 2 (install/setup.bash)
-    "postAttachCommand": "source /opt/ros/${ROS_DISTRO:-humble}/setup.bash 2>/dev/null; source ${WORKSPACE_PATH:-/workspace}/install/setup.bash 2>/dev/null || source ${WORKSPACE_PATH:-/workspace}/devel/setup.bash 2>/dev/null; echo '✅ DevKit environment ready (ROS ${ROS_DISTRO:-humble})'",
+    "postAttachCommand": "bash -lc 'ros_distro=\"$ROS_DISTRO\"; [ -n \"$ros_distro\" ] || ros_distro=humble; workspace=\"$WORKSPACE_PATH\"; [ -n \"$workspace\" ] || workspace=/workspace; source \"/opt/ros/$ros_distro/setup.bash\" 2>/dev/null || true; source \"$workspace/install/setup.bash\" 2>/dev/null || source \"$workspace/devel/setup.bash\" 2>/dev/null || true; echo \"✅ DevKit environment ready (ROS $ros_distro)\"'",
 
     // ── Features ─────────────────────────────────────────────────────────────
     "remoteUser": "${localEnv:CONTAINER_USER:user}"

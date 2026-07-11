@@ -1,6 +1,6 @@
 # =============================================================================
 # docker/Dockerfile
-# Multi-stage Integrated Dockerfile (Dev & Prod)
+# Multi-stage Integrated Dockerfile (Dev & ROS)
 # =============================================================================
 
 # ── Global Build Arguments (Single Source of Truth) ──────────────────────────
@@ -8,20 +8,28 @@ ARG BASE_IMAGE=ubuntu:22.04
 ARG WORKSPACE_PATH=/workspace
 ARG ROS_DISTRO=humble
 ARG APT_SNAPSHOT_DATE=latest
+ARG STRICT_GPG_CHECK=false
 ARG UV_VERSION=0.10.10
 ARG UV_PYTHON=3.10
+ARG CMAKE_C_STANDARD=11
 ARG CMAKE_CXX_STANDARD=17
 ARG LANG=C.UTF-8
+ARG TZ=UTC
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TARGETARCH=amd64
-ARG SYS_PYTHON_EXE=""
+ARG SYS_PYTHON_EXE=/usr/bin/python3
 ARG UV_SYNC_FLAGS=""
 ARG CMAKE_EXTRA_ARGS=""
 ARG COLCON_EXTRA_FLAGS=""
 ARG HAS_NVIDIA=false
 ARG FULL_CUDA=false
+ARG OPENCV_CUDA=auto
 ARG CUDA_VERSION=""
 ARG CUDNN_VERSION=""
+ARG IMAGE_TAG=latest
+ARG GIT_COMMIT=unknown
+ARG COMPOSE_PROJECT_NAME=unknown
+ARG SOURCE_DATE_EPOCH=""
 
 # ── Stage: uv-binaries (Dependency Management Engine) ────────────────────────
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv-binaries
@@ -40,6 +48,7 @@ ENV LANG=${LANG} \
     LC_ALL=${LANG} \
     TZ=${TZ} \
     DEBIAN_FRONTEND=${DEBIAN_FRONTEND} \
+    WORKSPACE_PATH=${WORKSPACE_PATH} \
     ROS_DISTRO=${ROS_DISTRO}
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -49,7 +58,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
     export SOURCE_LOG=/tmp/util_logging.sh && \
     bash /tmp/util_apt_helper.sh init-apt && \
-    bash /tmp/util_apt_helper.sh configure-snapshot ${APT_SNAPSHOT_DATE} && \
+    bash /tmp/util_apt_helper.sh configure-snapshot "${APT_SNAPSHOT_DATE}" && \
     if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
     bash /tmp/util_apt_helper.sh setup-cuda-repo ${CUDA_VERSION}; \
     fi
@@ -58,67 +67,66 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     locales tzdata && \
-    (locale-gen ${LANG} || [ "${LANG}" = "C.UTF-8" ]) && \
-    update-locale LANG=${LANG} && \
+    if [ "${LANG}" = "C.UTF-8" ]; then \
+        printf 'LANG=C.UTF-8\nLC_ALL=C.UTF-8\n' > /etc/default/locale; \
+    else \
+        locale-gen "${LANG}" && update-locale LANG="${LANG}"; \
+    fi && \
     ln -snf /usr/share/zoneinfo/${TZ:-UTC} /etc/localtime && echo ${TZ:-UTC} > /etc/timezone
 ENV LANG=${LANG} \
     LC_ALL=${LANG} \
     TZ=${TZ} \
     DEBIAN_FRONTEND=${DEBIAN_FRONTEND} \
+    WORKSPACE_PATH=${WORKSPACE_PATH} \
     ROS_DISTRO=${ROS_DISTRO}
 
-# ── Stage: runtime-common (Optimized Execution Context) ──────────────────────
-FROM base AS runtime-common
+# ── Stage: build-core (Production-capable build toolchain) ───────────────────
+FROM base AS build-core
+ARG WORKSPACE_PATH
+ARG SYS_PYTHON_EXE
+ARG UV_VERSION
+ARG UV_PYTHON
+ARG CMAKE_C_STANDARD
+ARG CMAKE_CXX_STANDARD
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-    libegl1-mesa libgl1-mesa-dri libglx-mesa0 mesa-utils
+    bash ca-certificates curl file git gnupg2 \
+    build-essential ccache cmake g++ gcc libasio-dev libboost-dev libboost-chrono-dev libboost-filesystem-dev libboost-program-options-dev libboost-regex-dev libboost-serialization-dev libboost-system-dev libboost-thread-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev && \
+    apt-get autoremove -y && \
+    rm -rf /tmp/* /var/tmp/*
 
-# CUDA Runtime Libraries (Conditional - Minimal for Production)
-ARG CUDA_VERSION
-ARG CUDNN_VERSION
-ARG HAS_NVIDIA
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
-    major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
-    if [ "$FULL_CUDA" = "true" ]; then \
-    PACKAGES="cuda-${major_minor}"; \
-    else \
-    PACKAGES="cuda-cudart-${major_minor} cuda-nvtx-${major_minor} libcublas-${major_minor}"; \
-    fi; \
-    apt-get update && apt-get install -y --no-install-recommends $PACKAGES; \
-    if [ -n "$CUDNN_VERSION" ]; then \
-    if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
-    cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
-    apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}-cuda-${cuda_major}; \
-    else \
-    apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}; \
-    fi; \
-    fi; \
-    # Purge container-side NVIDIA driver userspace packages if they were pulled transitively.
-    # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
-    apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
-    apt-get autoremove -y || true; \
-    ldconfig; \
-    fi
+# Install uv and setup Python once for both dev images and production builders.
+COPY --from=uv-binaries /uv /uvx /usr/local/bin/
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv python install ${UV_PYTHON}
 
-# Note: entrypoint.sh is also copied in dev-core (inheritance tree differs so duplication is required)
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+ENV PATH="/usr/lib/ccache:${WORKSPACE_PATH}/install/.venv/bin:$PATH" \
+    CCACHE_DIR=/cache/ccache \
+    UV_CACHE_DIR=/cache/uv \
+    UV_PYTHON=${UV_PYTHON} \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    VIRTUAL_ENV=${WORKSPACE_PATH}/install/.venv \
+    CMAKE_C_STANDARD=${CMAKE_C_STANDARD} \
+    CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} \
+    SYS_PYTHON_EXE=${SYS_PYTHON_EXE} \
+    BASH_ENV=/root/.bashrc
 
-# ── Stage: dev-base-tools (Compilers, GUI & Diagnostics) ─────────────────────
-FROM base AS dev-base-tools
+RUN mkdir -p ${CCACHE_DIR} ${UV_CACHE_DIR} ${WORKSPACE_PATH}/install
+
+# ── Stage: dev-base-tools (Interactive CLI, GUI & Diagnostics) ────────────────
+FROM build-core AS dev-base-tools
 ARG WORKSPACE_PATH
+ARG TARGETARCH
+ARG INSTALL_INTEL_GPU_TOOLS=false
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
     apt-get update && apt-get install -y --no-install-recommends \
-    # base-tools
-    sudo bash-completion ca-certificates curl file gnupg2 htop iproute2 jq lsb-release net-tools nvtop software-properties-common tree unzip wget \
+    # cli-tools
+    sudo bash-completion gdb htop iproute2 lsb-release net-tools nvtop tree unzip wget \
     fonts-noto-color-emoji fonts-font-awesome \
-    # build-tools
-    build-essential ccache cmake g++ gcc gdb git libasio-dev libboost-all-dev libeigen3-dev libtbb-dev libyaml-cpp-dev make ninja-build python3-dev \
     # gui-tools
     dbus-x11 clinfo fontconfig libegl1-mesa-dev libgl1-mesa-dri libgl1-mesa-glx libglfw3-dev libglx-mesa0 libqt5waylandclient5 libvulkan-dev libwayland-client0 libxkbcommon0 mesa-utils mesa-vulkan-drivers qtwayland5 terminator vulkan-tools vulkan-validationlayers x11-apps x11-utils && \
     # Install D2Coding Font
@@ -129,7 +137,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     unzip -q /tmp/d2coding.zip -d /usr/share/fonts/truetype/d2coding && rm -f /tmp/d2coding.zip; \
     fi; \
     fc-cache -f && \
-    apt-get autoremove -y
+    apt-get autoremove -y && \
+    rm -rf /tmp/* /var/tmp/*
 
 # Create a non-root user with UID/GID and passwordless sudo
 ARG CONTAINER_USER=user
@@ -145,74 +154,31 @@ RUN groupadd --gid $USER_GID $CONTAINER_USER \
 ARG CUDA_VERSION
 ARG CUDNN_VERSION
 ARG HAS_NVIDIA
-ARG LD_LIBRARY_PATH
+ARG FULL_CUDA
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    if [ "$HAS_NVIDIA" = "true" ] && [ -n "$CUDA_VERSION" ]; then \
-    major_minor=$(echo $CUDA_VERSION | sed -E 's/^([0-9]+)\.([0-9]+).*/\1-\2/'); \
-    if [ "$FULL_CUDA" = "true" ]; then \
-    PACKAGES="cuda-${major_minor}"; \
-    else \
-    PACKAGES="cuda-nvcc-${major_minor} \
-    cuda-compiler-${major_minor} \
-    cuda-libraries-dev-${major_minor} \
-    cuda-visual-tools-${major_minor} \
-    cuda-cudart-dev-${major_minor} \
-    libcublas-dev-${major_minor} \
-    cuda-nvml-dev-${major_minor} \
-    cuda-command-line-tools-${major_minor}"; \
-    fi; \
-    apt-get update && apt-get install -y --no-install-recommends $PACKAGES; \
-    if [ -n "$CUDNN_VERSION" ]; then \
-    if [ "${CUDNN_VERSION%%.*}" -ge 9 ]; then \
-    cuda_major=$(echo $CUDA_VERSION | cut -d. -f1); \
-    apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION}-cuda-${cuda_major} libcudnn${CUDNN_VERSION}-dev-cuda-${cuda_major}; \
-    else \
-    apt-get install -y --no-install-recommends libcudnn${CUDNN_VERSION} libcudnn${CUDNN_VERSION}-dev; \
-    fi; \
-    fi; \
-    # Purge container-side NVIDIA driver userspace packages if they were pulled transitively.
-    # This is critical to ensure the container uses the host's driver via nvidia-container-runtime.
-    apt-get purge -y "libnvidia-compute-[0-9]*" "nvidia-compute-utils-[0-9]*" "nvidia-utils-[0-9]*" "libnvidia-extra-[0-9]*" || true; \
-    apt-get autoremove -y || true; \
-    ldconfig; \
-    fi
+    --mount=type=bind,source=scripts/util_cuda_apt.sh,target=/tmp/util_cuda_apt.sh \
+    bash /tmp/util_cuda_apt.sh dev
 
 ENV PATH=/usr/local/cuda/bin:${PATH}
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
 ENV CUDA_HOME=/usr/local/cuda
 
-# Architecture-dependent packages (may not be installed on ARM64)
+# iGPU-only diagnostics. Keep CPU/NVIDIA images lighter by avoiding Intel OpenCL.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd || true
+    if [ "$TARGETARCH" = "amd64" ] && [ "$INSTALL_INTEL_GPU_TOOLS" = "true" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd; \
+    else \
+        echo "Skipping Intel GPU diagnostics (TARGETARCH=${TARGETARCH}, INSTALL_INTEL_GPU_TOOLS=${INSTALL_INTEL_GPU_TOOLS})"; \
+    fi
 
 # ── Stage: dev-core (Python Runtime & Environment Orchestration) ─────────────
 FROM dev-base-tools AS dev-core
 ARG WORKSPACE_PATH
 ARG CONTAINER_USER=user
-ARG SYS_PYTHON_EXE
-ARG UV_VERSION
-ARG UV_PYTHON
-ARG CMAKE_CXX_STANDARD
-
-# Install uv and setup Python
-COPY --from=uv-binaries /uv /uvx /usr/local/bin/
-RUN uv python install ${UV_PYTHON}
-
-ENV PATH="/usr/lib/ccache:${WORKSPACE_PATH}/install/.venv/bin:$PATH" \
-    CCACHE_DIR=/cache/ccache \
-    UV_CACHE_DIR=/cache/uv \
-    UV_PYTHON=${UV_PYTHON} \
-    UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    VIRTUAL_ENV=${WORKSPACE_PATH}/install/.venv \
-    CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} \
-    SYS_PYTHON_EXE=${SYS_PYTHON_EXE} \
-    BASH_ENV=/home/${CONTAINER_USER}/.bashrc
-
-RUN mkdir -p ${CCACHE_DIR} ${UV_CACHE_DIR} ${WORKSPACE_PATH}/install
+ENV BASH_ENV=/home/${CONTAINER_USER}/.bashrc
 
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY config/  ${WORKSPACE_PATH}/config/
@@ -221,8 +187,10 @@ RUN chmod +x /entrypoint.sh ${WORKSPACE_PATH}/scripts/*.sh ${WORKSPACE_PATH}/con
     cat ${WORKSPACE_PATH}/config/init_bash.sh >> /root/.bashrc && \
     cat ${WORKSPACE_PATH}/config/init_bash.sh >> /home/${CONTAINER_USER}/.bashrc && \
     mkdir -p /root/.config/terminator /home/${CONTAINER_USER}/.config/terminator && \
-    cp ${WORKSPACE_PATH}/config/terminator_config /root/.config/terminator/config 2>/dev/null || true && \
-    cp ${WORKSPACE_PATH}/config/terminator_config /home/${CONTAINER_USER}/.config/terminator/config 2>/dev/null || true && \
+    if [ -f ${WORKSPACE_PATH}/config/terminator_config ]; then \
+        cp ${WORKSPACE_PATH}/config/terminator_config /root/.config/terminator/config && \
+        cp ${WORKSPACE_PATH}/config/terminator_config /home/${CONTAINER_USER}/.config/terminator/config; \
+    fi && \
     chown -R ${CONTAINER_USER}:${CONTAINER_USER} /home/${CONTAINER_USER}
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]
@@ -244,6 +212,7 @@ WORKDIR ${WORKSPACE_PATH}
 FROM dev-core AS ros-base
 ARG WORKSPACE_PATH
 ARG ROS_DISTRO
+ARG STRICT_GPG_CHECK
 ENV ROS_DISTRO=${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -258,8 +227,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
     export SOURCE_LOG=/tmp/util_logging.sh && \
     bash /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
-    (rosdep init || true) && \
-    rosdep update --rosdistro ${ROS_DISTRO} && \
+    bash /tmp/util_apt_helper.sh update-rosdep ${ROS_DISTRO} && \
     cp -r /root/.ros /opt/ros_cache && \
     chmod -R 755 /opt/ros_cache
 
@@ -274,100 +242,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     SYNC_TARGET_DIR=/tmp/staging ${WORKSPACE_PATH}/scripts/setup_sync_deps.sh --rosdep && \
     rm -rf /tmp/staging
 
-# ── Stage: python-deps (Python Dependency Caching Layer) ────────────────────
-FROM dev-core AS python-deps
-ARG WORKSPACE_PATH
-ARG UV_SYNC_FLAGS
-WORKDIR ${WORKSPACE_PATH}
-ENV UV_PROJECT_ENVIRONMENT="${WORKSPACE_PATH}/install/.venv"
-RUN --mount=type=cache,target=/cache/uv,sharing=locked \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=dependencies/requirements.txt,target=${WORKSPACE_PATH}/dependencies/requirements.txt \
-    uv venv ${UV_PROJECT_ENVIRONMENT} && \
-    if [ -f pyproject.toml ] && [ -f uv.lock ]; then \
-    uv sync --frozen --no-install-project ${UV_SYNC_FLAGS}; \
-    elif [ -f ${WORKSPACE_PATH}/dependencies/requirements.txt ]; then \
-    uv pip install -r ${WORKSPACE_PATH}/dependencies/requirements.txt; \
-    fi
-
-# ── Stage: builder-dev (C++ & Pure Python Build Orchestration) ──────────────
-FROM python-deps AS builder-dev
+# ── Stage: production ROS build base (No desktop/GUI tooling) ────────────────
+FROM build-core AS ros-builder-base
 ARG WORKSPACE_PATH
 ARG ROS_DISTRO
-ARG UV_SYNC_FLAGS
-ARG CMAKE_EXTRA_ARGS
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
-    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
-    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
-    export SOURCE_LOG=/tmp/util_logging.sh && \
-    bash /tmp/util_apt_helper.sh install-packages all
-COPY s[r]c/ src/
-RUN --mount=type=cache,target=/cache/uv,sharing=locked \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
-RUN ${WORKSPACE_PATH}/scripts/util_setup_links.sh && \
-    SYNC_TARGET_DIR=src/thirdparty ${WORKSPACE_PATH}/scripts/setup_sync_deps.sh
-RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
-    mkdir -p build && cd build && \
-    cmake ../src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${WORKSPACE_PATH}/install -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH}/scripts/util_get_python.sh) ${CMAKE_EXTRA_ARGS} && \
-    make -j$(nproc) install && \
-    bash ${WORKSPACE_PATH}/scripts/check_deps.sh ${WORKSPACE_PATH}/install
-
-# ── Stage: builder-ros (ROS Workspace Orchestration) ─────────────────────────
-FROM ros-base AS builder-ros
-ARG WORKSPACE_PATH
-ARG UV_SYNC_FLAGS
-ARG CMAKE_EXTRA_ARGS
-ARG COLCON_EXTRA_FLAGS
-WORKDIR ${WORKSPACE_PATH}
-COPY --from=python-deps ${WORKSPACE_PATH}/install/.venv ${WORKSPACE_PATH}/install/.venv
-COPY pyproject.toml* uv.lock* ./
-COPY s[r]c/ src/
-ENV UV_PROJECT_ENVIRONMENT="${WORKSPACE_PATH}/install/.venv"
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
-    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
-    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
-    export SOURCE_LOG=/tmp/util_logging.sh && \
-    bash /tmp/util_apt_helper.sh install-packages all ${ROS_DISTRO} && \
-    rosdep update --rosdistro ${ROS_DISTRO} && \
-    cp -r /root/.ros /opt/ros_cache && \
-    chmod -R 755 /opt/ros_cache && \
-    ${WORKSPACE_PATH}/scripts/util_setup_links.sh && \
-    SYNC_TARGET_DIR=src/thirdparty ${WORKSPACE_PATH}/scripts/setup_sync_deps.sh --rosdep
-RUN --mount=type=cache,target=/cache/uv,sharing=locked \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    if [ -f pyproject.toml ] && [ -f uv.lock ]; then uv sync --frozen ${UV_SYNC_FLAGS}; fi
-RUN --mount=type=cache,target=/cache/ccache,sharing=locked \
-    . /opt/ros/${ROS_DISTRO}/setup.sh && \
-    colcon build ${COLCON_EXTRA_FLAGS} --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD} -DPYTHON_EXECUTABLE=$(bash ${WORKSPACE_PATH}/scripts/util_get_python.sh) ${CMAKE_EXTRA_ARGS} --install-base ${WORKSPACE_PATH}/install && \
-    bash ${WORKSPACE_PATH}/scripts/check_deps.sh ${WORKSPACE_PATH}/install
-
-# ── Final Production Runtime Images (Switch Strategy) ────────────────────────
-FROM runtime-common AS dev-runtime
-ARG WORKSPACE_PATH
-WORKDIR ${WORKSPACE_PATH}
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
-    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
-    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
-    export SOURCE_LOG=/tmp/util_logging.sh && \
-    bash /tmp/util_apt_helper.sh install-packages runtime
-COPY --from=builder-dev ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
-ENV PATH="${WORKSPACE_PATH}/install/.venv/bin:${WORKSPACE_PATH}/install/bin:$PATH" VIRTUAL_ENV="${WORKSPACE_PATH}/install/.venv"
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["bash"]
-
-FROM runtime-common AS ros-runtime
-ARG WORKSPACE_PATH
-WORKDIR ${WORKSPACE_PATH}
+ARG STRICT_GPG_CHECK
+ENV ROS_DISTRO=${ROS_DISTRO} \
+    COLCON_HOME=${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
@@ -380,9 +261,120 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
     export SOURCE_LOG=/tmp/util_logging.sh && \
-    bash /tmp/util_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
+    bash /tmp/util_apt_helper.sh install-packages builder ${ROS_DISTRO} && \
+    bash /tmp/util_apt_helper.sh update-rosdep ${ROS_DISTRO}
+WORKDIR ${WORKSPACE_PATH}
+
+# ── Stage: production builders (Build and validate install artifacts) ───────
+FROM build-core AS prod-dev-builder
+ARG WORKSPACE_PATH
+ARG ROS_DISTRO
+ARG CUDA_VERSION
+ARG CUDNN_VERSION
+ARG OPENCV_CUDA=auto
+ARG IMAGE_TAG=latest
+ARG GIT_COMMIT=unknown
+ARG COMPOSE_PROJECT_NAME=unknown
+ARG SOURCE_DATE_EPOCH=""
+ENV IMAGE_TAG=${IMAGE_TAG} \
+    GIT_COMMIT=${GIT_COMMIT} \
+    COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} \
+    OPENCV_CUDA=${OPENCV_CUDA} \
+    SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh install-packages builder
+COPY src ${WORKSPACE_PATH}/src
+COPY dependencies ${WORKSPACE_PATH}/dependencies
+COPY config ${WORKSPACE_PATH}/config
+COPY scripts ${WORKSPACE_PATH}/scripts
+WORKDIR ${WORKSPACE_PATH}
+RUN FORCE_LOAD_ALIASES=true bash -lc "source ${WORKSPACE_PATH}/config/util_aliases.sh && mksync" && \
+    bash ${WORKSPACE_PATH}/scripts/check_deps.sh ${WORKSPACE_PATH}/install && \
+    bash ${WORKSPACE_PATH}/scripts/util_release_metadata.sh ${WORKSPACE_PATH}/release/devkit-release.json
+
+FROM ros-builder-base AS prod-ros-builder
+ARG WORKSPACE_PATH
+ARG ROS_DISTRO
+ARG CUDA_VERSION
+ARG CUDNN_VERSION
+ARG OPENCV_CUDA=auto
+ARG IMAGE_TAG=latest
+ARG GIT_COMMIT=unknown
+ARG COMPOSE_PROJECT_NAME=unknown
+ARG SOURCE_DATE_EPOCH=""
+ENV IMAGE_TAG=${IMAGE_TAG} \
+    GIT_COMMIT=${GIT_COMMIT} \
+    COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME} \
+    OPENCV_CUDA=${OPENCV_CUDA} \
+    SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+COPY src ${WORKSPACE_PATH}/src
+COPY dependencies ${WORKSPACE_PATH}/dependencies
+COPY config ${WORKSPACE_PATH}/config
+COPY scripts ${WORKSPACE_PATH}/scripts
+WORKDIR ${WORKSPACE_PATH}
+RUN FORCE_LOAD_ALIASES=true bash -lc "source ${WORKSPACE_PATH}/config/util_aliases.sh && mksync --share" && \
+    bash ${WORKSPACE_PATH}/scripts/check_deps.sh ${WORKSPACE_PATH}/install && \
+    bash ${WORKSPACE_PATH}/scripts/util_release_metadata.sh ${WORKSPACE_PATH}/release/devkit-release.json
+
+# ── Stage: production runtime (Minimal user-facing artifacts) ────────────────
+FROM base AS prod-base
+ARG WORKSPACE_PATH
+ARG CUDA_VERSION
+ARG CUDNN_VERSION
+ARG HAS_NVIDIA
+ARG FULL_CUDA
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=scripts/util_cuda_apt.sh,target=/tmp/util_cuda_apt.sh \
     apt-get update && apt-get install -y --no-install-recommends \
-    ros-${ROS_DISTRO}-ros-base
-COPY --from=builder-ros ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
+    ca-certificates bash && \
+    bash /tmp/util_cuda_apt.sh runtime && \
+    apt-get autoremove -y && \
+    rm -rf /var/tmp/*
+COPY docker/prod_entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && mkdir -p ${WORKSPACE_PATH}/install /etc/devkit
+WORKDIR ${WORKSPACE_PATH}
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["bash"]
+
+FROM prod-base AS prod-dev-runtime
+ARG WORKSPACE_PATH
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh install-packages runtime && \
+    if command -v sudo >/dev/null 2>&1; then chmod a-s "$(command -v sudo)"; fi
+COPY --from=prod-dev-builder ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
+COPY --from=prod-dev-builder /root/.local/share/uv/python /root/.local/share/uv/python
+COPY --from=prod-dev-builder ${WORKSPACE_PATH}/release/devkit-release.json /etc/devkit/release.json
+ENV PATH="${WORKSPACE_PATH}/install/.venv/bin:${WORKSPACE_PATH}/install/bin:$PATH" \
+    VIRTUAL_ENV="${WORKSPACE_PATH}/install/.venv"
+CMD []
+
+FROM prod-base AS prod-ros-runtime
+ARG WORKSPACE_PATH
+ARG ROS_DISTRO
+ARG STRICT_GPG_CHECK
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
+    --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
+    --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
+    export SOURCE_LOG=/tmp/util_logging.sh && \
+    bash /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO} && \
+    bash /tmp/util_apt_helper.sh install-packages runtime ${ROS_DISTRO} && \
+    apt-get purge -y --auto-remove curl gnupg2 dirmngr && \
+    if command -v sudo >/dev/null 2>&1; then chmod a-s "$(command -v sudo)"; fi
+COPY --from=prod-ros-builder ${WORKSPACE_PATH}/install ${WORKSPACE_PATH}/install
+COPY --from=prod-ros-builder /root/.local/share/uv/python /root/.local/share/uv/python
+COPY --from=prod-ros-builder ${WORKSPACE_PATH}/release/devkit-release.json /etc/devkit/release.json
+ENV PATH="${WORKSPACE_PATH}/install/.venv/bin:${WORKSPACE_PATH}/install/bin:$PATH" \
+    VIRTUAL_ENV="${WORKSPACE_PATH}/install/.venv"
+CMD []

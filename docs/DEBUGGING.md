@@ -33,11 +33,11 @@ DevKit relies on a curated set of extensions for the ultimate developer experien
 ### 2. Building for Debugging
 To enable source-level debugging (breakpoints, variable inspection), you must build with **Debug** symbols.
 
-| Build Mode         | CLI Command (ROS 2)                          | VS Code Task (Ctrl+Shift+B)        |
+| Build Mode         | CLI Command (ROS workspace)                  | VS Code Task (Ctrl+Shift+B)        |
 | :----------------- | :------------------------------------------- | :--------------------------------- |
-| **Debug**          | `cb --cmake-args -DCMAKE_BUILD_TYPE=Debug`   | `🔨 colcon: Build (Debug)`          |
-| **RelWithDebInfo** | `cb` (Default)                               | `🔨 colcon: Build (RelWithDebInfo)` |
-| **Release**        | `cb --cmake-args -DCMAKE_BUILD_TYPE=Release` | `🔨 colcon: Build (Release)`        |
+| **Debug**          | `cbuild --debug`                                 | `🔨 colcon: Build (Debug)`          |
+| **RelWithDebInfo** | `cbuild` (Default)                             | `🔨 colcon: Build (RelWithDebInfo)` |
+| **Release**        | `cbuild --release`                             | `🔨 colcon: Build (Release)`        |
 
 > [!IMPORTANT]
 > Use **Debug** mode for the most reliable experience. `RelWithDebInfo` provides optimizations that might cause the debugger to skip lines or show incorrect variable values.
@@ -50,7 +50,7 @@ DevKit supports two primary workflows, depending on your needs for isolation and
 
 ### Method A: Dev Containers (Recommended)
 This workflow runs VS Code *inside* the container.
-1.  Launch the container: `make ros`
+1.  Launch the container: `make start ENV=ros`
 2.  Command Palette (**Ctrl+Shift+P**) → `Dev Containers: Attach to Running Container...`
 3.  Select the DevKit container.
 4.  **Benefits**: Native performance, automatic IntelliSense, and integrated terminal access.
@@ -133,7 +133,7 @@ Beyond debugging, `tasks.json` provides a rich set of utilities accessible via *
 
 | Task Category   | Featured Tasks                                                    |
 | :-------------- | :---------------------------------------------------------------- |
-| **Diagnostics** | `🏥 Hardware Check`, `⚡ GPU Status`, `🔍 Check Dependencies`        |
+| **Diagnostics** | `✅ DevKit Verify`, `🏥 Hardware Check`, `⚡ GPU Status`, `🔍 Check Dependencies` |
 | **Maintenance** | `🧹 Clean Workspace`, `🔄 Sync Dependencies`, `🐍 Python: uv sync`   |
 | **ROS Core**    | `🔨 colcon: Build (Debug)`, `🧪 colcon: Test`, `📋 Source Workspace` |
 
