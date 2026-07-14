@@ -18,24 +18,10 @@ export LC_ALL=${LANG:-C.UTF-8}
 export LANGUAGE=${LANG:-en_US.UTF-8}
 
 # =============================================================================
-# Bootstrap: Centralized Path Management (Single Source of Truth)
+# Bootstrap: Centralized Path Management & Sourcing (Single Source of Truth)
 # =============================================================================
-WS_ROOT="${WORKSPACE_PATH:-/workspace}"
-UTIL_PATHS="${WS_ROOT}/config/util_paths.sh"
-
-if [ -f "$UTIL_PATHS" ]; then
-    source "$UTIL_PATHS"
-else
-    # Minimal fallback if util_paths.sh is missing
-    export WS_SCRIPTS="${WS_ROOT}/scripts"
-    export WS_CONFIG="${WS_ROOT}/config"
-fi
-
-# Locate logging utility (Standard Project Path)
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${WS_SCRIPTS}/util_logging.sh"
-if [ -f "$SOURCE_LOG" ]; then
-    source "$SOURCE_LOG"
-fi
+source "${WORKSPACE_PATH:-/workspace}/config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_logging.sh"
 
 # Fallback: Define logging stubs if utility functions are unavailable (Safety net for production)
 if ! declare -f log_info > /dev/null 2>&1; then

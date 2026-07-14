@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
 
 usage() {
     cat <<'EOF'
@@ -32,7 +32,8 @@ case "${1:-}" in
     --) shift ;;
 esac
 
-source "${SCRIPT_DIR}/util_sif_runtime.sh"
+devkit_require "util_sif_runtime.sh"
+devkit_require "util_logging.sh"
 
 HOST_WORKSPACE="${HOST_WORKSPACE:-$(pwd)}"
 CONTAINER_WORKSPACE="${WORKSPACE_PATH:-/workspace}"

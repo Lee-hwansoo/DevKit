@@ -11,10 +11,8 @@
 
 set -eo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_logging.sh"
 LOG_PREFIX="[Sync Deps]"
 
 if ! declare -F log_info >/dev/null 2>&1; then

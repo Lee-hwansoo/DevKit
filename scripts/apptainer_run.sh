@@ -6,14 +6,10 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/util_sif_runtime.sh"
-init_sif_context "$SCRIPT_DIR"
-
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
-if [ -f "$SOURCE_LOG" ]; then
-    source "$SOURCE_LOG"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_sif_runtime.sh"
+init_sif_context "$(dirname "${BASH_SOURCE[0]}")"
+devkit_require "util_logging.sh"
 
 MODE="${SIF_MODE:-dev}"
 SIF_ENV="${ENV:-ros}"
@@ -283,10 +279,7 @@ get_sif_gpu_opts_into GPU_OPTS
 
 BIND_OPTS=()
 if [ "$MODE" = "dev" ]; then
-    BIND_UTIL="${WS_SCRIPTS}/util_apptainer_binds.sh"
-    [ ! -f "$BIND_UTIL" ] && BIND_UTIL="$(dirname "${BASH_SOURCE[0]}")/util_apptainer_binds.sh"
-    if [ -f "$BIND_UTIL" ]; then
-        source "$BIND_UTIL"
+    if devkit_require "util_apptainer_binds.sh"; then
         get_apptainer_binds_into BIND_OPTS "${HOST_WORKSPACE_PATH}" "${CONTAINER_WORKSPACE_PATH}"
     else
         BIND_OPTS=( "--bind" "${HOST_WORKSPACE_PATH}:${CONTAINER_WORKSPACE_PATH}" )

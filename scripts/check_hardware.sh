@@ -43,10 +43,8 @@ for arg in "$@"; do
     esac
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_logging.sh"
 
 # Load GPU environment variables if available (crucial for non-interactive shells)
 GPU_ENV_FILES=(
@@ -58,9 +56,7 @@ for env_file in "${GPU_ENV_FILES[@]}"; do
 done
 
 # Load shared GPU detection helpers
-SOURCE_GPU="${WS_SCRIPTS}/util_gpu_detect.sh"
-[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
-[ -f "$SOURCE_GPU" ] && source "$SOURCE_GPU"
+devkit_require "util_gpu_detect.sh"
 
 # --- Brief-mode output helpers & diagnostic counters -------------------
 DIAG_WARNINGS=0

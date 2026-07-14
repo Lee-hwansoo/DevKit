@@ -6,15 +6,8 @@
 
 set -e
 
-# Load path configuration
-[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
-[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
-
-# Load logging utilities
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
-if [ -f "$SOURCE_LOG" ]; then
-    source "$SOURCE_LOG"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_logging.sh"
 
 usage() {
     cat <<'EOF'
@@ -130,11 +123,7 @@ if [ "${HAS_SYSTEMD}" = "false" ] || [ "${HAS_MIRRORED}" = "false" ]; then
 fi
 
 # 5. GPU Acceleration Audit
-SOURCE_GPU="${WS_SCRIPTS}/util_gpu_detect.sh"
-[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
-if [ -f "$SOURCE_GPU" ]; then
-    source "$SOURCE_GPU"
-else
+if ! devkit_require "util_gpu_detect.sh"; then
     exit 0
 fi
 

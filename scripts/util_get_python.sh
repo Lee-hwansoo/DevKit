@@ -4,8 +4,7 @@
 # Detects the appropriate Python interpreter for the current project context
 # =============================================================================
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
 
 case "${1:-}" in
     "" ) ;;

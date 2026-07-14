@@ -6,14 +6,10 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/util_sif_runtime.sh"
-init_sif_context "$SCRIPT_DIR"
-
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
-if [ -f "$SOURCE_LOG" ]; then
-    source "$SOURCE_LOG"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_sif_runtime.sh"
+init_sif_context "$(dirname "${BASH_SOURCE[0]}")"
+devkit_require "util_logging.sh"
 
 MODE="dev"
 SIF_ENV="${ENV:-ros}"

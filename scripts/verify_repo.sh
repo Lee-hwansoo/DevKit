@@ -7,8 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "$ROOT_DIR"
 
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+source "${ROOT_DIR}/config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_logging.sh"
 
 if ! declare -F log_info >/dev/null 2>&1; then
     log_info() { echo "[INFO] $*"; }

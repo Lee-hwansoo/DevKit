@@ -27,13 +27,57 @@ export WS_VENV="${VENV_PATH:-${WS_INSTALL}/.venv}"
 export WS_CCACHE_DIR="/cache/ccache"
 export WS_UV_CACHE_DIR="/cache/uv"
 
-# Logging Utility
-export SOURCE_LOG="${WS_SCRIPTS}/util_logging.sh"
+# Script Loader Path Configuration
+export DEVKIT_SCRIPT_PATH="${WS_SCRIPTS:-/workspace/scripts}"
 
 configure_git_safe_directory() {
     export GIT_CONFIG_COUNT=1
     export GIT_CONFIG_KEY_0="safe.directory"
     export GIT_CONFIG_VALUE_0="*"
+}
+
+
+# Track sourced files to prevent duplicate sourcing
+if ! declare -p __DEVKIT_SOURCED_FILES &>/dev/null; then
+    declare -A -g __DEVKIT_SOURCED_FILES
+fi
+
+# devkit_require [script_name] [force_reload:optional]
+#   Locates and sources a script from local directory, WS_SCRIPTS, or /tmp.
+#   Includes idempotency protection against duplicate loads.
+devkit_require() {
+    local script_name="$1"
+    local force_reload="${2:-false}"
+
+    if [[ "${__DEVKIT_SOURCED_FILES[$script_name]:-}" == "true" && "$force_reload" != "true" ]]; then
+        return 0
+    fi
+
+    local search_paths=()
+    local caller_dir
+    caller_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd 2>/dev/null || true)"
+    [[ -n "$caller_dir" ]] && search_paths+=("$caller_dir")
+    [[ -n "${DEVKIT_SCRIPT_PATH:-}" ]] && search_paths+=("${DEVKIT_SCRIPT_PATH}")
+    search_paths+=("/tmp")
+
+    local resolved_path=""
+    local dir
+    for dir in "${search_paths[@]}"; do
+        if [[ -f "${dir}/${script_name}" ]]; then
+            resolved_path="${dir}/${script_name}"
+            break
+        fi
+    done
+
+    if [[ -n "$resolved_path" ]]; then
+        [[ "${DEBUG_MODE:-}" == "true" ]] && echo "[DEVKIT-DEBUG] Sourcing '$script_name' -> '$resolved_path'" >&2
+        source "$resolved_path"
+        __DEVKIT_SOURCED_FILES["$script_name"]="true"
+        return 0
+    fi
+
+    echo -e "\033[0;31m[DEVKIT-FATAL]\033[0m Failed to require script '$script_name'. Searched: ${search_paths[*]}" >&2
+    return 1
 }
 
 unset _INFERRED_ROOT

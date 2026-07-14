@@ -8,15 +8,8 @@
 # KEY=VALUE format for Makefile integration.
 # =============================================================================
 
-# Load path configuration
-[ -f "/workspace/config/util_paths.sh" ] && source "/workspace/config/util_paths.sh"
-[ -z "$WS_ROOT" ] && source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh"
-
-# Load logging utility
-[ ! -f "$SOURCE_LOG" ] && SOURCE_LOG="$(dirname "${BASH_SOURCE[0]}")/util_logging.sh"
-if [ -f "$SOURCE_LOG" ]; then
-    source "$SOURCE_LOG"
-fi
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_logging.sh"
 LOG_PREFIX="[Env Detector]"
 OUTPUT_MODE="${1:-env}"
 

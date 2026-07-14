@@ -10,10 +10,8 @@
 #   - Automatic fallback to software rendering (llvmpipe) upon acceleration failure
 # =============================================================================
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "${SCRIPT_DIR}/../config/util_paths.sh" ] && source "${SCRIPT_DIR}/../config/util_paths.sh"
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${SCRIPT_DIR}/util_logging.sh"
-[ -f "$SOURCE_LOG" ] && source "$SOURCE_LOG"
+source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_logging.sh"
 LOG_PREFIX="[GPU]"
 
 setup_gpu_usage() {
@@ -43,15 +41,11 @@ setup_gpu_finish() {
 }
 
 # Load shared GPU detection helpers (SSOT for GPU detection functions)
-SOURCE_GPU="${WS_SCRIPTS}/util_gpu_detect.sh"
-[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="$(dirname "${BASH_SOURCE[0]}")/util_gpu_detect.sh"
-[ ! -f "$SOURCE_GPU" ] && SOURCE_GPU="/opt/scripts/util_gpu_detect.sh"
-if [ -f "$SOURCE_GPU" ]; then
-    source "$SOURCE_GPU"
-else
+if ! devkit_require "util_gpu_detect.sh"; then
     echo "${LOG_PREFIX:-[GPU]} FATAL: util_gpu_detect.sh not found. GPU detection unavailable." >&2
     setup_gpu_finish 1
 fi
+
 
 # =============================================================================
 # Global Constants & Environment Management

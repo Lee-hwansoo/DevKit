@@ -53,6 +53,7 @@ ENV LANG=${LANG} \
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
@@ -68,9 +69,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     locales tzdata && \
     if [ "${LANG}" = "C.UTF-8" ]; then \
-        printf 'LANG=C.UTF-8\nLC_ALL=C.UTF-8\n' > /etc/default/locale; \
+    printf 'LANG=C.UTF-8\nLC_ALL=C.UTF-8\n' > /etc/default/locale; \
     else \
-        locale-gen "${LANG}" && update-locale LANG="${LANG}"; \
+    locale-gen "${LANG}" && update-locale LANG="${LANG}"; \
     fi && \
     ln -snf /usr/share/zoneinfo/${TZ:-UTC} /etc/localtime && echo ${TZ:-UTC} > /etc/timezone
 ENV LANG=${LANG} \
@@ -169,9 +170,9 @@ ENV CUDA_HOME=/usr/local/cuda
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     if [ "$TARGETARCH" = "amd64" ] && [ "$INSTALL_INTEL_GPU_TOOLS" = "true" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd; \
+    apt-get update && apt-get install -y --no-install-recommends intel-gpu-tools intel-opencl-icd; \
     else \
-        echo "Skipping Intel GPU diagnostics (TARGETARCH=${TARGETARCH}, INSTALL_INTEL_GPU_TOOLS=${INSTALL_INTEL_GPU_TOOLS})"; \
+    echo "Skipping Intel GPU diagnostics (TARGETARCH=${TARGETARCH}, INSTALL_INTEL_GPU_TOOLS=${INSTALL_INTEL_GPU_TOOLS})"; \
     fi
 
 # ── Stage: dev-core (Python Runtime & Environment Orchestration) ─────────────
@@ -188,8 +189,8 @@ RUN chmod +x /entrypoint.sh ${WORKSPACE_PATH}/scripts/*.sh ${WORKSPACE_PATH}/con
     cat ${WORKSPACE_PATH}/config/init_bash.sh >> /home/${CONTAINER_USER}/.bashrc && \
     mkdir -p /root/.config/terminator /home/${CONTAINER_USER}/.config/terminator && \
     if [ -f ${WORKSPACE_PATH}/config/terminator_config ]; then \
-        cp ${WORKSPACE_PATH}/config/terminator_config /root/.config/terminator/config && \
-        cp ${WORKSPACE_PATH}/config/terminator_config /home/${CONTAINER_USER}/.config/terminator/config; \
+    cp ${WORKSPACE_PATH}/config/terminator_config /root/.config/terminator/config && \
+    cp ${WORKSPACE_PATH}/config/terminator_config /home/${CONTAINER_USER}/.config/terminator/config; \
     fi && \
     chown -R ${CONTAINER_USER}:${CONTAINER_USER} /home/${CONTAINER_USER}
 ENTRYPOINT ["/entrypoint.sh"]
@@ -202,6 +203,7 @@ ARG ROS_DISTRO
 ENV COLCON_HOME=${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
@@ -216,12 +218,14 @@ ARG STRICT_GPG_CHECK
 ENV ROS_DISTRO=${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     export SOURCE_LOG=/tmp/util_logging.sh && \
     bash /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
@@ -251,12 +255,14 @@ ENV ROS_DISTRO=${ROS_DISTRO} \
     COLCON_HOME=${WORKSPACE_PATH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     export SOURCE_LOG=/tmp/util_logging.sh && \
     bash /tmp/util_apt_helper.sh setup-ros-repo ${ROS_DISTRO}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
@@ -283,6 +289,7 @@ ENV IMAGE_TAG=${IMAGE_TAG} \
     SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
@@ -345,6 +352,7 @@ FROM prod-base AS prod-dev-runtime
 ARG WORKSPACE_PATH
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \
@@ -364,6 +372,7 @@ ARG ROS_DISTRO
 ARG STRICT_GPG_CHECK
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,source=config/util_paths.sh,target=/tmp/util_paths.sh \
     --mount=type=bind,source=scripts/util_apt_helper.sh,target=/tmp/util_apt_helper.sh \
     --mount=type=bind,source=scripts/util_logging.sh,target=/tmp/util_logging.sh \
     --mount=type=bind,source=dependencies/,target=${WORKSPACE_PATH}/dependencies/ \

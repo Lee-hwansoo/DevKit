@@ -19,23 +19,8 @@ if [ ! -f /.dockerenv ] && [ "${FORCE_LOAD_ALIASES:-}" != "true" ]; then
 fi
 
 # Load centralized paths (Single Source of Truth)
-WS_ROOT="${WORKSPACE_PATH:-/workspace}"
-UTIL_PATHS="${WS_ROOT}/config/util_paths.sh"
-[ -f "$UTIL_PATHS" ] && source "$UTIL_PATHS"
-export WS_SCRIPTS="${WS_SCRIPTS:-${WS_ROOT}/scripts}"
-export WS_CONFIG="${WS_CONFIG:-${WS_ROOT}/config}"
-export WS_DEPS="${WS_DEPS:-${WS_ROOT}/dependencies}"
-export WS_INSTALL="${WS_INSTALL:-${WS_ROOT}/install}"
-export WS_SRC="${WS_SRC:-${WS_ROOT}/src}"
-export WS_BUILD="${WS_BUILD:-${WS_ROOT}/build}"
-export WS_LOGS="${WS_LOGS:-${WS_ROOT}/log}"
-export WS_VENV="${WS_VENV:-${WS_INSTALL}/.venv}"
-
-# Load logging utility for shared color variables & branding
-[ ! -f "${SOURCE_LOG:-}" ] && SOURCE_LOG="${WS_SCRIPTS}/util_logging.sh"
-if [ -f "$SOURCE_LOG" ]; then
-    source "$SOURCE_LOG"
-fi
+source "${WORKSPACE_PATH:-/workspace}/config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
+devkit_require "util_logging.sh"
 if ! declare -f log_info >/dev/null 2>&1; then
     log_info()  { echo "[INFO] $1"; }
     log_ok()    { echo "[OK] $1"; }
