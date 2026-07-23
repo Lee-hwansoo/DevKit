@@ -178,16 +178,12 @@ verify_docs_cache_safety() {
         log_error ".env.example must document that clean-cache refuses the workspace root."
         return 1
     fi
-    if ! grep -q "workspace-root" README.md; then
-        log_error "README.md clean-cache documentation must mention workspace-root refusal."
-        return 1
-    fi
-    if ! grep -q "워크스페이스 루트" README.ko.md; then
-        log_error "README.ko.md clean-cache documentation must mention workspace-root refusal."
-        return 1
-    fi
+    # The slim README delegates operational detail to .env.example and docs/;
+    # the clean-cache workspace-root refusal is documented in .env.example (checked
+    # above). README.ko.md was removed when the bilingual docs were consolidated,
+    # so the documentation invariant is enforced against .env.example only.
     local vcs_doc_file
-    for vcs_doc_file in .env.example README.md README.ko.md docs/DEVELOPMENT.md; do
+    for vcs_doc_file in .env.example docs/DEVELOPMENT.md docs/SLURM.md; do
         if ! grep -q "DEVKIT_VCS_ALLOW_FAILURE" "$vcs_doc_file"; then
             log_error "Dependency sync fail-open switch DEVKIT_VCS_ALLOW_FAILURE must be documented in $vcs_doc_file."
             return 1
@@ -1235,6 +1231,60 @@ verify_verify_repo_hygiene() {
     fi
 }
 
+# Guard against drift between the ROS-distro copies that intentionally remain
+# separate (see docs/TECHNICAL_REVIEW.md, roadmap #16): the build-time SSOT
+# (scripts/util_apt_helper.sh: devkit_distro_row), the Makefile base-image pairing
+# (VALIDATE_ROS_BASE_IMAGE), and the .env.example default pair must all agree.
+verify_distro_ssot_consistency() {
+    local helper="scripts/util_apt_helper.sh"
+    local distros distro ubu mk_distro
+
+    distros="$(awk -F'"' '/^DEVKIT_SUPPORTED_DISTROS=/{print $2; exit}' "$helper")"
+    if [ -z "$distros" ]; then
+        log_error "DEVKIT_SUPPORTED_DISTROS not found in $helper."
+        return 1
+    fi
+
+    for distro in $distros; do
+        # SSOT: the first NN.NN token in the distro's row is its ubuntu_version.
+        ubu="$(awk -v d="$distro" '
+            $0 ~ "^[[:space:]]*"d"\\)" {
+                if (match($0, /[0-9]+\.[0-9]+/)) { print substr($0, RSTART, RLENGTH); exit }
+            }' "$helper")"
+        if [ -z "$ubu" ]; then
+            log_error "SSOT row for '$distro' not found (or missing ubuntu_version) in $helper."
+            return 1
+        fi
+        # Makefile: the ubuntu:$ubu case-arm must require exactly this distro.
+        mk_distro="$(awk -v u="ubuntu:$ubu" '
+            index($0, u "|") { found = 1 }
+            found && /ROS_DISTRO.*!=/ {
+                line = $0; sub(/.*!= "/, "", line); sub(/".*/, "", line);
+                print line; exit
+            }' Makefile)"
+        if [ "$mk_distro" != "$distro" ]; then
+            log_error "Distro pairing drift: SSOT '$distro' -> ubuntu:$ubu, but Makefile pairs ubuntu:$ubu with '${mk_distro:-<none>}'. Keep scripts/util_apt_helper.sh and Makefile in sync."
+            return 1
+        fi
+    done
+
+    # .env.example default pair must itself be a valid SSOT pairing.
+    local ex_distro ex_base ex_ubu
+    ex_distro="$(awk -F= '/^ROS_DISTRO=/{print $2; exit}' .env.example)"
+    ex_base="$(awk -F= '/^BASE_IMAGE=/{print $2; exit}' .env.example)"
+    if [ -n "$ex_distro" ] && [ -n "$ex_base" ]; then
+        ex_ubu="$(awk -v d="$ex_distro" '
+            $0 ~ "^[[:space:]]*"d"\\)" {
+                if (match($0, /[0-9]+\.[0-9]+/)) { print substr($0, RSTART, RLENGTH); exit }
+            }' "$helper")"
+        if [ -n "$ex_ubu" ] && [ "$ex_base" != "ubuntu:$ex_ubu" ]; then
+            log_error ".env.example default drift: ROS_DISTRO=$ex_distro expects BASE_IMAGE=ubuntu:$ex_ubu, but BASE_IMAGE=$ex_base."
+            return 1
+        fi
+    fi
+    return 0
+}
+
 main() {
     require_files \
         docker/Dockerfile \
@@ -1258,6 +1308,7 @@ main() {
     verify_vscode_json_defaults
     verify_make_completion_ssot
     verify_docs_cache_safety
+    verify_distro_ssot_consistency
     verify_env_example_unique_active_keys
     verify_make_validations
     verify_make_xauth_feedback
