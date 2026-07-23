@@ -10,7 +10,7 @@
 #   - Automatic ROS and Python virtual environment sourcing
 # =============================================================================
 
-set -e
+set -eE
 
 # Force UTF-8 locale for terminal emoji and ASCII art support
 export LANG=${LANG:-C.UTF-8}
@@ -22,16 +22,41 @@ export LANGUAGE=${LANG:-en_US.UTF-8}
 # =============================================================================
 source "${WORKSPACE_PATH:-/workspace}/config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
 devkit_require "util_logging.sh"
-
-# Fallback: Define logging stubs if utility functions are unavailable (Safety net for production)
-if ! declare -f log_info > /dev/null 2>&1; then
-    log_info()  { echo "[INFO] $1"; }
-    log_ok()    { echo "[OK] $1";   }
-    log_warn()  { echo "[WARN] $1" >&2; }
-    log_error() { echo "[ERROR] $1" >&2; }
-fi
 LOG_PREFIX="[Entrypoint]"
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
+
+# Persist boot logs for post-mortem debugging (best-effort; util_logging is hardened
+# so an unwritable path never aborts boot). Gives the dev boot path the same
+# observability the SIF/SLURM path already has.
+if [ -n "${WS_LOGS:-}" ] && mkdir -p "${WS_LOGS}" 2>/dev/null; then
+    export LOG_FILE="${WS_LOGS}/entrypoint.log"
+fi
+
+# Diagnostic ERR trap: record WHERE a fatal (set -e) abort happened instead of
+# dying silently. Fires only on set -e-triggering failures; guarded steps
+# (if / || / &&) are unaffected. It logs — it does not alter control flow.
+trap 'ec=$?; log_error "Entrypoint aborted (exit ${ec}) at line ${LINENO}: ${BASH_COMMAND}"' ERR
+
+# source_runtime_file <path> [args...]: source a file with `set +eu` so ROS/venv
+# setup scripts that reference unbound vars or return non-zero cannot abort boot.
+# Mirrors docker/prod_entrypoint.sh; returns the sourced script's own exit code.
+source_runtime_file() {
+    local file="$1"; shift
+    [ -f "$file" ] || return 0
+    # Explicitly save/restore errexit+nounset via $- (the `set +o | eval` idiom
+    # does NOT reliably restore errexit here, silently disabling it for the rest
+    # of boot). Restore exactly what was set, and preserve the sourced exit code.
+    local _had_e=0 _had_u=0 _rc=0
+    case "$-" in *e*) _had_e=1 ;; esac
+    case "$-" in *u*) _had_u=1 ;; esac
+    set +eu
+    # shellcheck source=/dev/null
+    source "$file" "$@"
+    _rc=$?
+    [ "$_had_e" = 1 ] && set -e
+    [ "$_had_u" = 1 ] && set -u
+    return "$_rc"
+}
 
 # =============================================================================
 # Workspace & Environment Setup
@@ -69,23 +94,41 @@ sync_owner_if_root() {
     [ "${CONTAINER_USER}" != "root" ] || return 0
     [ -e "$path" ] || return 0
 
+    # Fast path: skip the recursive chown when the target already owns the entry.
+    # Named-volume/first-run trees are created root-owned, so a single 'chown -R'
+    # flips the whole subtree to the container user; subsequent boots then match
+    # here and avoid re-walking large caches (ccache/uv/build/install) on every
+    # startup — an unconditional recursive chown on those trees can dominate
+    # container startup time.
+    local target_uid
+    target_uid="$(id -u "${CONTAINER_USER}" 2>/dev/null || true)"
+    if [ -n "$target_uid" ] && [ "$(stat -c %u "$path" 2>/dev/null)" = "$target_uid" ]; then
+        return 0
+    fi
+
     if ! chown -R "${CONTAINER_USER}:${CONTAINER_USER}" "$path" 2>/dev/null; then
         log_warn "Could not synchronize ownership for ${desc}: ${path}"
     fi
 }
 
-# Resolves XDG_RUNTIME_DIR, proxying to /tmp/runtime-internal when the mounted
-# directory is owned by a different UID (e.g. WSL2 host user=1000, container=root).
+# Resolves XDG_RUNTIME_DIR, proxying to a per-container /tmp/runtime-<uid>-<host>
+# directory when the mounted directory is owned by a different UID (e.g. WSL2 host
+# user=1000, container=root). The UID + hostname suffix keeps the proxy private to
+# this container: under Apptainer/Singularity /tmp is frequently shared with the
+# host, so a fixed path would let concurrent same-UID jobs wipe each other's
+# symlinks via the stale-link cleanup below.
 # Prints the resolved path to stdout; all log messages go to stderr to prevent
 # stdout capture pollution when called as: export VAR="$(setup_xdg_runtime)"
 setup_xdg_runtime() {
     local xdg_dir="${XDG_RUNTIME_DIR:-/tmp/.container_xdg}"
-    local my_uid
-    my_uid="$(id -u)"
+    local target_user="${CONTAINER_USER:-${USER:-root}}"
+    local target_uid
+    target_uid="$(id -u "$target_user" 2>/dev/null || id -u)"
 
-    if [ -d "$xdg_dir" ] && [ "$(stat -c %u "$xdg_dir" 2>/dev/null)" != "$my_uid" ]; then
-        local proxy="/tmp/runtime-internal"
+    if [ -d "$xdg_dir" ] && [ "$(stat -c %u "$xdg_dir" 2>/dev/null)" != "$target_uid" ]; then
+        local proxy="/tmp/runtime-${target_uid}-$(hostname 2>/dev/null || echo default)"
         mkdir -p "$proxy" && chmod 700 "$proxy"
+        sync_owner_if_root "$proxy" "XDG runtime proxy directory"
         # Remove stale symlinks before re-linking (handles socket recreation by compositor)
         find "$proxy" -maxdepth 1 -type l -exec rm -f {} +
         find "$xdg_dir" -maxdepth 1 -not -path "$xdg_dir" -exec ln -sf {} "$proxy/" 2>/dev/null \;
@@ -94,7 +137,10 @@ setup_xdg_runtime() {
     else
         if [ ! -d "$xdg_dir" ]; then
             mkdir -p "$xdg_dir" && chmod 700 "$xdg_dir"
+            sync_owner_if_root "$xdg_dir" "XDG runtime directory"
             log_ok "XDG_RUNTIME_DIR created: $xdg_dir" >&2
+        else
+            sync_owner_if_root "$xdg_dir" "XDG runtime directory"
         fi
         echo "$xdg_dir"
     fi
@@ -313,29 +359,24 @@ fi
 # config/init_bash.sh for interactive shells, not here. The entrypoint
 # stays minimal to avoid polluting non-interactive exec sessions.
 
-# ROS environment source
+# ROS environment source (defensive: a ROS setup hook must never abort boot)
 if [ -f "$ROS_SETUP" ]; then
-    source "$ROS_SETUP"
+    source_runtime_file "$ROS_SETUP"
     log_ok "ROS ${ROS_DISTRO:-humble} sourced"
 
     if [ -f "${WS_INSTALL}/setup.bash" ]; then
-        source "${WS_INSTALL}/setup.bash"
+        source_runtime_file "${WS_INSTALL}/setup.bash"
         log_ok "Workspace overlay sourced"
     fi
 else
     log_info "ROS not installed or not in /opt/ros, skipping ROS setup"
 fi
 
-# [7.1] ROS Version-specific Configuration
-ROS_ENV_INIT="${WS_CONFIG}/init_ros_env.sh"
-if [ -f "$ROS_ENV_INIT" ]; then
-    source "$ROS_ENV_INIT"
-fi
+# [7.1] ROS Version-specific Configuration (no-op if the file is absent)
+source_runtime_file "${WS_CONFIG}/init_ros_env.sh"
 
-# [7.2] Auto-activate Python virtual environment
-if [ -f "${WS_VENV}/bin/activate" ]; then
-    source "${WS_VENV}/bin/activate"
-fi
+# [7.2] Auto-activate Python virtual environment (no-op if not yet created)
+source_runtime_file "${WS_VENV}/bin/activate"
 
 # =============================================================================
 # [8] GPU Hardware Acceleration Orchestration
@@ -345,9 +386,13 @@ log_info "GPU mode: ${GPU_MODE:-auto}"
 GPU_SETUP="${WS_SCRIPTS}/setup_gpu.sh"
 
 if [ -f "$GPU_SETUP" ]; then
-    if ! source "$GPU_SETUP" "${GPU_MODE:-auto}"; then
-        log_error "GPU setup failed. Check GPU_MODE=${GPU_MODE:-auto} and ${GPU_SETUP}."
-        exit 1
+    # Graceful degrade: an unusual/unsupported GPU must never prevent a shell.
+    # The stated goal is "support most hardware with software fallback", so on
+    # failure we fall back to software rendering rather than killing the container.
+    if ! source_runtime_file "$GPU_SETUP" "${GPU_MODE:-auto}"; then
+        log_warn "GPU setup failed for GPU_MODE=${GPU_MODE:-auto}. Falling back to software rendering."
+        source_runtime_file "$GPU_SETUP" cpu \
+            || log_warn "Software GPU fallback also failed; continuing without GPU env (shell still available)."
     fi
 fi
 
@@ -386,7 +431,11 @@ if [ "$IS_DEV" = true ]; then
         if [ ! -d "$TARGET_DIR" ] || [ -z "$(find "$TARGET_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
             SYNC_DEPS="${WS_SCRIPTS}/setup_sync_deps.sh"
             log_info "Dependency directory ($TARGET_DIR) is empty. Running $(basename "$SYNC_DEPS")..."
-            bash "$SYNC_DEPS"
+            # Never let a first-boot sync failure (offline / private repo / transient
+            # DNS) block the shell — warn and continue; the user can re-run later.
+            if ! bash "$SYNC_DEPS"; then
+                log_warn "Dependency sync failed (offline / private repo / transient error?). Continuing to shell — re-run later with: sync_deps"
+            fi
         fi
     fi
 fi
