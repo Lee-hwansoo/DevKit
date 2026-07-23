@@ -10,6 +10,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || s
 devkit_require "util_sif_runtime.sh"
 init_sif_context "$(dirname "${BASH_SOURCE[0]}")"
 devkit_require "util_logging.sh"
+LOG_PREFIX="[Bake]"
+devkit_enable_error_trap
 
 MODE="dev"
 SIF_ENV="${ENV:-ros}"
@@ -95,6 +97,15 @@ BUILD_FULL_CUDA="${FULL_CUDA:-false}"
 if [ "$MODE" = "prod" ]; then
     BUILD_FULL_CUDA="${PROD_FULL_CUDA:-false}"
 fi
+# GPG policy (hybrid): production artifacts default to fail-closed (strict) ROS key
+# verification; dev iteration defaults to fail-open (availability). An explicit
+# STRICT_GPG_CHECK always wins. apt verifies package signatures either way.
+if [ "$MODE" = "prod" ]; then
+    STRICT_GPG_CHECK_DEFAULT="${STRICT_GPG_CHECK:-true}"
+else
+    STRICT_GPG_CHECK_DEFAULT="${STRICT_GPG_CHECK:-false}"
+fi
+
 BUILD_ARGS=(
     --build-arg "BASE_IMAGE=${BASE_IMAGE:-ubuntu:22.04}"
     --build-arg "WORKSPACE_PATH=${CONTAINER_WORKSPACE_PATH}"
@@ -107,7 +118,7 @@ BUILD_ARGS=(
     --build-arg "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-}"
     --build-arg "ROS_DISTRO=${ROS_DISTRO:-humble}"
     --build-arg "APT_SNAPSHOT_DATE=${APT_SNAPSHOT_DATE:-latest}"
-    --build-arg "STRICT_GPG_CHECK=${STRICT_GPG_CHECK:-false}"
+    --build-arg "STRICT_GPG_CHECK=${STRICT_GPG_CHECK_DEFAULT}"
     --build-arg "UV_VERSION=${UV_VERSION:-0.10.10}"
     --build-arg "UV_PYTHON=${UV_PYTHON:-3.10}"
     --build-arg "CMAKE_C_STANDARD=${CMAKE_C_STANDARD:-11}"

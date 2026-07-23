@@ -73,6 +73,7 @@ build_sbatch_args() {
         "--ntasks=${SLURM_NTASKS_REQ}"
         "--gres=${SLURM_GRES_REQ}"
         "--cpus-per-task=${SLURM_CPUS_PER_TASK_REQ}"
+        "--mem=${SLURM_MEM_REQ}"
         "--time=${SLURM_TIME_REQ}"
         "--output=${SLURM_OUTPUT_REQ}"
         "--error=${SLURM_ERROR_REQ}"
@@ -80,6 +81,16 @@ build_sbatch_args() {
         "--chdir=${HOST_ROOT}"
         "--export=ALL"
     )
+
+    # Generic passthrough for any sbatch flag not managed above
+    # (e.g. --account, --qos, --nodelist, --exclusive). Appended last so it can
+    # override the managed options if the user intends to. Word-split on spaces
+    # (values containing spaces are not supported here — use a #SBATCH directive).
+    if [ -n "${DEVKIT_SLURM_EXTRA_ARGS:-}" ]; then
+        local extra_args=()
+        read -r -a extra_args <<< "${DEVKIT_SLURM_EXTRA_ARGS}"
+        SBATCH_ARGS+=( "${extra_args[@]}" )
+    fi
 }
 
 ensure_slurm_log_dirs() {
@@ -104,6 +115,7 @@ load_slurm_request() {
     SLURM_NTASKS_REQ="$(slurm_request_value "$script" DEVKIT_SLURM_NTASKS ntasks 1)"
     SLURM_GRES_REQ="$(slurm_request_value "$script" DEVKIT_SLURM_GRES gres gpu:1)"
     SLURM_CPUS_PER_TASK_REQ="$(slurm_request_value "$script" DEVKIT_SLURM_CPUS_PER_TASK cpus-per-task 4)"
+    SLURM_MEM_REQ="$(slurm_request_value "$script" DEVKIT_SLURM_MEM mem 32G)"
     SLURM_TIME_REQ="$(slurm_request_value "$script" DEVKIT_SLURM_TIME time 00:30:00)"
     SLURM_OUTPUT_REQ="$(slurm_request_value "$script" DEVKIT_SLURM_OUTPUT output logs/%x_%j.out)"
     SLURM_ERROR_REQ="$(slurm_request_value "$script" DEVKIT_SLURM_ERROR error logs/%x_%j.err)"
@@ -122,9 +134,11 @@ print_slurm_submit_summary() {
     echo " - Partition       : ${SLURM_PARTITION_REQ}"
     echo " - Nodes           : ${SLURM_NODES_REQ}"
     echo " - Tasks & CPUs    : ${SLURM_NTASKS_REQ} tasks, ${SLURM_CPUS_PER_TASK_REQ} CPUs/task"
-    echo " - GPU Request     : ${SLURM_GRES_REQ}"
+    echo " - GPU             : ${SLURM_GRES_REQ}"
+    echo " - Memory          : ${SLURM_MEM_REQ}"
     echo " - Time Limit      : ${SLURM_TIME_REQ}"
     echo " - Comment / Tag   : ${SLURM_COMMENT_REQ}"
+    [ -n "${DEVKIT_SLURM_EXTRA_ARGS:-}" ] && echo " - Extra sbatch     : ${DEVKIT_SLURM_EXTRA_ARGS}"
     echo "---------------------------------------------------------------------"
     echo "Log Files"
     echo "---------------------------------------------------------------------"
