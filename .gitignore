@@ -14,8 +14,10 @@ logs/
 # --- Thirdparty (vcs import) -------------------------
 src/thirdparty/*
 !src/thirdparty/.gitkeep
-thirdparty/
+/thirdparty/
 third party deps/
+!dependencies/overlay/**/COLCON_IGNORE
+!dependencies/overlay/**/CATKIN_IGNORE
 
 # --- Python ------------------------------------------
 __pycache__/

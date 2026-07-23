@@ -14,14 +14,7 @@ set -eo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
 devkit_require "util_logging.sh"
 LOG_PREFIX="[Sync Deps]"
-
-if ! declare -F log_info >/dev/null 2>&1; then
-    log_info() { echo "[INFO] $*"; }
-    log_warn() { echo "[WARN] $*" >&2; }
-    log_error() { echo "[ERROR] $*" >&2; }
-    print_section() { echo "[ $* ]"; }
-    log_step_done() { echo "[OK] $*"; }
-fi
+devkit_enable_error_trap
 
 truthy() {
     case "${1,,}" in
@@ -154,6 +147,30 @@ elif [ -f "$REPOS_FILE" ]; then
             log_warn "One or more vcs pull operations failed. Continuing because DEVKIT_VCS_ALLOW_FAILURE=1."
         else
             log_error "One or more vcs pull operations failed. Fix the repository state/network or set DEVKIT_VCS_ALLOW_FAILURE=1 to continue intentionally."
+            exit 1
+        fi
+    fi
+
+    log_info "Synchronizing git submodules for all imported repositories..."
+    submodule_failed=0
+    failed_submodules=()
+    for repo_dir in "$TARGET_DIR"/*; do
+        if [ -d "$repo_dir" ] && ( [ -d "$repo_dir/.git" ] || [ -f "$repo_dir/.git" ] ); then
+            REPO_NAME=$(basename "$repo_dir")
+            log_info "Updating submodules for $REPO_NAME..."
+            if ! (cd "$repo_dir" && git submodule update --init --recursive); then
+                log_warn "Failed to update submodules for $REPO_NAME"
+                submodule_failed=1
+                failed_submodules+=("$REPO_NAME")
+            fi
+        fi
+    done
+    if [ "$submodule_failed" != "0" ]; then
+        log_warn "Submodule updates failed for: ${failed_submodules[*]}"
+        if truthy "${DEVKIT_VCS_ALLOW_FAILURE:-false}"; then
+            log_warn "Continuing because DEVKIT_VCS_ALLOW_FAILURE=1."
+        else
+            log_error "One or more submodule updates failed. Fix the submodules (access/network) or set DEVKIT_VCS_ALLOW_FAILURE=1 to continue intentionally."
             exit 1
         fi
     fi

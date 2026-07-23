@@ -14,12 +14,7 @@ COMMAND="${1:-}"
 source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
 devkit_require "util_logging.sh"
 LOG_PREFIX="[APT Helper]"
-
-if ! declare -F log_info >/dev/null 2>&1; then
-    log_info() { echo "[INFO] $*"; }
-    log_warn() { echo "[WARN] $*" >&2; }
-    log_error() { echo "[ERROR] $*" >&2; }
-fi
+devkit_enable_error_trap
 
 usage() {
     cat <<'EOF'
@@ -58,26 +53,60 @@ require_arg() {
     fi
 }
 
-validate_ros_distro() {
-    local distro="${1:-}"
-    case "$distro" in
-        noetic|humble) return 0 ;;
-        "")
-            log_error "ROS_DISTRO is required for this command."
-            return 2
-            ;;
-        *)
-            log_error "Unsupported ROS_DISTRO: $distro. Supported values: noetic, humble."
-            return 2
-            ;;
+# =============================================================================
+# Supported ROS distributions — Single Source of Truth (SSOT)
+# -----------------------------------------------------------------------------
+# To add or remove a supported distro, edit ONLY `devkit_distro_row` below; the
+# validate / tag / GPG-key / repo logic all derive from it. (When a second
+# build-time consumer appears, promote this block to scripts/util_distros.sh and
+# bind-mount it alongside this file in the Dockerfile.)
+#
+# Row fields (pipe-delimited): ros_ver | ubuntu_version | ubuntu_codename | gpg_key_file | repo_path
+#   ros_ver      : 1 (ROS 1) | 2 (ROS 2)
+#   gpg_key_file : ros.asc (ROS 1) | ros.key (ROS 2)   — file under ros/rosdistro
+#   repo_path    : ros (ROS 1) | ros2 (ROS 2)          — path under packages.ros.org
+# =============================================================================
+DEVKIT_SUPPORTED_DISTROS="noetic humble"
+
+devkit_distro_row() {
+    case "${1:-}" in
+        noetic) printf '1|20.04|focal|ros.asc|ros\n' ;;
+        humble) printf '2|22.04|jammy|ros.key|ros2\n' ;;
+        *) return 1 ;;
     esac
 }
 
-ros_major_tag() {
-    case "$1" in
-        noetic) printf '%s\n' ros1 ;;
-        humble) printf '%s\n' ros2 ;;
+# devkit_distro_field <distro> <ros_ver|ubuntu_version|ubuntu_codename|gpg_key_file|repo_path|ros_major_tag>
+devkit_distro_field() {
+    local row ros_ver ubuntu_version ubuntu_codename gpg_key_file repo_path
+    row="$(devkit_distro_row "${1:-}")" || return 1
+    IFS='|' read -r ros_ver ubuntu_version ubuntu_codename gpg_key_file repo_path <<< "$row"
+    case "${2:-}" in
+        ros_ver)         printf '%s\n' "$ros_ver" ;;
+        ubuntu_version)  printf '%s\n' "$ubuntu_version" ;;
+        ubuntu_codename) printf '%s\n' "$ubuntu_codename" ;;
+        gpg_key_file)    printf '%s\n' "$gpg_key_file" ;;
+        repo_path)       printf '%s\n' "$repo_path" ;;
+        ros_major_tag)   [ "$ros_ver" = "1" ] && printf 'ros1\n' || printf 'ros2\n' ;;
+        *) return 1 ;;
     esac
+}
+
+validate_ros_distro() {
+    local distro="${1:-}"
+    if [ -z "$distro" ]; then
+        log_error "ROS_DISTRO is required for this command."
+        return 2
+    fi
+    if ! devkit_distro_row "$distro" >/dev/null 2>&1; then
+        log_error "Unsupported ROS_DISTRO: $distro. Supported values: ${DEVKIT_SUPPORTED_DISTROS}."
+        return 2
+    fi
+    return 0
+}
+
+ros_major_tag() {
+    devkit_distro_field "${1:-}" ros_major_tag
 }
 
 download_file() {
@@ -102,6 +131,28 @@ init_apt() {
     rm -f /etc/apt/apt.conf.d/docker-clean
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
     log_info "Docker APT cache preservation enabled."
+
+    # Pre-install ca-certificates to enable HTTPS snapshot support
+    if ! dpkg -s ca-certificates >/dev/null 2>&1; then
+        log_info "Installing ca-certificates from default archive..."
+        apt-get update
+        apt-get install -y --no-install-recommends ca-certificates
+    fi
+}
+
+apt_truthy() {
+    case "${1:-}" in
+        1|true|yes|on|TRUE|True|Yes|On) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Probe snapshot mirror reachability. Returns 0 (assume reachable) when curl is
+# unavailable so early build stages without curl keep their previous behavior.
+snapshot_server_reachable() {
+    local host="${1:-snapshot.ubuntu.com}"
+    command -v curl >/dev/null 2>&1 || return 0
+    curl -fsS --connect-timeout 5 --max-time 10 -I "https://${host}/" >/dev/null 2>&1
 }
 
 # 1. Configure APT Snapshot Repository and Disable Valid-Until Checks
@@ -112,6 +163,24 @@ setup_snapshot() {
         if [[ ! "$date" =~ ^[0-9]{8}T[0-9]{6}Z$ ]]; then
             log_error "APT_SNAPSHOT_DATE must be 'latest' or UTC format YYYYMMDDTHHMMSSZ (current: $date)"
             return 2
+        fi
+
+        # Verify the snapshot mirror is reachable before committing the build to it.
+        # snapshot.ubuntu.com is a single upstream; if it is down we must NOT silently
+        # fall back to rolling mirrors, because that would void the reproducibility
+        # (SOURCE_DATE_EPOCH) the snapshot exists to guarantee. Fail loudly by default;
+        # fall back only when APT_SNAPSHOT_FALLBACK is explicitly opted into.
+        if ! snapshot_server_reachable; then
+            if apt_truthy "${APT_SNAPSHOT_FALLBACK:-}"; then
+                log_warn "Snapshot server snapshot.ubuntu.com is unreachable."
+                log_warn "APT_SNAPSHOT_FALLBACK=1 set: falling back to standard Ubuntu mirrors."
+                log_warn "WARNING: build reproducibility (SOURCE_DATE_EPOCH) is VOIDED for this build."
+                return 0
+            fi
+            log_error "Snapshot server snapshot.ubuntu.com is unreachable (APT_SNAPSHOT_DATE=$date)."
+            log_error "Fix network/mirror availability, choose a different snapshot date, or set"
+            log_error "APT_SNAPSHOT_FALLBACK=1 to intentionally build against standard (non-reproducible) mirrors."
+            return 1
         fi
 
         # Disable Valid-Until verification for historical snapshots
@@ -154,8 +223,7 @@ setup_ros_repo() {
 
     local TMP_KEY
     TMP_KEY=$(mktemp /tmp/ros_repo_key.XXXXXX)
-    local key_url="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"
-    [ "$distro" = "noetic" ] && key_url="https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc"
+    local key_url="https://raw.githubusercontent.com/ros/rosdistro/master/$(devkit_distro_field "$distro" gpg_key_file)"
 
     if ! download_file "$key_url" "$TMP_KEY"; then
         rm -f "$TMP_KEY"
@@ -187,11 +255,14 @@ setup_ros_repo() {
     gpg --dearmor --yes -o /usr/share/keyrings/ros-archive-keyring.gpg < "$TMP_KEY"
     rm -f "$TMP_KEY"
 
-    if [ "$distro" = "noetic" ]; then
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros/ubuntu $codename main" > /etc/apt/sources.list.d/ros1-latest.list
+    local repo_path list_file
+    repo_path="$(devkit_distro_field "$distro" repo_path)"
+    if [ "$(devkit_distro_field "$distro" ros_ver)" = "1" ]; then
+        list_file="/etc/apt/sources.list.d/ros1-latest.list"
     else
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $codename main" > /etc/apt/sources.list.d/ros2.list
+        list_file="/etc/apt/sources.list.d/ros2.list"
     fi
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/${repo_path}/ubuntu $codename main" > "$list_file"
     log_info "ROS repository configured for: $distro ($codename)"
 }
 
