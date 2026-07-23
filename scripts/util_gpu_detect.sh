@@ -49,8 +49,26 @@ list_glob_basenames() {
 
 # NVIDIA: kernel device node + driver tool
 has_nvidia() {
-    # On WSL2, /dev/nvidiactl might be missing even if nvidia-smi works
-    [ -e /dev/nvidiactl ] || [ -e /dev/nvidia0 ] || command -v nvidia-smi >/dev/null 2>&1
+    # Memoize: the device-node check is cheap, but the nvidia-smi probe below can
+    # be slow (esp. on WSL2), and this is called several times per boot.
+    if [ -n "${__DEVKIT_HAS_NVIDIA:-}" ]; then
+        [ "$__DEVKIT_HAS_NVIDIA" = "1" ]
+        return
+    fi
+    # Native Linux: a real kernel device node is authoritative.
+    if [ -e /dev/nvidiactl ] || [ -e /dev/nvidia0 ]; then
+        __DEVKIT_HAS_NVIDIA=1
+        return 0
+    fi
+    # WSL2 / no device node: require a *functional* nvidia-smi. Presence of the
+    # binary alone is not enough — a stub or a driver-less install would misdetect
+    # NVIDIA on native/headless hosts and force a CUDA wheel + broken GLX/EGL.
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+        __DEVKIT_HAS_NVIDIA=1
+        return 0
+    fi
+    __DEVKIT_HAS_NVIDIA=0
+    return 1
 }
 
 # CUDA build capability: NVIDIA runtime plus compiler/toolkit availability

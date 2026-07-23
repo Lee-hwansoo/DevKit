@@ -170,6 +170,9 @@ write_gpu_env() {
 }
 
 setup_wsl2_d3d12() {
+    # Optional adapter hint (Intel|AMD|NVIDIA): lets an explicit `gpu <vendor>`
+    # request select that GPU on a multi-GPU WSL2 host via the D3D12 adapter name.
+    local requested_adapter="${1:-}"
     log_info "WSL2 environment detected. Using Mesa D3D12 (Dozen) for graphics acceleration."
     reset_gpu_env
     export LIBGL_ALWAYS_SOFTWARE=0
@@ -180,13 +183,16 @@ setup_wsl2_d3d12() {
     export GALLIUM_DRIVER="d3d12"
     export LIBGL_ALWAYS_INDIRECT=0
 
-    # Optimization: Prioritize NVIDIA adapter if present on WSL2
-    if has_nvidia; then
+    # Adapter selection: an explicit vendor request wins; otherwise prefer NVIDIA
+    # when present (the previous default behavior).
+    if [ -n "$requested_adapter" ]; then
+        export MESA_D3D12_DEFAULT_ADAPTER_NAME="$requested_adapter"
+    elif has_nvidia; then
         export MESA_D3D12_DEFAULT_ADAPTER_NAME="NVIDIA"
     fi
 
     write_gpu_env
-    log_ok "WSL2 D3D12 graphics bridge configured"
+    log_ok "WSL2 D3D12 graphics bridge configured${MESA_D3D12_DEFAULT_ADAPTER_NAME:+ (adapter: ${MESA_D3D12_DEFAULT_ADAPTER_NAME})}"
 }
 
 apply_gpu_setup() {
@@ -207,11 +213,21 @@ apply_gpu_setup() {
             return
         fi
 
-        # Fallback to Mesa D3D12 for Intel/AMD or if NVIDIA Toolkit is missing.
-        if [ "$target_setup_func" != "setup_wsl2_d3d12" ]; then
+        # On WSL2 every GPU renders through the Mesa D3D12 (Dozen) bridge, so an
+        # explicit `gpu intel|amd|nvidia` request is routed through D3D12 — not
+        # silently ignored — and mapped to the matching D3D12 adapter name.
+        local wsl_adapter=""
+        case "$target_setup_func" in
+            setup_nvidia) wsl_adapter="NVIDIA" ;;
+            setup_intel)  wsl_adapter="Intel" ;;
+            setup_amd)    wsl_adapter="AMD" ;;
+        esac
+        if [ -n "$wsl_adapter" ]; then
+            log_info "WSL2: routing '${wsl_adapter}' request through the Mesa D3D12 bridge (selecting the ${wsl_adapter} adapter)."
+        elif [ "$target_setup_func" != "setup_wsl2_d3d12" ]; then
             log_info "WSL2 environment detected (No Toolkit or Generic). Using Mesa D3D12 bridge."
         fi
-        setup_wsl2_d3d12
+        setup_wsl2_d3d12 "$wsl_adapter"
         return
     fi
 
@@ -411,13 +427,16 @@ setup_auto() {
         elif command -v vulkaninfo &>/dev/null; then
             local vk_dev=$(vulkaninfo --summary 2>/dev/null | grep "deviceName" | head -1 || true)
             if [ -z "$vk_dev" ]; then
-                log_warn "!!! Vulkan device not found. Headless verification failed !!!"
-                setup_software
+                # Advisory only: a missing Vulkan device does NOT prove software GL
+                # (could be an absent ICD, or a vendor without a Vulkan loader entry).
+                # Do not clobber a just-configured hardware path.
+                log_warn "Vulkan device not reported by vulkaninfo. If GPU apps misbehave, run 'gpu status'."
             fi
         elif command -v vainfo &>/dev/null; then
             if ! vainfo --display drm 2>/dev/null | grep -qi "Driver version"; then
-                log_warn "!!! VA-API DRM device not found. Headless verification failed !!!"
-                setup_software
+                # Advisory only: NVIDIA legitimately ships no VA-API driver, so a
+                # vainfo miss must not downgrade the configured renderer to software.
+                log_warn "VA-API driver not reported by vainfo (normal on NVIDIA). If GPU apps misbehave, run 'gpu status'."
             fi
         else
             if [ "$ds" != "None" ]; then

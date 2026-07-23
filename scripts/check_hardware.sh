@@ -22,6 +22,9 @@
 #   [5/5] I/O & Peripherals   — Video, Serial, CAN, Input
 # =============================================================================
 
+export LC_ALL=C
+export LANG=C
+
 BRIEF_MODE=false
 usage() {
     cat <<'EOF'
@@ -72,46 +75,51 @@ _hw_section()  { $BRIEF_MODE || print_section "$1"; }
 # -----------------------------------------------------------------------------
 
 first_colon_value() {
-    local key_regex="${1,,}"
-    local line
-    while IFS= read -r line; do
-        local line_lc="${line,,}"
-        if [[ "$line_lc" == *"${key_regex}"* ]]; then
-            local val="${line#*:}"
-            val="${val#"${val%%[![:space:]]*}"}"
-            printf '%s\n' "$val"
-            return 0
-        fi
-    done
-    return 1
+    awk -v key="${1,,}" '
+        idx = index(tolower($0), key) {
+            colon = index($0, ":")
+            if (colon > 0) {
+                val = substr($0, colon + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+                print val
+                found = 1
+                exit
+            }
+        }
+        END { if (!found) exit 1 }
+    '
 }
 
 first_kv_value() {
-    local key_regex="$1"
-    local line
-    while IFS= read -r line; do
-        if [[ "$line" == *"${key_regex}"* ]]; then
-            local val="${line#*=}"
-            val="${val#"${val%%[![:space:]]*}"}"
-            printf '%s\n' "$val"
-            return 0
-        fi
-    done
-    return 1
+    awk -v key="$1" '
+        idx = index($0, key) {
+            eq = index($0, "=")
+            if (eq > 0) {
+                val = substr($0, eq + 1)
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+                print val
+                found = 1
+                exit
+            }
+        }
+        END { if (!found) exit 1 }
+    '
 }
 
 json_number_value() {
-    local key="\"$1\""
-    local line
-    while IFS= read -r line; do
-        if [[ "$line" == *"${key}"* ]]; then
-            local val="${line#*:}"
-            val="${val//[^0-9]/}"
-            printf '%s\n' "$val"
-            return 0
-        fi
-    done
-    return 1
+    awk -v key="\"$1\"" '
+        idx = index($0, key) {
+            colon = index($0, ":")
+            if (colon > 0) {
+                val = substr($0, colon + 1)
+                gsub(/[^0-9]/, "", val)
+                print val
+                found = 1
+                exit
+            }
+        }
+        END { if (!found) exit 1 }
+    '
 }
 
 if ! $BRIEF_MODE; then
