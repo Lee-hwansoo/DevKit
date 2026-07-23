@@ -15,6 +15,7 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 NC='\033[0m'
+DIM='\033[2m'
 TEAL='\033[38;2;45;212;191m'
 
 # Load settings (defaults)
@@ -197,3 +198,15 @@ print_env_info() {
     # 3. Output Unified Dashboard
     echo -e "  Project: ${BLUE}${COMPOSE_PROJECT_NAME}${NC} | User: ${PURPLE}$(whoami) (${UID:-$(id -u)})${NC} | WS: ${GREEN}${root}${NC} | GPU: ${YELLOW}${GPU_MODE:-auto}${NC} | ROS: ${YELLOW}${ROS_DISTRO:-None}${NC} | Python: ${CYAN}${v_rel}${NC}(${venv_status})"
 }
+
+# =============================================================================
+# Guide Renderer (bundled)
+# =============================================================================
+# Colors are defined above; load the shared guide renderer here so every
+# consumer of this logging SSOT can render DevKit guides (make help / h|help)
+# without a separate require. Guarded twice: `devkit_require` is only present
+# when util_paths.sh is loaded (a few Makefile recipes source this file alone,
+# and only need print_section), and a missing renderer must never break logging.
+if declare -F devkit_require >/dev/null 2>&1; then
+    devkit_require "util_doc_render.sh" 2>/dev/null || true
+fi

@@ -14,42 +14,17 @@
 set -uo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/../config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
-devkit_require "util_logging.sh"
+devkit_require "util_logging.sh"   # bundles util_doc_render.sh (guide renderer)
 
 MAKEFILE="${1:-Makefile}"
 
-trim_ws() {
-    local value="$1"
-    value="${value#"${value%%[![:space:]]*}"}"
-    value="${value%"${value##*[![:space:]]}"}"
-    printf '%s' "$value"
-}
-
+# The section/entry layout is rendered by the shared guide renderer so the host
+# `make help` and the in-container `h`/`help` stay visually identical. Only the
+# host-specific banner, @arg legend and footer live here.
 print_banner WELCOME
+devkit_render_guide "$MAKEFILE" target "make " "$BLUE"
+devkit_render_arglegend "$MAKEFILE" "🔩" "Arguments" "$BLUE"
 
-while IFS= read -r line; do
-    if [[ $line =~ ^[[:space:]]*"## @section" ]]; then
-        section_data="${line#*## @section }"
-        IFS="|" read -r emoji title color_name <<< "$section_data"
-        emoji="$(trim_ws "$emoji")"
-        title="$(trim_ws "$title")"
-        color_name="$(trim_ws "$color_name")"
-        color="${!color_name:-$BLUE}"
-        printf "\n  ${color}%s  %s:${NC}\n" "$emoji" "$title"
-    elif [[ $line =~ ^[[:space:]]*"## @target" ]]; then
-        content="${line#*## @target }"
-        cmd="$(trim_ws "${content%%:*}")"
-        desc="$(trim_ws "${content#*:}")"
-        if [ ${#cmd} -gt 52 ]; then
-            printf "    ${GREEN}make %s${NC}\n      : %s\n" "$cmd" "$desc"
-        else
-            printf "    ${GREEN}make %-52s${NC} : %s\n" "$cmd" "$desc"
-        fi
-    fi
-done < "$MAKEFILE"
-
-echo -e "\n  ${CYAN}Defaults:${NC} ENV=ros, SIF_MODE=dev, IMAGE_TAG=latest"
-echo -e "  ${CYAN}Modes:${NC}    ENV=ros|dev selects the Docker/SIF family; SIF_MODE=dev|prod|slurm selects SIF execution."
 echo -e "\n  ${CYAN}Common flows:${NC}"
 echo -e "    ${GREEN}make build ENV=ros && make start ENV=ros && make shell ENV=ros${NC}"
 echo -e "    ${GREEN}make bake-dev ENV=ros SHARE=1${NC}"

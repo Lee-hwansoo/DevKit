@@ -15,28 +15,44 @@ esac
 print_banner WELCOME
 print_env_info
 
-print_section "Quick Start"
-echo -e "    ${GREEN}mksync${NC}           : Fully initialize workspace (venv + deps + build)"
+# Curated quick-start guide. Sections are "@Title" markers; entries are
+# "name|description". The column width is derived from the widest name and each
+# row is drawn by the shared devkit_guide_row helper, so this MOTD stays aligned
+# and visually identical to the full `h`/`help` guide with nothing hardcoded.
+WELCOME_ROWS=(
+    "@Quick Start"
+    "mksync|Fully initialize workspace (venv + deps + build)"
+    "@Build & Sync"
+    "cbuild|colcon build (--debug, --release, --pkg, --meta)"
+    "cbt / cbtr|colcon test / test results"
+    "sync_deps|Sync external repos from .repos file"
+    "check_deps|Verify missing runtime libraries in install/"
+    "@ROS & Apps"
+    "rt / rn / rl|List topics / nodes / launch files"
+    "s / sb|Source workspace / Source bashrc"
+    "@Environment"
+    "mkenv / activate|Setup & Enter Python virtualenv"
+    "uvs / uvr|uv sync / uv run"
+    "@Diagnostics"
+    "hw_check|Run full hardware & environment diagnostics"
+    "gpu status|Show detailed GPU & Display info"
+)
 
-print_section "Build & Sync"
-echo -e "    ${GREEN}cbuild${NC}           : colcon build (--debug, --release, --pkg, --meta)"
-echo -e "    ${GREEN}cbt${NC} / ${GREEN}cbtr${NC}        : colcon test / test results"
-echo -e "    ${GREEN}sync_deps${NC}        : Sync external repos from .repos file"
-echo -e "    ${GREEN}check_deps${NC}       : Verify missing runtime libraries in install/"
+welcome_col=0
+for row in "${WELCOME_ROWS[@]}"; do
+    [[ $row == @* ]] && continue
+    name="${row%%|*}"
+    (( ${#name} > welcome_col )) && welcome_col=${#name}
+done
 
-print_section "ROS & Apps"
-echo -e "    ${GREEN}rt${NC} / ${GREEN}rn${NC} / ${GREEN}rl${NC}     : List topics / nodes / launch files"
-echo -e "    ${GREEN}s${NC} / ${GREEN}sb${NC}           : Source workspace / Source bashrc"
+for row in "${WELCOME_ROWS[@]}"; do
+    if [[ $row == @* ]]; then
+        print_section "${row#@}"
+    else
+        devkit_guide_row "$welcome_col" "${row%%|*}" "${row#*|}"
+    fi
+done
 
-print_section "Environment"
-echo -e "    ${GREEN}mkenv${NC} / ${GREEN}activate${NC} : Setup & Enter Python virtualenv"
-echo -e "    ${GREEN}uvs${NC} / ${GREEN}uvr${NC}        : uv sync / uv run"
-
-print_section "Diagnostics"
-echo -e "    ${GREEN}hw_check${NC}         : Run full hardware & environment diagnostics"
-echo -e "    ${GREEN}gpu status${NC}       : Show detailed GPU & Display info"
-
-echo -e ""
-echo -e "  Type ${CYAN}h${NC} or ${CYAN}help${NC} to see the full alias & shortcut guide."
+devkit_guide_footer "to see the full alias & shortcut guide."
 echo -e "  Workspace: ${CYAN}${WS_ROOT}${NC} (mapped from host)"
 echo -e ""

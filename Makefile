@@ -434,7 +434,15 @@ completion-install:
 # Initial Setup and Status Check
 # =============================================================================
 
-## @section 🛠️ | Setup & Infrastructure | BLUE
+## @arg ENV=ros|dev | Docker/SIF family selector (default: ros)
+## @arg SIF_MODE=dev|prod|slurm | SIF execution target (default: dev)
+## @arg SHARE=1 | Bind-mount the host workspace into the container
+## @arg NO_CACHE=1 | Force an image rebuild without layer cache
+## @arg PROD_FULL_CUDA=1 | Include the full CUDA toolkit in the prod image
+## @arg RUN_ARGS='cmd' | Command to execute inside the SIF
+## @arg IMAGE_TAG=latest | Image tag used for build/run (default: latest)
+
+## @section 🧰 | Setup & Infrastructure | BLUE
 ## @target h : Alias for help
 ## @target help : Show this command guide
 ## @target completion : Print bash completion script for make commands
@@ -465,17 +473,17 @@ setup:
 status: check
 	$(call GUARD_HOST_ONLY)
 	$(call PRINT_SECTION,Project Configuration Summary)
-	@echo "  Host User:         $(shell whoami) (UID: $(HOST_UID) / GID: $(HOST_GID))"
-	@echo "  Container User:    $(CONTAINER_USER)"
-	@echo "  Project Name:      $(COMPOSE_PROJECT_NAME)"
-	@echo "  Workspace(Host):   $(HOST_WORKSPACE_PATH)"
-	@echo "  Workspace(Docker): $(WORKSPACE_PATH)"
-	@echo "  OS Environment:    $(if $(filter true,$(IS_WSL)),WSL 2 (Windows Subsystem for Linux),Linux Native)"
-	@echo "  Architecture:      $(HOST_ARCH) (Target: $(TARGETARCH))"
-	@echo "  Display:           $(DISPLAY) ($(DISPLAY_TYPE))"
-	@echo "  GPU Mode (Set):    $(GPU_MODE)"
-	@echo "  ROS Version:       $(ROS_DISTRO)"
-	@echo "  Python Interpreter: $(PYTHON_EXECUTABLE)"
+	@printf "  %-19s %s\n" "Host User:"          "$(shell whoami) (UID: $(HOST_UID) / GID: $(HOST_GID))"
+	@printf "  %-19s %s\n" "Container User:"     "$(CONTAINER_USER)"
+	@printf "  %-19s %s\n" "Project Name:"       "$(COMPOSE_PROJECT_NAME)"
+	@printf "  %-19s %s\n" "Workspace(Host):"    "$(HOST_WORKSPACE_PATH)"
+	@printf "  %-19s %s\n" "Workspace(Docker):"  "$(WORKSPACE_PATH)"
+	@printf "  %-19s %s\n" "OS Environment:"     "$(if $(filter true,$(IS_WSL)),WSL 2 (Windows Subsystem for Linux),Linux Native)"
+	@printf "  %-19s %s\n" "Architecture:"       "$(HOST_ARCH) (Target: $(TARGETARCH))"
+	@printf "  %-19s %s\n" "Display:"            "$(DISPLAY) ($(DISPLAY_TYPE))"
+	@printf "  %-19s %s\n" "GPU Mode (Set):"     "$(GPU_MODE)"
+	@printf "  %-19s %s\n" "ROS Version:"        "$(ROS_DISTRO)"
+	@printf "  %-19s %s\n" "Python Interpreter:" "$(PYTHON_EXECUTABLE)"
 	$(call PRINT_SECTION,Running Containers)
 	$(call DOCKER_QUERY,status_docker_ps,docker ps --filter "label=com.docker.compose.project=$(COMPOSE_PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}",Unable to query Docker containers. Check Docker daemon/socket permissions.)
 	$(call PRINT_SECTION,Created Docker Volumes)
@@ -578,7 +586,7 @@ verify:
 # Build
 # =============================================================================
 
-## @section 🏗️ | Image Building | BLUE
+## @section 🏭 | Image Building | BLUE
 ## @target build ENV=ros|dev [NO_CACHE=1] : Build development image
 build: check
 	@bash scripts/check_preflight.sh
@@ -647,7 +655,7 @@ run-sif:
 # SLURM Scheduling (HPC)
 # =============================================================================
 
-## @section 🛰️ | SLURM Scheduling (Server) | BLUE
+## @section 📡 | SLURM Scheduling (Server) | BLUE
 ## @target slurm-status : Query active/pending SLURM jobs
 ## @target slurm-cancel : Cancel running/pending SLURM jobs
 slurm-status:

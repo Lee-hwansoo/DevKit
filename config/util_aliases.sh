@@ -39,24 +39,6 @@ export SYS_PYTHON_EXE=${SYS_PYTHON_EXE:-/usr/bin/python3}
 # Internal Helpers & Core Logic (Implementation)
 # =============================================================================
 
-function __trim_ws() {
-    local value="${1:-}"
-    value="${value#"${value%%[![:space:]]*}"}"
-    value="${value%"${value##*[![:space:]]}"}"
-    printf '%s' "$value"
-}
-
-function __split_alias_doc() {
-    local data="$1"
-    local -n _left_ref="$2"
-    local -n _middle_ref="$3"
-    local -n _right_ref="$4"
-    IFS="|" read -r _left_ref _middle_ref _right_ref <<< "$data"
-    _left_ref="$(__trim_ws "$_left_ref")"
-    _middle_ref="$(__trim_ws "$_middle_ref")"
-    _right_ref="$(__trim_ws "$_right_ref")"
-}
-
 function __parse_share_flag() {
     DEVKIT_SHARE_MODE=false
     DEVKIT_REMAINING_ARGS=()
@@ -315,35 +297,18 @@ function __uvs_impl() {
     fi
 }
 
+# Hide the ROS section when no ROS tooling is present (pure Python/C++ images).
+function __help_skip_section() { [ "$1" = "ROS & Simulation" ] && ! __has_ros_tools; }
+
 function __print_help() {
     [ "$INTERACTIVE" = false ] && return
     print_banner GUIDE
     print_env_info
-
-    local skip_section=false
-    while IFS= read -r line; do
-        if [[ $line =~ ^[[:space:]]*"## @section" ]]; then
-            local section_data="${line#*## @section }"
-            local s_emoji="" s_title="" s_color_name=""
-            __split_alias_doc "$section_data" s_emoji s_title s_color_name
-            local s_color="${!s_color_name:-$PURPLE}"
-            if [ "$s_title" = "ROS & Simulation" ] && ! __has_ros_tools; then
-                skip_section=true
-                continue
-            fi
-            skip_section=false
-            printf "\n  ${s_color}%s  %s:${NC}\n" "$s_emoji" "$s_title"
-        elif [[ $line =~ ^[[:space:]]*"## @alias" ]]; then
-            [ "$skip_section" = true ] && continue
-            local content="${line#*## @alias }"
-            local cmd="$(__trim_ws "${content%%:*}")"
-            local desc="$(__trim_ws "${content#*:}")"
-            printf "    ${GREEN}%-22s${NC} : %s\n" "$cmd" "$desc"
-        fi
-    done < "$BASH_SOURCE"
-
-    echo -e ""
-    echo -e "  Type ${CYAN}h${NC} or ${CYAN}help${NC} to see this guide again."
+    # Same shared renderer as the host `make help`, so the guide is identical
+    # inside and outside the container; only the source file, entry marker and
+    # default color differ.
+    devkit_render_guide "$BASH_SOURCE" alias "" "$PURPLE" __help_skip_section
+    devkit_guide_footer "to see this guide again."
 }
 
 # Helper function to fetch ROS package list for completion
@@ -639,7 +604,7 @@ if __has_ros_tools; then
 ## @section 🤖 | ROS & Simulation | BLUE
     # --- Build  --------------------------------------------------------------
     ## @alias cbuild [--debug|--release] [--pkg ...] [--meta] : colcon build
-    ## @alias cbt [--pkg ...] / cbtr : colcon test / test-result with DevKit paths
+    ## @alias cbt / cbtr : colcon test / test-result (--pkg to select packages)
 
     ## @alias s / sb : Source setup.bash / .bashrc
     function __smart_source() {
@@ -859,7 +824,7 @@ alias ccc='ccache -C'
 # System Utilities
 # =============================================================================
 
-## @section 🛠️ | System Utilities | BLUE
+## @section 🔧 | System Utilities | BLUE
 
 # --- Navigation ----------------------------------------------------------
 ## @alias cw / cs / cc : cd to root / src / config
