@@ -37,7 +37,11 @@ export
 
 # Environment Detection Engine (Auto-detection — triggered by relevant targets)
 # Applied to Docker-related operations to ensure hardware and display compatibility
-NEEDS_DETECTOR := $(filter-out help setup env-check% verify,$(MAKECMDGOALS))
+# Pure teardown/cleanup/log targets need only .env (COMPOSE_PROJECT_NAME) + compose,
+# not host GPU/display detection — exclude them so they don't pay the docker-info/
+# nvidia-smi cost. (stop/restart/status keep detection: they resolve the GPU-variant
+# service via DETECT_MODE.)
+NEEDS_DETECTOR := $(filter-out help setup env-check% verify down logs clean% docker-clean,$(MAKECMDGOALS))
 ifneq ($(NEEDS_DETECTOR),)
 DETECTED_ENV_FILE := .docker_cache/detected-env.mk
 $(shell mkdir -p .docker_cache && tmp=$$(mktemp "$(DETECTED_ENV_FILE).XXXXXX") && { bash scripts/check_env.sh --makefile > "$$tmp" && mv "$$tmp" "$(DETECTED_ENV_FILE)" || { rm -f "$$tmp"; printf '%s\n' '$$(error Environment detection failed. Run scripts/check_env.sh for details.)' > "$(DETECTED_ENV_FILE)"; }; })
@@ -401,41 +405,7 @@ help:
 	@if [ "$(IS_CONTAINER)" = "true" ]; then \
 		bash -c "source scripts/util_logging.sh && print_banner GUIDE && echo -e \"\n  ${YELLOW}Notice:${NC} You are INSIDE the container.\n  Please use aliases (type ${GREEN}h${NC} or ${GREEN}help${NC}) instead of make commands.\n\""; \
 	else \
-		bash -c ' \
-			source scripts/util_logging.sh && \
-			trim_ws() { local value="$$1"; value="$${value#"$${value%%[![:space:]]*}"}"; value="$${value%"$${value##*[![:space:]]}"}"; printf "%s" "$$value"; }; \
-			print_banner WELCOME && \
-			while IFS= read -r line; do \
-				if [[ $$line =~ ^[[:space:]]*"## @section" ]]; then \
-					section_data="$${line#*## @section }"; \
-					IFS="|" read -r emoji title color_name <<< "$$section_data"; \
-					emoji=$$(trim_ws "$$emoji"); \
-					title=$$(trim_ws "$$title"); \
-					color_name=$$(trim_ws "$$color_name"); \
-					color=$${!color_name:-$$BLUE}; \
-					printf "\n  $${color}%s  %s:$${NC}\n" "$$emoji" "$$title"; \
-					elif [[ $$line =~ ^[[:space:]]*"## @target" ]]; then \
-						content="$${line#*## @target }"; \
-						cmd=$$(trim_ws "$${content%%:*}"); \
-						desc=$$(trim_ws "$${content#*:}"); \
-						if [ $${#cmd} -gt 52 ]; then \
-							printf "    $${GREEN}make %s$${NC}\n      : %s\n" "$$cmd" "$$desc"; \
-						else \
-							printf "    $${GREEN}make %-52s$${NC} : %s\n" "$$cmd" "$$desc"; \
-						fi; \
-					fi; \
-				done < Makefile; \
-				echo -e "\n  ${CYAN}Defaults:${NC} ENV=ros, SIF_MODE=dev, IMAGE_TAG=latest"; \
-				echo -e "  ${CYAN}Modes:${NC}    ENV=ros|dev selects the Docker/SIF family; SIF_MODE=dev|prod|slurm selects SIF execution."; \
-				echo -e "\n  ${CYAN}Common flows:${NC}"; \
-				echo -e "    $${GREEN}make build ENV=ros && make start ENV=ros && make shell ENV=ros$${NC}"; \
-				echo -e "    $${GREEN}make bake-dev ENV=ros SHARE=1$${NC}"; \
-				echo -e "    $${GREEN}make bake-prod ENV=ros$${NC}"; \
-				echo -e "    $${GREEN}PROD_FULL_CUDA=1 make bake-prod ENV=ros$${NC}"; \
-				echo -e "    $${GREEN}APP_COMMAND=\"python3 -V\" make run-sif SIF_MODE=prod ENV=ros$${NC}"; \
-				echo -e "    $${GREEN}APP_COMMAND=\"python3 -V\" DEVKIT_SLURM_PARTITION=gpu DEVKIT_SLURM_GRES=gpu:1 make run-sif SIF_MODE=slurm ENV=ros$${NC}"; \
-				echo -e "\n  ${CYAN}Notice:${NC} Run make commands on the host. Inside a container, use ${GREEN}h${NC} or ${GREEN}help${NC} for aliases.\n" \
-			'; \
+		bash scripts/util_make_help.sh Makefile; \
 	fi
 
 completion:
@@ -611,6 +581,7 @@ verify:
 ## @section 🏗️ | Image Building | BLUE
 ## @target build ENV=ros|dev [NO_CACHE=1] : Build development image
 build: check
+	@bash scripts/check_preflight.sh
 	$(call VALIDATE_ENV_MODE)
 	$(call BUILD_SERVICE,$(COMPOSE_DEV),$(SERVICE_PREFIX),$(SERVICE_LABEL),$(if $(call truthy,$(NO_CACHE)),--no-cache,),Build finished! Run 'make start ENV=$(ENV)' to start the container.)
 
@@ -653,11 +624,13 @@ term: check xauth
 ## @target bake-prod ENV=ros|dev [PROD_FULL_CUDA=1] : Bake user-facing production SIF
 ## @target run-sif SIF_MODE=dev|prod|slurm [ENV=ros|dev] [SHARE=1] [RUN_ARGS='cmd'] : Run or submit a SIF artifact
 bake-dev: check
+	@bash scripts/check_preflight.sh
 	$(call VALIDATE_ENV_MODE)
 	$(call PRINT_SECTION,Baking Development Apptainer Snapshot)
 	@./scripts/apptainer_bake.sh --mode dev --env $(ENV) $(if $(call truthy,$(SHARE)),--share,)
 
 bake-prod: check
+	@bash scripts/check_preflight.sh
 	$(call VALIDATE_ENV_MODE)
 	$(call PRINT_SECTION,Baking Production Apptainer Image)
 	@./scripts/apptainer_bake.sh --mode prod --env $(ENV)
@@ -719,33 +692,7 @@ update-gpg:
 stats:
 	$(call GUARD_HOST_ONLY)
 	@echo -e "  $(INFO) Initiating real-time resource monitoring (Ctrl+C to terminate)..."
-	@watch -t -n 1 "bash -c ' \
-		source scripts/util_logging.sh; \
-		print_section \"All Containers Status (CPU/Mem/PIDs)\"; echo \"\"; \
-		docker stats --no-stream --format \"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.PIDs}}\" | sed \"s/^/  /\"; \
-		if [ \"$(HAS_NVIDIA)\" = \"true\" ]; then \
-			echo \"\"; print_section \"NVIDIA GPU Details\"; echo \"\"; \
-			nvidia-smi --query-gpu=index,name,utilization.gpu,utilization.memory,memory.used,memory.total --format=csv,noheader,nounits | sed \"s/^/  GPU /\"; \
-		fi; \
-		if [ \"$(HAS_DRI)\" = \"true\" ]; then \
-			echo \"\"; print_section \"Intel/AMD (DRI) Load Status\"; echo \"\"; \
-			for dev in /sys/class/drm/renderD*; do \
-				[ -d \"\$$dev\" ] || continue; \
-				idx=\$${dev##*renderD}; \
-				vendor=\$$(cat \"\$$dev/device/vendor\" 2>/dev/null); \
-				if [ \"\$$vendor\" = \"0x8086\" ]; then vname=\"Intel\"; \
-				elif [ \"\$$vendor\" = \"0x1002\" ] || [ \"\$$vendor\" = \"0x1022\" ]; then vname=\"AMD\"; \
-				else vname=\"DRI\"; fi; \
-				echo -n \"  GPU \$$idx (\$$vname) Status: \"; \
-				if [ -e \"\$$dev/device/gpu_busy_percent\" ]; then \
-					usage=\$$(cat \"\$$dev/device/gpu_busy_percent\"); \
-					echo \"\$$usage%\"; \
-				else \
-					echo \"Active (Use make top for details)\"; \
-				fi; \
-			done; \
-		fi; \
-	'" || [ $$? -eq 130 ]
+	@watch -t -n 2 "bash scripts/util_make_stats.sh $(HAS_NVIDIA) $(HAS_DRI)" || [ $$? -eq 130 ]
 
 # Detailed Expert Monitoring (Per CPU Core + Per GPU Process)
 top:
@@ -754,51 +701,10 @@ top:
 	@CONTAINER=$$($(call FIND_CONTAINER,$(SERVICE_FILTER))); \
 	if [ -n "$$CONTAINER" ]; then \
 		echo -e "  $(INFO) Initiating granular $(SERVICE_LABEL) container monitoring ($$CONTAINER)..."; \
-		docker exec -it -u $(CONTAINER_USER) $$CONTAINER bash -c " \
-			FOUND=0; \
-			if command -v nvtop >/dev/null 2>&1; then \
-				NVTOP_PROBE=\$$(nvtop 2>&1 | awk 'NR == 1 {print; exit}'); \
-				if [[ \"\$$NVTOP_PROBE\" != *'No GPU'* ]]; then \
-					nvtop; FOUND=1; \
-				fi; \
-			fi; \
-			if [ \"\$$FOUND\" = \"0\" ] && command -v intel_gpu_top >/dev/null 2>&1; then \
-				intel_gpu_top; FOUND=1; \
-			elif [ \"\$$FOUND\" = \"0\" ] && command -v radeontop >/dev/null 2>&1; then \
-				radeontop; FOUND=1; \
-			fi; \
-			if [ \"\$$FOUND\" = \"0\" ]; then htop; fi; \
-		" || [ $$? -eq 130 ]; \
+		docker exec -it -u $(CONTAINER_USER) $$CONTAINER bash "$(WORKSPACE_PATH)/scripts/util_make_top.sh" container || [ $$? -eq 130 ]; \
 	else \
 		echo -e "  $(ERROR) No running $(SERVICE_LABEL) container found. Trying host tools instead..."; \
-		FOUND=0; \
-		if command -v nvtop >/dev/null 2>&1; then \
-			NVTOP_PROBE=$$(nvtop 2>&1 | awk 'NR == 1 {print; exit}'); \
-			if [[ "$$NVTOP_PROBE" == *"No GPU"* ]]; then \
-				echo -e "  $(WARN) Host nvtop failed to detect a GPU. Trying an alternative..."; \
-			else \
-				nvtop || [ $$? -eq 130 ]; FOUND=1; \
-			fi; \
-		fi; \
-		if [ "$$FOUND" = "0" ] && [ "$(HAS_DRI)" = "true" ]; then \
-			for dev in /sys/class/drm/renderD*; do \
-				[ -e "$$dev/device/vendor" ] || continue; \
-				vendor=$$(cat "$$dev/device/vendor" 2>/dev/null); \
-				if [ "$$vendor" = "0x8086" ] && command -v intel_gpu_top >/dev/null 2>&1; then \
-					echo -e "  $(INFO) Intel GPU detected. Running intel_gpu_top..."; \
-					sudo intel_gpu_top || [ $$? -eq 130 ]; FOUND=1; break; \
-				elif ([ "$$vendor" = "0x1002" ] || [ "$$vendor" = "0x1022" ]) && command -v radeontop >/dev/null 2>&1; then \
-					echo -e "  $(INFO) AMD GPU detected. Running radeontop..."; \
-					radeontop || [ $$? -eq 130 ]; FOUND=1; break; \
-				fi; \
-			done; \
-		fi; \
-		if [ "$$FOUND" = "0" ] && command -v htop >/dev/null 2>&1; then \
-			htop || [ $$? -eq 130 ]; FOUND=1; \
-		fi; \
-		if [ "$$FOUND" = "0" ]; then \
-			echo -e "  $(ERROR) Appropriate monitoring tools (nvtop, intel_gpu_top, htop) could not be found."; exit 1; \
-		fi; \
+		bash scripts/util_make_top.sh host "$(HAS_DRI)" || [ $$? -eq 130 ]; \
 	fi
 
 logs:
