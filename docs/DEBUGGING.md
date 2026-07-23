@@ -1,154 +1,122 @@
-# 🐛 Debugging & Development Guide
+# 🐞 DevKit 디버깅 & 트러블슈팅 가이드
 
-This document provides a comprehensive guide to the professional debugging ecosystem integrated into **DevKit**. By leveraging VS Code's multi-layered configurations, you can seamlessly debug **C++, Python, and ROS 1/2** applications running within high-performance Docker containers.
-
-> [!TIP]
-> **Dynamic Environment Detection**: All configurations automatically adapt to your environment via the `ROS_DISTRO` and `WORKSPACE_PATH` variables. Whether you are running **ROS 1 Noetic** or **ROS 2 Humble**, the tools "just work."
-
----
-
-## 📑 Table of Contents
-
-1.  [🛠️ Prerequisites & Setup](#-prerequisites--setup)
-2.  [🔌 Connection Strategies](#-connection-strategies)
-3.  [🎯 C++ Debugging (GDB)](#-c-debugging-gdb)
-4.  [🐍 Python Debugging (debugpy)](#-python-debugging-debugpy)
-5.  [🤖 ROS Launch Debugging](#-ros-launch-debugging)
-6.  [🚀 Turnaround Optimization](#-turnaround-optimization)
-7.  [⚙️ Automated Task System](#-automated-task-system)
-8.  [🔍 Expert Troubleshooting](#-expert-troubleshooting)
-
----
-
-## 🛠️ Prerequisites & Setup
-
-### 1. Essential Extensions
-DevKit relies on a curated set of extensions for the ultimate developer experience. When you open the workspace, VS Code will prompt you to install them (defined in `.vscode/extensions.json`).
-
-*   **C/C++ & CMake Tools**: Full IntelliSense and GDB integration.
-*   **Python & Debugpy**: Robust Python debugging and environment management.
-*   **Dev Containers**: The bridge between your host and the high-performance container.
-*   **ROS Extension**: Smart ROS 1/2 integration (discovery, launch, and message viewing).
-
-### 2. Building for Debugging
-To enable source-level debugging (breakpoints, variable inspection), you must build with **Debug** symbols.
-
-| Build Mode         | CLI Command (ROS workspace)                  | VS Code Task (Ctrl+Shift+B)        |
-| :----------------- | :------------------------------------------- | :--------------------------------- |
-| **Debug**          | `cbuild --debug`                                 | `🔨 colcon: Build (Debug)`          |
-| **RelWithDebInfo** | `cbuild` (Default)                             | `🔨 colcon: Build (RelWithDebInfo)` |
-| **Release**        | `cbuild --release`                             | `🔨 colcon: Build (Release)`        |
-
-> [!IMPORTANT]
-> Use **Debug** mode for the most reliable experience. `RelWithDebInfo` provides optimizations that might cause the debugger to skip lines or show incorrect variable values.
-
----
-
-## 🔌 Connection Strategies
-
-DevKit supports two primary workflows, depending on your needs for isolation and performance.
-
-### Method A: Dev Containers (Recommended)
-This workflow runs VS Code *inside* the container.
-1.  Launch the container: `make start ENV=ros`
-2.  Command Palette (**Ctrl+Shift+P**) → `Dev Containers: Attach to Running Container...`
-3.  Select the DevKit container.
-4.  **Benefits**: Native performance, automatic IntelliSense, and integrated terminal access.
-
-### Method B: Host-Side Development
-Work from your host OS while interacting with the container.
-1.  Open the workspace normally in VS Code.
-2.  Use the `Host (Bind Mount)` IntelliSense profile in `c_cpp_properties.json`.
-3.  **Benefits**: Access to host-side tools and simpler multi-monitor window management.
-
----
-
-## 🎯 C++ Debugging (GDB)
-
-The C++ debugging suite is built on top of GDB, providing a consistent experience across pure C++ and ROS nodes.
-
-### 1. Launching Executables
-*   **`🐛 C++: Launch Executable (GDB)`**: Automatically triggers a **Debug build** and sources the workspace before launching your chosen binary.
-*   **`🐛 C++: Launch (GDB, skip build)`**: The fastest way to restart a debug session if you haven't changed the code.
-
-### 2. Attaching to Processes
-Use **`🐛 C++: Attach to Process (GDB)`** to debug a node that is already running. VS Code will provide a searchable list of active processes — simply type the name of your ROS node.
-
-### 3. Direct Node Launch (ROS-Aware)
-For complex nodes that require specific ROS arguments:
-*   **ROS 2**: `🤖 ROS2: C++ Node (GDB Direct)` — Handles `--ros-args` and remapping.
-*   **ROS 1**: `🐢 ROS1: C++ Node (GDB Direct)` — Handles `__name` and master URI.
-
----
-
-## 🐍 Python Debugging (debugpy)
-
-Python debugging is powered by `debugpy`, offering both local and remote capabilities.
-
-### 1. Zero-Config Debugging
-Open any `.py` file and press **F5** → select **`🐍 Python: Debug Current File`**. This works for standalone scripts, ROS nodes, and even launch files.
-
-### 2. Remote Attach (Advanced)
-Use this for nodes running in the background or within a complex launch system.
-1.  **Inject Listener**: Add the following to your Python code:
-    ```python
-    import debugpy
-    debugpy.listen(("0.0.0.0", 5678))
-    debugpy.wait_for_client() # Optional: wait for you to hit F5
-    ```
-2.  **Attach**: F5 → select **`🐍 Python: Attach to debugpy (Remote)`**.
+본 문서는 **DevKit** 환경에 통합된 전문 디버깅 에코시스템 활용법을 안내합니다. VSCode 연동을 통해 Docker 컨테이너 내부에서 구동되는 **C++, Python, ROS 1/2** 애플리케이션을 브레이크포인트 단위로 디버깅할 수 있습니다.
 
 > [!TIP]
-> **Dependency Management**: DevKit uses `uv` for lightning-fast Python dependency management. Use the `🐍 Python: uv sync` task to keep your environment up to date.
+> **동적 환경 자동 구성**: 모든 디버그 프로필은 `.env` 파일의 `ROS_DISTRO` 및 `WORKSPACE_PATH` 환경변수에 맞춰 자동으로 동기화됩니다.
 
 ---
 
-## 🤖 ROS Launch Debugging
+## 📌 목차
 
-Launch whole systems while maintaining debug hooks into specific nodes.
-
-*   **ROS 2 Launch**: Select **`🤖 ROS2: Launch File`**. It handles `PYTHONPATH`, `AMENT_PREFIX_PATH`, and `LD_LIBRARY_PATH` automatically.
-*   **ROS 1 Launch**: Select **`🐢 ROS1: roslaunch`**. Ensure `roscore` is running in a terminal first.
-
-### Compound Launches (Multi-Process)
-The "Holy Grail" of ROS debugging. These configurations launch your system and simultaneously attach debuggers to key nodes:
-*   `🚀 Full Debug: ROS2 Launch + C++ Attach`
-*   `🚀 Full Debug: ROS1 roslaunch + Python Attach`
+1. [🛠️ 사전 준비 및 빌드 설정](#️-사전-준비-및-빌드-설정)
+2. [🔌 프로세스 연결 방법](#-프로세스-연결-방법)
+3. [🎯 C++ 디버깅 (GDB)](#-c-디버깅-gdb)
+4. [🐍 Python 디버깅 (debugpy)](#-python-디버깅-debugpy)
+5. [🤖 ROS Launch 파일 디버깅](#-ros-launch-파일-디버깅)
+6. [⚙️ 태스크 시스템 (tasks.json)](#️-태스크-시스템-tasksjson)
+7. [🔍 고급 트러블슈팅](#-고급-트러블슈팅)
 
 ---
 
-## 🚀 Turnaround Optimization
+## 🛠️ 사전 준비 및 빌드 설정
 
-Large ROS workspaces can be slow to build. DevKit includes several optimizations to keep you in the "flow":
+### 1. 디버그 심볼 포함 빌드
+디버거(브레이크포인트, 변수 값 추적)가 정상 작동하려면 소스 코드에 **Debug 심볼**이 포함되어야 합니다.
 
-1.  **Single Package Build**: Use the `⚡ Source & Build Package` task to rebuild only the package you are currently editing.
-2.  **Skip Build Variants**: Every launch configuration has a `(skip build)` variant. Use it when iterating on logic that doesn't require a re-compile (e.g., Python code or config changes).
-3.  **CCache Integration**: The build system is pre-configured with `ccache`. Check your hit rate with the `📊 Build Cache Statistics` task.
-
----
-
-## ⚙️ Automated Task System
-
-Beyond debugging, `tasks.json` provides a rich set of utilities accessible via **Ctrl+Shift+B** or the Task Runner.
-
-| Task Category   | Featured Tasks                                                    |
-| :-------------- | :---------------------------------------------------------------- |
-| **Diagnostics** | `✅ DevKit Verify`, `🏥 Hardware Check`, `⚡ GPU Status`, `🔍 Check Dependencies` |
-| **Maintenance** | `🧹 Clean Workspace`, `🔄 Sync Dependencies`, `🐍 Python: uv sync`   |
-| **ROS Core**    | `🔨 colcon: Build (Debug)`, `🧪 colcon: Test`, `📋 Source Workspace` |
+| 빌드 모드 | CLI 명령어 (ROS 워크스페이스) | VSCode 빌드 태스크 (Ctrl+Shift+B) |
+| :--- | :--- | :--- |
+| **Debug** (권장) | `cbuild --debug` | `🔨 colcon: Build (Debug)` |
+| **RelWithDebInfo** | `cbuild` (기본값) | `🔨 colcon: Build (RelWithDebInfo)` |
+| **Release** | `cbuild --release` | `🔨 colcon: Build (Release)` |
 
 ---
 
-## 🔍 Expert Troubleshooting
+## 🔌 프로세스 연결 방법
 
-### 🛑 Breakpoints Not Hit?
-*   **Verify Build Mode**: Ensure you see `-DCMAKE_BUILD_TYPE=Debug` in your build logs.
-*   **Source Mapping**: In `launch.json`, the `sourceFileMap` should map `/workspace/src` to `${workspaceFolder}/src`. This is already configured, but verify if you've moved directories.
+### 방법 A: Dev Containers 연결 (권장)
+VSCode 프로세스 자체를 컨테이너 내부로 직접 연결합니다.
+1. 개발 컨테이너 시작: `make start ENV=ros`
+2. **Ctrl+Shift+P** 입력 ➔ `Dev Containers: Attach to Running Container...` 선택
+3. `DevKit` 컨테이너 선택
+4. **특징**: 컨테이너 네이티브 성능, 자동 IntelliSense 헤더 탐색, 셸 터미널 완전 통합.
 
-### 🛑 IntelliSense "Red Squiggles"?
-*   **Compile Commands**: Run a build task to generate `build/compile_commands.json`. This is the "brain" of C++ IntelliSense.
-*   **Reset DB**: Command Palette → `C/C++: Reset IntelliSense Database`.
+### 방법 B: 호스트 사이드 개발
+호스트 OS에서 코드 편집기를 구동하면서 컨테이너와 연동합니다.
+1. VSCode에서 일반적인 방식으로 워크스페이스 오픈.
+2. `c_cpp_properties.json`에서 `Host (Bind Mount)` IntelliSense 프로필 선택.
 
-### 🛑 GDB "Operation Not Permitted"?
-*   DevKit containers are privileged by default. If you encounter permission issues, run this inside the container:
-    `echo 0 > /proc/sys/kernel/yama/ptrace_scope
+---
+
+## 🎯 C++ 디버깅 (GDB)
+
+GDB 디버그 엔진을 통해 C++ 실행 파일 및 ROS 노드를 라인 단위로 탐색합니다.
+
+### 1. 실행 파일 직접 디버깅
+* **`🐛 C++: Launch Executable (GDB)`**: Debug 빌드 후 선택한 이진 파일을 GDB로 즉시 실행.
+* **`🐛 C++: Launch (GDB, skip build)`**: 코드 수정 없이 디버거만 빠르게 재실행.
+
+### 2. 구동 중인 프로세스에 디버거 부착 (Attach)
+* **`🐛 C++: Attach to Process (GDB)`**: 이미 가동 중인 ROS 노드 프로세스를 검색하여 GDB를 실시간 연결.
+
+### 3. ROS 전용 노드 디버깅
+* **ROS 2**: `🤖 ROS2: C++ Node (GDB Direct)` (`--ros-args` 및 리매핑 파라미터 보장)
+* **ROS 1**: `🐢 ROS1: C++ Node (GDB Direct)` (`__name` 및 Master URI 보장)
+
+---
+
+## 🐍 Python 디버깅 (debugpy)
+
+`debugpy` 엔진을 통해 파이썬 스크립트 및 ROS 파이썬 노드를 디버깅합니다.
+
+### 1. 단일 파일 디버깅
+임의의 `*.py` 파일을 연 상태에서 **F5** ➔ **`🐍 Python: Debug Current File`** 선택.
+
+### 2. 원격 프로세스 Attach (Advanced)
+배경에서 구동 중인 파이썬 노드에 디버거 부착:
+1. 소스 코드에 수신 리스너 삽입:
+   ```python
+   import debugpy
+   debugpy.listen(("0.0.0.0", 5678))
+   debugpy.wait_for_client()  # 클라이언트 접속까지 대기
+   ```
+2. **F5** ➔ **`🐍 Python: Attach to debugpy (Remote)`** 선택.
+
+---
+
+## 🤖 ROS Launch 파일 디버깅
+
+전체 시스템 런치 파일과 개별 노드를 한 번에 디버깅합니다.
+
+* **ROS 2 Launch**: **`🤖 ROS2: Launch File`** 선택 (`PYTHONPATH`, `AMENT_PREFIX_PATH`, `LD_LIBRARY_PATH` 자동 할당).
+* **ROS 1 Launch**: **`🐢 ROS1: roslaunch`** 선택 (터미널에서 `roscore` 실행 필요).
+
+---
+
+## ⚙️ 태스크 시스템 (tasks.json)
+
+**Ctrl+Shift+B** 또는 Task 메뉴를 통해 유용한 유지보수 태스크를 즉시 실행할 수 있습니다.
+
+| 태스크 카테고리 | 주요 수행 태스크 |
+| :--- | :--- |
+| **진단 (Diagnostics)** | `✅ DevKit Verify`, `🏥 Hardware Check`, `⚡ GPU Status`, `🔍 Check Dependencies` |
+| **유지보수 (Maintenance)** | `🧹 Clean Workspace`, `🔄 Sync Dependencies`, `🐍 Python: uv sync` |
+| **ROS 빌드 & 테스트** | `🔨 colcon: Build (Debug)`, `🧪 colcon: Test`, `📋 Source Workspace` |
+
+---
+
+## 🔍 고급 트러블슈팅
+
+### 🛑 브레이크포인트(빨간 점)가 작동하지 않을 때
+1. **Debug 빌드 모드 확인**: 컴파일 옵션에 `-DCMAKE_BUILD_TYPE=Debug`가 적용되어 있는지 검사하세요.
+2. **Source File Mapping**: `launch.json` 내의 `sourceFileMap` 경로가 `/workspace/src` ➔ `${workspaceFolder}/src`로 매핑되어 있는지 확인하세요.
+
+### 🛑 C++ 빨간 밑줄 (IntelliSense 오류)이 뜰 때
+1. **compile_commands.json 생성**: `cbuild` 또는 빌드 태스크를 1회 실행하여 `build/compile_commands.json`을 새로 고치세요.
+2. **IntelliSense DB 재설정**: **Ctrl+Shift+P** ➔ `C/C++: Reset IntelliSense Database` 실행.
+
+### 🛑 GDB "Operation Not Permitted" 에러 시
+컨테이너 내부에서 아래 명령을 실행하여 ptrace 권한을 해제하세요:
+```bash
+echo 0 > /proc/sys/kernel/yama/ptrace_scope
+```
