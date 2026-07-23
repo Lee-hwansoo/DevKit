@@ -29,7 +29,9 @@ _log_base() {
     if [[ -n "${LOG_FILE:-}" ]]; then
         log_out="${LOG_FILE}"
         [[ "${log_out}" != /* ]] && log_out="${WORKSPACE_PATH:-/workspace}/${log_out}"
-        mkdir -p "$(dirname "$log_out")"
+        # Best-effort: logging must never crash the caller (e.g. under `set -e`).
+        # If the directory cannot be created, silently disable file logging.
+        mkdir -p "$(dirname "$log_out")" 2>/dev/null || log_out=""
     fi
 
     # 2. Metadata Pre-calculation
@@ -49,9 +51,9 @@ _log_base() {
             echo -e "$full_msg"
         fi
 
-        # Robust File Logging (ANSI Strip)
+        # Robust File Logging (ANSI Strip) — best-effort, never abort the caller.
         if [[ -n "$log_out" ]]; then
-            echo -e "$full_msg" | sed 's/\x1b\[[0-9;]*m//g' >> "$log_out"
+            echo -e "$full_msg" | sed 's/\x1b\[[0-9;]*m//g' >> "$log_out" 2>/dev/null || true
         fi
     done <<< "$msg"
 }
@@ -64,6 +66,18 @@ log_debug() {
     if [ "${DEBUG_MODE}" = "true" ]; then
         _log_base "DEBUG" "${PURPLE}" "⚙" "$1"
     fi
+}
+
+# devkit_enable_error_trap
+#   Installs a diagnostic ERR trap that records WHERE a fatal abort occurred
+#   (line + command) instead of dying silently. Intended for scripts that run
+#   under `set -e` (the trap fires on the same conditions `set -e` exits on, so
+#   guarded failures in if/&&/|| are unaffected). Logging only — it does not
+#   change control flow. `set -E` makes the trap fire inside functions too.
+#   Call once, after LOG_PREFIX is set.
+devkit_enable_error_trap() {
+    set -E
+    trap 'devkit_err_rc=$?; log_error "aborted (exit ${devkit_err_rc}) at line ${LINENO}: ${BASH_COMMAND}"' ERR
 }
 
 # Export color variables for independent use in Makefile, etc.

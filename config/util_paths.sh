@@ -80,4 +80,14 @@ devkit_require() {
     return 1
 }
 
+# Default fallback logging stubs (overridden when util_logging.sh is loaded)
+if ! declare -F log_info >/dev/null 2>&1; then
+    log_info()       { echo "[INFO] $*"; }
+    log_ok()         { echo "[OK] $*"; }
+    log_warn()       { echo "[WARN] $*" >&2; }
+    log_error()      { echo "[ERROR] $*" >&2; }
+    print_section()  { echo "[ $* ]"; }
+    log_step_done()  { echo "[OK] $*"; }
+fi
+
 unset _INFERRED_ROOT
