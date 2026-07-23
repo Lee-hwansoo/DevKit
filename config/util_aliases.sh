@@ -21,12 +21,6 @@ fi
 # Load centralized paths (Single Source of Truth)
 source "${WORKSPACE_PATH:-/workspace}/config/util_paths.sh" 2>/dev/null || source "/tmp/util_paths.sh"
 devkit_require "util_logging.sh"
-if ! declare -f log_info >/dev/null 2>&1; then
-    log_info()  { echo "[INFO] $1"; }
-    log_ok()    { echo "[OK] $1"; }
-    log_warn()  { echo "[WARN] $1" >&2; }
-    log_error() { echo "[ERROR] $1" >&2; }
-fi
 if ! declare -f print_banner >/dev/null 2>&1; then
     print_banner() { :; }
 fi
@@ -127,8 +121,16 @@ function __venv_purge_state() {
     export PATH="${PATH#:}"
     export PATH="${PATH%:}"
 
-    # 2. PS1 Cleanup: Precisely remove venv prompt (Anchored to ^ to protect paths with parentheses)
-    export PS1=$(echo "${PS1:-}" | sed -E 's/^\(([^)]+)\) //g; s/^\(([^)]+)\)//g')
+    # 2. PS1 Cleanup: strip ONLY our own venv prompt token, never an arbitrary
+    #    leading "(...)". The previous regex ate conda's "(base)" and any custom
+    #    prompt beginning with parentheses. venv records the token it injected in
+    #    VIRTUAL_ENV_PROMPT, so we remove exactly that and nothing else. When no
+    #    venv is active the standard _OLD_VIRTUAL_PS1 machinery has already restored PS1.
+    if [ -n "${VIRTUAL_ENV_PROMPT:-}" ] && [ -n "${PS1:-}" ]; then
+        PS1="${PS1#"(${VIRTUAL_ENV_PROMPT}) "}"
+        PS1="${PS1#"(${VIRTUAL_ENV_PROMPT})"}"
+        export PS1
+    fi
 }
 
 # Internal helper to detect venv mode from pyvenv.cfg
@@ -536,9 +538,23 @@ function mksync() {
 ## @alias mbuild / mclean : C++ build / clean (Modern CMake)
 alias mbuild='__mbuild_impl'
 function mclean() {
-    __remove_workspace_path "${WS_BUILD}" && \
-    __remove_workspace_path "${WS_INSTALL}" && \
-    log_ok "Build and install directories cleared."
+    local purge_venv=false
+    [ "${1:-}" = "--all" ] && purge_venv=true
+
+    __remove_workspace_path "${WS_BUILD}" || return 1
+
+    if [ "$purge_venv" = true ]; then
+        __remove_workspace_path "${WS_INSTALL}" && \
+            log_ok "Build, install, and virtualenv cleared."
+    elif [ -d "${WS_INSTALL}" ]; then
+        # Preserve the uv virtualenv (install/.venv) so a routine clean does not
+        # destroy the Python environment and force a full re-sync. The venv is not
+        # relocatable, so we remove install/ contents in place, keeping .venv.
+        find "${WS_INSTALL}" -mindepth 1 -maxdepth 1 ! -name ".venv" -exec rm -rf {} + 2>/dev/null || true
+        log_ok "Build and install artifacts cleared (virtualenv preserved; use 'mclean --all' to remove it)."
+    else
+        log_ok "Build directory cleared."
+    fi
 }
 
 ## @alias sync_deps / check_deps : Sync / Check dependencies
@@ -549,11 +565,14 @@ alias check_deps='bash ${WS_SCRIPTS}/check_deps.sh'
 # ROS (ROS1 & ROS2 Common)
 # =============================================================================
 
+function __require_colcon() {
+    command -v colcon &>/dev/null && return 0
+    echo -e "${RED}Error:${NC} colcon is not available in this environment."
+    return 127
+}
+
 function cbuild() {
-    if ! command -v colcon &>/dev/null; then
-        echo -e "${RED}Error:${NC} colcon is not available in this environment."
-        return 127
-    fi
+    __require_colcon || return $?
 
     local build_type="RelWithDebInfo"
     local colcon_args=()
@@ -592,10 +611,7 @@ function cbuild() {
 }
 
 function cbt() {
-    if ! command -v colcon &>/dev/null; then
-        echo -e "${RED}Error:${NC} colcon is not available in this environment."
-        return 127
-    fi
+    __require_colcon || return $?
     local colcon_args=()
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -615,10 +631,7 @@ function cbt() {
 }
 
 function cbtr() {
-    if ! command -v colcon &>/dev/null; then
-        echo -e "${RED}Error:${NC} colcon is not available in this environment."
-        return 127
-    fi
+    __require_colcon || return $?
     colcon test-result --build-base "${WS_BUILD}" "$@"
 }
 
