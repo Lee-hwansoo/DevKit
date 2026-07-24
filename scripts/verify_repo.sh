@@ -493,6 +493,43 @@ verify_env_detector_cache_safety() {
     }
 }
 
+verify_make_detector_excluded_cache_default() {
+    # clean%/clean-all are filtered out of NEEDS_DETECTOR, so the env detector never emits
+    # HOST_CACHE_DIR for them. A parse-time fallback in the Makefile must still resolve it to
+    # an absolute path (default $(HOST_WORKSPACE_PATH)/.docker_cache, or DOCKER_DEV_CACHE_DIR
+    # when set); without it clean-cache aborts on an empty path. Dry-run only — deletes nothing.
+    # `env -u HOST_CACHE_DIR` strips any value the parent make exported so the child re-evaluates
+    # its own `?=` fallback (this suite runs as a child of `make verify`, which exports it).
+    local output cache
+    extract_cache_dir() { printf '%s\n' "$1" | grep -oE 'CACHE_DIR="[^"]*"' | head -1 | sed -E 's/^CACHE_DIR="(.*)"$/\1/'; }
+
+    if ! output="$(env -u HOST_CACHE_DIR -u DOCKER_DEV_CACHE_DIR make --no-print-directory -n clean-cache 2>&1)"; then
+        log_error "clean-cache dry-run failed; the detector-excluded HOST_CACHE_DIR fallback may be missing."
+        printf '%s\n' "$output" | sed 's/^/  /' >&2
+        return 1
+    fi
+    cache="$(extract_cache_dir "$output")"
+    if [ -z "$cache" ] || [[ "$cache" != /* ]]; then
+        log_error "clean-cache resolved HOST_CACHE_DIR to an empty/non-absolute path ('$cache'); the detector-excluded fallback regressed."
+        return 1
+    fi
+    if [ "$cache" != "${ROOT_DIR}/.docker_cache" ]; then
+        log_error "clean-cache default HOST_CACHE_DIR expected '${ROOT_DIR}/.docker_cache' but resolved '$cache'."
+        return 1
+    fi
+
+    if ! output="$(env -u HOST_CACHE_DIR make --no-print-directory -n clean-cache DOCKER_DEV_CACHE_DIR=/tmp/devkit-cache-probe 2>&1)"; then
+        log_error "clean-cache dry-run with DOCKER_DEV_CACHE_DIR override failed."
+        printf '%s\n' "$output" | sed 's/^/  /' >&2
+        return 1
+    fi
+    cache="$(extract_cache_dir "$output")"
+    if [ "$cache" != "/tmp/devkit-cache-probe" ]; then
+        log_error "clean-cache did not honor the DOCKER_DEV_CACHE_DIR fallback branch (resolved '$cache')."
+        return 1
+    fi
+}
+
 verify_make_detector_failure_is_fatal() (
     local tmp_detect
     tmp_detect="$(mktemp -d /tmp/devkit_detector.XXXXXX)"
@@ -1313,6 +1350,7 @@ main() {
     verify_make_validations
     verify_make_xauth_feedback
     verify_env_detector_cache_safety
+    verify_make_detector_excluded_cache_default
     verify_make_detector_failure_is_fatal
     verify_make_detector_cache_atomic
     verify_compose_dependency_sync_env

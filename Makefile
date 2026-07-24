@@ -30,6 +30,10 @@ endif
 HOST_WORKSPACE_PATH ?= $(CURDIR)
 WORKSPACE_PATH      ?= /workspace
 
+# Fallback cache path for targets that skip the env detector (e.g. clean%),
+# mirroring scripts/check_env.sh. The detector's -include overrides this when it runs.
+HOST_CACHE_DIR      ?= $(if $(DOCKER_DEV_CACHE_DIR),$(DOCKER_DEV_CACHE_DIR),$(HOST_WORKSPACE_PATH)/.docker_cache)
+
 # Auto-match TARGETARCH
 TARGETARCH ?= $(HOST_ARCH)
 
@@ -41,6 +45,12 @@ export
 # not host GPU/display detection — exclude them so they don't pay the docker-info/
 # nvidia-smi cost. (stop/restart/status keep detection: they resolve the GPU-variant
 # service via DETECT_MODE.)
+# INVARIANT: targets excluded here never see detector-emitted vars (HOST_CACHE_DIR,
+# HOST_XAUTHORITY, HAS_*, etc.) — those expand empty. Only reference such vars through a
+# non-detector source: a parse-time `?=` default (see HOST_CACHE_DIR below), an `-include
+# .env` value, a `$(MAKE)` sub-target that re-runs detection (see setup -> xauth), or a
+# `[ -n ... ]` guard (see VALIDATE_HOST_INTEGRATION_PATHS). verify_repo.sh guards the
+# HOST_CACHE_DIR case (verify_make_detector_excluded_cache_default).
 NEEDS_DETECTOR := $(filter-out help setup env-check% verify down logs clean% docker-clean,$(MAKECMDGOALS))
 ifneq ($(NEEDS_DETECTOR),)
 DETECTED_ENV_FILE := .docker_cache/detected-env.mk
