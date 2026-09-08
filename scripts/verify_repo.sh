@@ -4443,34 +4443,37 @@ ok "Virtualenv identity: project-named, single path source, shown in the prompt,
 #      directions against a stub colcon: parsed, and present in the argv.
 # =============================================================================
 group
-adv_flags="$(sed -n 's/^ *"cbuild|[^(]*(\([^)]*\)).*/\1/p' scripts/show_welcome.sh | tr -d ' ' | tr ',' ' ')"
-[ "$(wc -w <<< "$adv_flags")" -ge 4 ] \
-    || log_err "the MOTD build-flag advertisement could not be parsed ($adv_flags) — did the row change shape?"
-for flag in $adv_flags; do
-    grep -qE "^[[:space:]]*${flag}\)" config/util_aliases.sh \
-        || log_err "MOTD advertises 'cbuild ${flag}' but __parse_build_flags does not handle it."
-done
-# The other flag the help table advertises, from a different parser.
-grep -qE '^[[:space:]]*--share\)' config/util_aliases.sh \
-    || log_err "the help table advertises 'mksync [--share]' but __parse_share_flag no longer handles it."
-# The IDE is a third advertiser: .vscode/tasks.json invokes cbuild with these
-# flags, and all four tasks were silently broken while the parser was missing.
-for flag in $(grep -oE 'cbuild [^"'"'"']*' .vscode/tasks.json | grep -oE '\-\-[a-z-]+' | sort -u); do
-    grep -qE "^[[:space:]]*${flag}\)" config/util_aliases.sh \
-        || log_err ".vscode/tasks.json runs 'cbuild ${flag}' but __parse_build_flags does not handle it."
-done
-# …and tab completion offers those same flags, not raw colcon/CMake ones.
-cbuild_completion="$(sed -n 's/^complete -W "\([^"]*\)" cbuild.*/\1/p' config/util_aliases.sh)"
-for flag in $adv_flags; do
-    grep -qE "(^| )${flag}( |$)" <<< "$cbuild_completion" \
-        || log_err "tab completion for cbuild does not offer '${flag}' (offers: ${cbuild_completion:-nothing})."
-done
 flag_probe="$(probe_dir)"
 mkdir -p "$flag_probe/bin" "$flag_probe/config"
 cp config/util_aliases.sh config/util_paths.sh "$flag_probe/config/"
 printf '#!/bin/sh\necho "$*"\n' > "$flag_probe/bin/colcon"; chmod +x "$flag_probe/bin/colcon"
 flag_run() { env -i PATH="$flag_probe/bin:$probe_min_path" HOME=/tmp WORKSPACE_PATH="$flag_probe" \
     ROS_VERSION=2 bash -lc "source $flag_probe/config/util_aliases.sh 2>/dev/null; cbuild $1" 2>/dev/null; }
+# Three places advertise these flags — the MOTD, .vscode/tasks.json and tab
+# completion — and each is checked by RUNNING the flag, not by looking for a
+# case branch: a parser can carry the branch and still forward the flag to
+# colcon verbatim, which is what "silently broken" looked like.
+adv_flags="$(sed -n 's/^ *"cbuild|[^(]*(\([^)]*\)).*/\1/p' scripts/show_welcome.sh | tr -d ' ' | tr ',' ' ')"
+[ "$(wc -w <<< "$adv_flags")" -ge 4 ] \
+    || log_err "the MOTD build-flag advertisement could not be parsed ($adv_flags) — did the row change shape?"
+ide_flags="$(grep -oE 'cbuild [^"'"'"']*' .vscode/tasks.json | grep -oE '\-\-[a-z-]+' | sort -u | tr '\n' ' ')"
+cbuild_completion="$(sed -n 's/^complete -W "\([^"]*\)" cbuild.*/\1/p' config/util_aliases.sh)"
+for flag in $(printf '%s %s\n' "$adv_flags" "$ide_flags" | tr ' ' '\n' | sort -u); do
+    [ -n "$flag" ] || continue
+    # Consumed by the parser, not passed through: the flag must not reach colcon.
+    case " $(flag_run "$flag $( [ "$flag" = --pkg ] && echo a )") " in
+        *" $flag "*) log_err "'cbuild ${flag}' is advertised but reaches colcon unchanged; the parser does not handle it." ;;
+    esac
+    case " $adv_flags " in
+        *" $flag "*) grep -qE "(^| )${flag}( |$)" <<< "$cbuild_completion" \
+            || log_err "tab completion for cbuild does not offer '${flag}' (offers: ${cbuild_completion:-nothing})." ;;
+    esac
+done
+# --share belongs to a different parser (mksync/mkenv): run it the same way.
+flag_share="$(env -i PATH="$flag_probe/bin:$probe_min_path" HOME=/tmp WORKSPACE_PATH="$flag_probe" \
+    bash -lc "source $flag_probe/config/util_aliases.sh 2>/dev/null; __parse_share_flag --share; printf %s \"\$DEVKIT_SHARE_MODE\"" 2>/dev/null || true)"
+[ "$flag_share" = true ] \
+    || log_err "the help table advertises 'mksync [--share]' but the flag no longer sets DEVKIT_SHARE_MODE (got: '${flag_share:-nothing}')."
 # Default: an unoptimised build is a silent performance regression.
 case "$(flag_run '')"        in *-DCMAKE_BUILD_TYPE=RelWithDebInfo*) ;; *) log_err "cbuild lost its default -DCMAKE_BUILD_TYPE=RelWithDebInfo." ;; esac
 case "$(flag_run --debug)"   in *-DCMAKE_BUILD_TYPE=Debug*)          ;; *) log_err "cbuild --debug no longer selects a Debug build." ;; esac
