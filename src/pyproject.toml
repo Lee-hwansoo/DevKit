@@ -19,7 +19,12 @@ dependencies = []
 [dependency-groups]
 dev = [
     "ruff>=0.6",
-    "pytest>=7,<9; python_version < '3.9'",
+    # <8.1 on the legacy tier (python 3.8 = focal = foxy/noetic): pytest 8.1 made
+    # `consider_namespace_packages` a REQUIRED keyword of import_path(), and the
+    # launch_testing plugin ROS foxy bundles still calls the pre-8.1 signature.
+    # It loads automatically in a ROS shell, so collection dies before any test
+    # runs — `make test` fails with a TypeError that names neither.
+    "pytest>=7,<8.1; python_version < '3.9'",
     "pytest>=8; python_version >= '3.9'",
 ]
 
