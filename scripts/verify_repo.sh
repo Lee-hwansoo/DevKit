@@ -3267,6 +3267,40 @@ PYLOCK
 )"
 [ "$lock_state" = "in sync" ] \
     || log_err "src/uv.lock is stale — ${lock_state}. Run mksync in the container and commit the lock, or 'make bake-prod' dies at 'uv sync --locked'."
+# The legacy tier's test runner has a ceiling, and the lock must land under it:
+# pytest 8.1 made `consider_namespace_packages` a REQUIRED keyword of
+# import_path(), and the launch_testing plugin ROS foxy bundles calls the older
+# signature. The plugin loads itself in a ROS shell, so `make test` died during
+# collection with a TypeError naming neither pytest nor ROS. (Humble's copy has
+# the try/except fallback; foxy's, frozen at EOL, does not.) Upstream only —
+# src/pyproject.toml belongs to the fork.
+if upstream_checks; then
+    lock_pytest="$(python3 - <<'PYPIN' 2>/dev/null
+import re, tomllib
+spec = lockver = ''
+with open('src/pyproject.toml','rb') as fh:
+    for dep in (tomllib.load(fh).get('dependency-groups') or {}).get('dev', []):
+        if dep.startswith('pytest') and "python_version < '3.9'" in dep:
+            spec = dep.split(';')[0].strip()
+with open('src/uv.lock','rb') as fh:
+    for pkg in tomllib.load(fh).get('package', []):
+        pass
+for line in open('src/uv.lock', encoding='utf-8'):
+    m = re.search(r'name = "pytest", version = "([^"]+)".*python_full_version < .3\.9', line)
+    if m: lockver = m.group(1)
+print(f"{spec}|{lockver}")
+PYPIN
+)"
+    lock_pytest_spec="${lock_pytest%%|*}"; lock_pytest_ver="${lock_pytest#*|}"
+    case "$lock_pytest_spec" in
+        *"<8.1"*|*"<8.0"*|*"<8"[,\ ]*|*"<8") ;;
+        *) log_err "the legacy tier pins '${lock_pytest_spec:-nothing}': pytest 8.1+ breaks ROS foxy's launch_testing (import_path gained a required keyword), and 'make test' dies at collection." ;;
+    esac
+    case "$lock_pytest_ver" in
+        7.*|8.0.*) ;;
+        *) log_err "src/uv.lock resolves pytest ${lock_pytest_ver:-nothing} for python < 3.9; foxy's launch_testing needs < 8.1." ;;
+    esac
+fi
 rm -f "$prod_probe/src/uv.lock"
 missing_lock_rc=0
 missing_lock_out="$(sync_flags prod 2>&1)" || missing_lock_rc=$?

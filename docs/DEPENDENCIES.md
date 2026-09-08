@@ -66,6 +66,9 @@ explicit = true
 ```toml
 [dependency-groups]
 dev = [ "ruff>=0.6", "pytest>=8" ]   # 정확한 버전은 파생 프로젝트의 uv.lock이 고정
+# 레거시 티어(python 3.8 = foxy·noetic)만 pytest<8.1 로 낮춰 둡니다 — 8.1 이
+# import_path() 에 필수 키워드를 추가했고, foxy 가 번들한 launch_testing 은
+# 옛 시그니처로 호출해 수집 단계에서 죽습니다(humble 이후는 대비돼 있습니다).
 ```
 
 ### 2. C++ & ROS 레이어 (`CMake` + `dependencies.repos`)
