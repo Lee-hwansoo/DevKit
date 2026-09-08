@@ -1076,8 +1076,25 @@ grep -qF '"--env"' docker/entrypoint.sh \
 # Pattern-exact on purpose: `make exec` probes the running image for --env support
 # before using it, and a mis-quoted pattern (it was '"'"'"--env"'"'"' once) never
 # matches, silently degrading every `make exec` to a plain bash shell.
-grep -qF "grep -q '\"--env\"' /entrypoint.sh" Makefile \
-    || log_err "'make exec' must probe /entrypoint.sh for the exact pattern the entrypoint carries ('\"--env\"'), or it always falls back to bash."
+# The probe `make exec` runs before using --env mode, lifted from the recipe and
+# executed against the real entrypoint and a copy without the flag. Pinning the
+# literal text missed the case that mattered: a mis-quoted pattern that matches
+# nothing, which silently degrades every `make exec` to a plain bash shell.
+bridge_probe="$(sed -n "s/.*docker exec \$\$CONTAINER \(grep -q '[^']*'\) \/entrypoint\.sh.*/\1/p" \
+    <<< "$(make -n exec CMD=true 2>/dev/null || true)" | head -n 1)"
+[ -n "$bridge_probe" ] || bridge_probe="$(grep -oE "grep -q '[^']*' /entrypoint\.sh" Makefile | head -n 1 | sed 's| /entrypoint\.sh||')"
+if [ -n "$bridge_probe" ]; then
+    bridge_env="$(probe_dir)"
+    cp docker/entrypoint.sh "$bridge_env/with.sh"
+    grep -vF '"--env"' docker/entrypoint.sh > "$bridge_env/without.sh"
+    eval "$bridge_probe \"$bridge_env/with.sh\"" >/dev/null 2>&1 \
+        || log_err "the probe 'make exec' runs before using --env mode does not match the entrypoint that HAS it; every exec would degrade to a plain bash shell."
+    eval "$bridge_probe \"$bridge_env/without.sh\"" >/dev/null 2>&1 \
+        && log_err "that same probe also matches an entrypoint WITHOUT --env; the fallback would never trigger."
+    rm -rf "$bridge_env"
+else
+    log_err "'make exec' no longer probes /entrypoint.sh before using --env mode."
+fi
 # Behavioural: sourcing it without a terminal must be SILENT (no banner
 # polluting script stdout) and must still resolve the environment.
 noninteractive_out="$(cd "$ROOT_DIR" && WORKSPACE_PATH="$ROOT_DIR" bash -c 'source config/init_bash.sh' 2>/dev/null || true)"
@@ -3118,8 +3135,24 @@ elf_seen="$( bash -c 'source scripts/check_deps.sh --help >/dev/null 2>&1; true'
 [ "$elf_seen" = yes ] \
     || log_err "check_deps.sh's ELF test misreads a binary or a text file (got: '${elf_seen}')."
 rm -rf "$elf_probe"
-grep -qE '^[^#]*seed=\(\)' config/util_aliases.sh \
-    || log_err "mkenv seeds pip/setuptools/wheel into a production venv too (18 MB the runtime never calls)."
+# …and the venv the production image carries has no package manager in it.
+# Run mkenv against a uv that records its argv, in both build types, instead of
+# pinning the branch that decides it.
+repro_seed="$(probe_dir config scripts)"; mkdir -p "$repro_seed/bin"
+printf '#!/bin/sh\nprintf "%%s\\n" "$@" >> "%s/uv.argv"\nexit 0\n' "$repro_seed" > "$repro_seed/bin/uv"
+chmod +x "$repro_seed/bin/uv"
+repro_seed_run() {   # repro_seed_run <build type> → the argv uv received
+    : > "$repro_seed/uv.argv"
+    ( cd "$repro_seed" && PATH="$repro_seed/bin:$probe_min_path" WORKSPACE_PATH="$repro_seed" \
+      bash -c "source config/util_paths.sh >/dev/null 2>&1; source config/util_aliases.sh >/dev/null 2>&1
+               DEVKIT_BUILD_TYPE=$1 mkenv" ) >/dev/null 2>&1 || true
+    tr '\n' ' ' < "$repro_seed/uv.argv"
+}
+grep -q -- '--seed' <<< "$(repro_seed_run dev)" \
+    || log_err "mkenv no longer seeds a development venv; pip/setuptools would be missing where the workflow expects them."
+grep -q -- '--seed' <<< "$(repro_seed_run prod)" \
+    && log_err "mkenv seeds pip/setuptools/wheel into a production venv too (18 MB the runtime never calls)."
+rm -rf "$repro_seed"
 # …and the CUDA environment must not advertise a directory the image lacks.
 grep -qE '^[^#]*LD_LIBRARY_PATH=/usr/local/cuda' docker/Dockerfile \
     && log_err "the Dockerfile exports LD_LIBRARY_PATH=/usr/local/cuda/lib64 into every image; the CUDA packages install their own ld.so.conf.d entry."
@@ -4041,8 +4074,18 @@ grep -Eq '^[^#]*for E in.*"local:' Makefile \
     && log_err "xhost 'local:' grant reintroduced — it admits EVERY local user, not just root."
 # make setup writes the username into COMPOSE_PROJECT_NAME: without the tr
 # sanitize, LDAP/AD names (John.Doe, LAB\user) break every compose invocation.
-grep -Eq "^[^#]*tr -c 'a-z0-9_-'" Makefile \
-    || log_err "make setup lost the username sanitize — non-[a-z0-9_-] usernames would break compose project naming."
+# The account name reaches COMPOSE_PROJECT_NAME, and compose accepts only
+# [a-z0-9_-]: an LDAP/AD login (John.Doe, LAB\user) broke every invocation.
+# Run setup as such an account rather than pinning the sed/tr expression.
+sec_user="$(make_probe)"; mkdir -p "$sec_user/bin"
+printf '#!/bin/sh\nprintf "%%s\\n" "LAB\\John.Doe"\n' > "$sec_user/bin/whoami"; chmod +x "$sec_user/bin/whoami"
+rm -f "$sec_user/.env"
+( cd "$sec_user" && PATH="$sec_user/bin:$probe_min_path" make setup ) >/dev/null 2>&1 || true
+sec_user_name="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$sec_user/.env" 2>/dev/null | tail -n 1)"
+case "$sec_user_name" in
+    myproject-*[!a-z0-9_-]*|'') log_err "'make setup' wrote COMPOSE_PROJECT_NAME='${sec_user_name:-nothing}' for the account 'LAB\John.Doe'; compose accepts only [a-z0-9_-]." ;;
+esac
+rm -rf "$sec_user"
 # No script may fall back to sourcing a world-writable path: two did, with a
 # /tmp/util_paths.sh that no image ever holds.
 tmp_source="$(grep -nE '^[^#]*source +"?/tmp/' scripts/*.sh config/*.sh docker/*.sh 2>/dev/null | grep -v verify_repo.sh || true)"
