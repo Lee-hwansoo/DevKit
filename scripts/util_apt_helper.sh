@@ -10,6 +10,30 @@ COMMAND="${1:-}"
 shift || true
 
 export DEBIAN_FRONTEND=noninteractive
+
+# A mirror that blinks is the most common build failure there is: one
+# unreachable archive.ubuntu.com and `apt-get update` leaves a half-read index,
+# then the install dies with "held broken packages" — which names neither the
+# mirror nor the network. apt retries on its own when told to, so set the policy
+# once here: every apt-get in this image or container inherits it, including the
+# ones the Dockerfile runs after `init-apt`. A no-op where we cannot write.
+# A mirror that blinks is the most common build failure there is: one
+# unreachable archive and `apt-get update` leaves a half-read index, then the
+# install dies with "held broken packages" — which names neither the mirror nor
+# the network. The timeouts matter as much as the retries: without them a mirror
+# that accepts the connection and then goes quiet holds apt (and the build, and
+# the CI job) until something else kills it. Three tries, each bounded, written
+# once here so every apt-get in this image or container inherits it — including
+# the ones the Dockerfile runs after `init-apt`. A no-op where we cannot write.
+# The curl fetches below carry --max-time for the same reason: --connect-timeout
+# bounds the handshake, and a server that accepts and then trickles held a CI
+# job until its 30-minute budget ran out.
+apt_policy() {
+    [ -w /etc/apt/apt.conf.d ] 2>/dev/null || return 0
+    printf 'Acquire::Retries "3";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
+        > /etc/apt/apt.conf.d/80-devkit-retries
+}
+apt_policy
 export APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1
 
 # =============================================================================
@@ -113,6 +137,12 @@ select_packages() {
 }
 
 case "$COMMAND" in
+    apt-policy)
+        # Nothing to do: the policy is written at startup, above. Named so a
+        # caller that needs only that (a CI container bootstrapping curl) can
+        # ask for it instead of re-typing the file.
+        exit 0
+        ;;
     init-apt)
         log_info "Initializing APT package lists..."
         # BuildKit cache mounts on /var/cache/apt only help if apt keeps the .deb
@@ -277,7 +307,7 @@ case "$COMMAND" in
         # and the bare `curl: (22)` aborted the build with nothing to act on.
         # Every ROS image build passes through this fetch, so retry it and say
         # what failed. No --retry-all-errors: curl on 20.04 does not have it.
-        curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 "$key_url" -o "$tmp_key" || {
+        curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "$key_url" -o "$tmp_key" || {
             log_error "Could not fetch the ROS archive key from ${key_url%%\?*} (network, or the key host rate-limited us)."
             log_detail "Retry the build; the fetch already retried 5 times. ROS_SNAPSHOT_DATE=<date>|final uses the snapshot key host instead." >&2
             rm -f "$tmp_key"; exit 1
@@ -326,7 +356,7 @@ case "$COMMAND" in
         # NVIDIA's pin file keeps their repo ahead of Ubuntu's for CUDA packages.
         # This runs in the base stage of every image: fail with a diagnosis, not
         # a bare curl exit 22 nobody can interpret.
-        if ! curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 "${repo_url}/cuda-ubuntu${os_version}.pin" \
+        if ! curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "${repo_url}/cuda-ubuntu${os_version}.pin" \
                 -o /etc/apt/preferences.d/cuda-repository-pin-600; then
             log_error "NVIDIA publishes no CUDA repo for this base (ubuntu${os_version}/${repo_arch})."
             log_error "Unset CUDA_VERSION in .env, or use a base image NVIDIA supports."
@@ -336,7 +366,7 @@ case "$COMMAND" in
         # Only the key matching the pin below is fetched — a legacy-key fallback
         # would fail the fingerprint check by construction and misread as attack.
         tmp_key="$(mktemp)"
-        curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 "${repo_url}/3bf863cc.pub" -o "$tmp_key" \
+        curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "${repo_url}/3bf863cc.pub" -o "$tmp_key" \
             || { log_error "Could not download the NVIDIA repository key from ${repo_url}."; rm -f "$tmp_key"; exit 1; }
         verify_key_fingerprint "$tmp_key" "$NVIDIA_GPG_FINGERPRINT" "NVIDIA CUDA" \
             "If NVIDIA rotated the key, update NVIDIA_GPG_FINGERPRINT after verifying upstream." \
@@ -406,6 +436,7 @@ case "$COMMAND" in
         cat <<'EOF'
 Usage: util_apt_helper.sh <command> [args...]
 
+  apt-policy                    Write the bounded apt retry policy (3 tries, 20 s each) and stop
   init-apt                      Cache retention + the tools the snapshot fetch itself needs
   restore-docker-clean          Undo init-apt's cache retention (shipped stages)
   purge-bootstrap [distro]      Drop the bootstrap tools where nothing depends on or requested them
