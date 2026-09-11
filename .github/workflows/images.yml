@@ -45,6 +45,12 @@ concurrency:
 
 jobs:
   apt:
+    # An archive nobody can reach is not drift in OUR manifests, which is all
+    # this job looks for: every check below bounds its container, and asks the
+    # archive again before calling a failure ours. A fresh template repository's
+    # first CI run went red on an unreachable archive.ubuntu.com.
+    env:
+      UBUNTU_ARCHIVE: https://archive.ubuntu.com/ubuntu/dists/jammy/InRelease
     # One job, not ten matrix rows: every check here is a ~40 s container run
     # against a real apt index, and a template's check list should stay readable.
     # Each concern prints its own group and the step names the distro that broke.
@@ -66,9 +72,10 @@ jobs:
             echo "::group::$distro on $image (snapshot $snapshot)"
             # apt refuses an unsigned or wrongly-signed repository, so a
             # resolvable candidate proves the keyring landed correctly.
-            docker run --rm -v "$PWD:/w" -w /w -e DEBIAN_FRONTEND=noninteractive \
+            timeout 300 docker run --rm -v "$PWD:/w" -w /w -e DEBIAN_FRONTEND=noninteractive \
               -e ROS_SNAPSHOT_DATE="$snapshot" "$image" bash -c '
                 set -e
+                bash scripts/util_apt_helper.sh apt-policy
                 apt-get update -qq
                 apt-get install -y -qq curl gnupg ca-certificates >/dev/null
                 bash scripts/util_apt_helper.sh setup-ros-repo '"$distro"'
@@ -76,12 +83,16 @@ jobs:
               || failed="$failed $distro@$image($snapshot)"
             echo "::endgroup::"
           done
-          [ -z "$failed" ] || { echo "ROS repo key path failed for:$failed"; exit 1; }
+          [ -z "$failed" ] && exit 0
+          curl -fsS --max-time 25 -o /dev/null "$UBUNTU_ARCHIVE" \
+            && { echo "::error::the ROS repo key path failed:$failed"; exit 1; }
+          echo "::warning title=archive unreachable::the ROS repo key path could not be checked:$failed — skipped, not failed."
       - name: CUDA repo, fingerprint-pinned
         run: |
-          docker run --rm -v "$PWD:/w" -w /w -e DEBIAN_FRONTEND=noninteractive \
+          timeout 300 docker run --rm -v "$PWD:/w" -w /w -e DEBIAN_FRONTEND=noninteractive \
             ubuntu:22.04 bash -c '
               set -e
+              bash scripts/util_apt_helper.sh apt-policy
               apt-get update -qq
               apt-get install -y -qq curl gnupg ca-certificates >/dev/null
               bash scripts/util_apt_helper.sh setup-cuda-repo 12.4
@@ -99,9 +110,10 @@ jobs:
                       'ubuntu:24.04|jazzy|latest'; do
             IFS='|' read -r image distro snapshot <<<"$case"
             echo "::group::$distro package selection"
-            docker run --rm -v "$PWD:/w" -w /w -e DEBIAN_FRONTEND=noninteractive \
+            timeout 300 docker run --rm -v "$PWD:/w" -w /w -e DEBIAN_FRONTEND=noninteractive \
               -e ROS_SNAPSHOT_DATE="$snapshot" -e WORKSPACE_PATH=/w "$image" bash -c '
                 set -e
+                bash scripts/util_apt_helper.sh apt-policy
                 apt-get update -qq
                 apt-get install -y -qq curl gnupg ca-certificates >/dev/null
                 bash scripts/util_apt_helper.sh setup-ros-repo '"$distro"' >/dev/null
@@ -117,7 +129,10 @@ jobs:
               || failed="$failed $distro"
             echo "::endgroup::"
           done
-          [ -z "$failed" ] || { echo "ROS package selection failed for:$failed"; exit 1; }
+          [ -z "$failed" ] && exit 0
+          curl -fsS --max-time 25 -o /dev/null "$UBUNTU_ARCHIVE" \
+            && { echo "::error::the ROS package selection failed:$failed"; exit 1; }
+          echo "::warning title=archive unreachable::the ROS package selection could not be checked:$failed — skipped, not failed."
       # The dev image's apt list is spelled once in the Dockerfile, for three
       # Ubuntu releases the kit advertises. `libgl1-mesa-glx` vanished in 24.04
       # and every jazzy/kilted/rolling build died at dev-base-tools.
@@ -134,7 +149,9 @@ jobs:
           failed=""
           for image in ubuntu:20.04 ubuntu:22.04 ubuntu:24.04; do
             echo "::group::$image"
-            docker run --rm -e DEBIAN_FRONTEND=noninteractive -e PKGS="$pkgs" "$image" bash -c '
+            timeout 300 docker run --rm -v "$PWD:/w" -w /w \
+              -e DEBIAN_FRONTEND=noninteractive -e PKGS="$pkgs" "$image" bash -c '
+              bash scripts/util_apt_helper.sh apt-policy
               apt-get update -qq >/dev/null
               missing=""
               for p in $PKGS; do
@@ -144,12 +161,17 @@ jobs:
               echo "all $(wc -w <<< "$PKGS") packages resolve"' || failed="$failed $image"
             echo "::endgroup::"
           done
-          [ -z "$failed" ] || { echo "the Dockerfile apt list does not resolve on:$failed"; exit 1; }
+          [ -z "$failed" ] && exit 0
+          curl -fsS --max-time 25 -o /dev/null "$UBUNTU_ARCHIVE" \
+            && { echo "::error::the Dockerfile apt list failed:$failed"; exit 1; }
+          echo "::warning title=archive unreachable::the Dockerfile apt list could not be checked:$failed — skipped, not failed."
 
   image-stages:
     name: image stages (base, build-core)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      UBUNTU_ARCHIVE: https://archive.ubuntu.com/ubuntu/dists/jammy/InRelease
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/gate
@@ -157,6 +179,10 @@ jobs:
       # per target: an unchanged layer is not rebuilt on the next push.
       - uses: docker/setup-buildx-action@v3
       - name: build the cheap stages
+        id: build
+        # A build that could not reach the archive is classified below, not
+        # reported as a broken Dockerfile.
+        continue-on-error: true
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -171,16 +197,24 @@ jobs:
           load: true
           cache-from: type=gha,scope=build-core
           cache-to: type=gha,mode=max,scope=build-core
-      - name: the built image must not carry dead plumbing
+      - name: an archive outage is not a broken build
+        if: steps.build.outcome != 'success'
         run: |
-          docker run --rm --entrypoint bash devkit-ci:build-core -c '
+          curl -fsS --max-time 25 -o /dev/null "$UBUNTU_ARCHIVE" \
+            && { echo "::error::the build-core stage failed"; exit 1; }
+          echo "::warning title=archive unreachable::the image stages could not be built — skipped, not failed."
+      - name: the built image must not carry dead plumbing
+        if: steps.build.outcome == 'success'
+        run: |
+          timeout 300 docker run --rm --entrypoint bash devkit-ci:build-core -c '
             [ "$BASH_ENV" = /etc/devkit/shell-env.sh ] || { echo "BASH_ENV not wired"; exit 1; }
             [ -z "${SOURCE_LOG:-}" ] || { echo "SOURCE_LOG resurrected"; exit 1; }'
       # The interpreter a baked venv symlinks into must run under a non-root
       # uid. On the real image: the failure was a 0700 directory mode.
       - name: the managed interpreter must run as a non-root uid
+        if: steps.build.outcome == 'success'
         run: |
-          docker run --rm --entrypoint bash devkit-ci:build-core -c '
+          timeout 300 docker run --rm --entrypoint bash devkit-ci:build-core -c '
             set -e
             case "${UV_PYTHON_INSTALL_DIR:-}" in
               ""|/root/*) echo "managed python at ${UV_PYTHON_INSTALL_DIR:-<unset>}: no other uid can reach it"; exit 1 ;;
@@ -193,6 +227,7 @@ jobs:
       # must not abort the build with a raw groupadd error. Proved here against
       # the real shadow-utils; verify_repo.sh runs the same block offline.
       - name: host uid/gid conflicts resolve, or fail naming the cause
+        if: steps.build.outcome == 'success'
         run: |
           docker build --target base -f docker/Dockerfile \
             --build-arg BASE_IMAGE=ubuntu:24.04 --build-arg CONTAINER_USER=user \

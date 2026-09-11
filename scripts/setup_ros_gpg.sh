@@ -47,7 +47,7 @@ fetch_fingerprint() {
     local tmp_key
     tmp_key=$(mktemp "${TMPDIR:-/tmp}/devkit-ros-key.XXXXXX")
 
-    if ! curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "$url" -o "$tmp_key"; then
+    if ! curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 60 "$url" -o "$tmp_key"; then
         rm -f "$tmp_key"
         log_error "Failed to download key from $url"
         return 1
@@ -114,11 +114,11 @@ verify_signed_by() {
     # shellcheck disable=SC2064
     trap "rm -rf '$home' '$doc' '$key'" RETURN
 
-    curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "${SNAPSHOT_KEY_URL}${pin}" -o "$key" || return 2
+    curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 60 "${SNAPSHOT_KEY_URL}${pin}" -o "$key" || return 2
     gpg --homedir "$home" --batch --quiet --import "$key" 2>/dev/null || return 2
     gpg --homedir "$home" --batch --with-colons --fingerprint 2>/dev/null \
         | awk -F: '/^fpr:/{print $10}' | grep -qx "$pin" || return 2
-    curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "$doc_url" -o "$doc" || return 2
+    curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 60 "$doc_url" -o "$doc" || return 2
 
     # Exit status AND a VALIDSIG naming the pin. Reading a key id out of gpg's
     # chatter is not verification — a forged document announces whatever it likes.

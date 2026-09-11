@@ -498,6 +498,53 @@ grep -qE 'noetic\|foxy\) want=focal' scripts/util_apt_helper.sh \
     || log_err "setup-ros-repo does not check the distro against the base image's codename; apt reports it much later as a missing package."
 grep -qE '^[^#]*lsb_release' scripts/util_apt_helper.sh \
     && log_err "util_apt_helper.sh calls lsb_release again; it drags python3 into every 20.04/22.04 base for a string /etc/os-release carries."
+# One blinking mirror must not be a red build: apt retries when told to, and the
+# kit's apt owner sets that policy for every context it runs in. A fresh
+# template repository's FIRST CI run went red on an unreachable
+# archive.ubuntu.com — the worst possible first impression, and nothing to do
+# with the project.
+if docker_live; then
+    apt_retry_live="$( docker run --rm -v "${ROOT_DIR}/scripts/util_apt_helper.sh:/h.sh:ro" ubuntu:22.04 \
+        bash -c 'bash /h.sh --help >/dev/null 2>&1; cat /etc/apt/apt.conf.d/80-devkit-retries 2>/dev/null' 2>/dev/null || true )"
+    { grep -q 'Acquire::Retries' <<< "$apt_retry_live" && grep -q 'Timeout' <<< "$apt_retry_live"; } \
+        || log_err "util_apt_helper.sh sets no bounded apt retry policy where it runs (got: '$(tr '\n' ' ' <<< "$apt_retry_live")'); a mirror that blinks fails the build, and one that hangs holds it."
+fi
+# CI bootstraps apt BEFORE the helper is reachable in that container, so each of
+# those blocks carries the same policy.
+apt_ci_boot="$(grep -c 'apt-get update' .github/workflows/images.yml || true)"
+apt_ci_retry="$(grep -c 'util_apt_helper.sh apt-policy' .github/workflows/images.yml || true)"
+[ "$apt_ci_retry" -ge "$((apt_ci_boot - 1))" ] \
+    || log_err "images.yml runs ${apt_ci_boot} apt-get updates behind ${apt_ci_retry} calls to the policy owner; a mirror hiccup reds the run."
+# …and an archive nobody can reach is infrastructure, not drift: every step that
+# can fail on the archive asks the archive before calling the failure ours.
+# A template's first CI run went red on an unreachable archive.ubuntu.com.
+apt_ci_verdict="$(grep -c 'max-time 25 -o /dev/null "\$UBUNTU_ARCHIVE"' .github/workflows/images.yml || true)"
+[ "${apt_ci_verdict:-0}" -ge 4 ] \
+    || log_err "images.yml classifies only ${apt_ci_verdict:-0} of its failure paths against the archive; an outage still reads as a manifest failure."
+# A job that probes an archive it never named curls an empty URL — and an empty
+# URL fails, so EVERY failure in that job would read as an outage.
+apt_ci_undeclared="$(awk '/^  [a-z-]+:$/{job=$1} /UBUNTU_ARCHIVE: http/{d[job]=1} /\$UBUNTU_ARCHIVE/{u[job]=1}
+    END{for (j in u) if (!(j in d)) printf " %s", j}' .github/workflows/images.yml)"
+[ -z "$apt_ci_undeclared" ] \
+    || log_err "images.yml jobs re-probe an archive they never declare:${apt_ci_undeclared}; an empty URL makes every failure there look like an outage."
+# …and when the image build itself is what could not reach the archive, nothing
+# behind it may assert on an image that was never produced.
+read -r stages_after stages_gated <<< "$(awk '/^  image-stages:/{j=1; next} /^  [a-z-]+:$/{j=0}
+    j && /^      - name:/{after=b; if (after) n++; }
+    j && /id: build/{b=1}
+    j && after && /steps\.build\.outcome/{if (!seen[n]++) g++}
+    END{print n+0, g+0}' .github/workflows/images.yml)"
+[ "${stages_after:-0}" -ge 4 ] && [ "$stages_after" = "$stages_gated" ] \
+    || log_err "${stages_gated:-0} of image-stages' ${stages_after:-0} post-build steps stand down when the build could not reach the archive."
+# The gates above only ever run if the build itself does not end the job first.
+awk '/id: build$/{b=1; next} b && /^      - name:/{exit} b' .github/workflows/images.yml \
+    | grep -q 'continue-on-error: true' \
+    || log_err "the image-stages build ends the job on its own failure; nothing then gets to ask whether the archive was simply down."
+# Every container case is bounded: an unbounded one held the whole 30-minute job
+# budget and the checks behind it never ran.
+apt_ci_bare="$(grep -c '^ *docker run --rm' .github/workflows/images.yml || true)"
+[ "${apt_ci_bare:-0}" = 0 ] \
+    || log_err "${apt_ci_bare} container runs in images.yml are unbounded (prefix them with timeout); one hung mirror spends the job budget."
 if docker_live; then
     apt_codename_live="$( docker run --rm -v "${ROOT_DIR}/scripts/util_apt_helper.sh:/h.sh:ro" -e DEBIAN_FRONTEND=noninteractive \
         ubuntu:22.04 bash -c 'bash /h.sh setup-ros-repo jazzy 2>&1; echo "rc=$?"' 2>/dev/null | tail -n 3 | tr '\n' ' ' || true )"
