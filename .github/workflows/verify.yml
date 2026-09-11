@@ -33,6 +33,19 @@ jobs:
       # A fork that did what GETTING_STARTED says — adopted its name, removed
       # the starters, replaced README — must still pass: the template's own
       # content is checked only upstream (upstream_checks in the suite).
+      # The runners ship python 3.12/3.13, but 22.04 — the kit's own default base
+      # — ships 3.10, where tomllib does not exist. Every TOML-parsing check
+      # printed nothing there and the contracts read that silence as a finding.
+      # Hide the module and require the suite to SKIP those checks, not fail.
+      - name: the suite degrades where tomllib is absent (python < 3.11)
+        run: |
+          mkdir -p "$RUNNER_TEMP/no-tomllib"
+          printf 'raise ImportError("hidden for this run")\n' > "$RUNNER_TEMP/no-tomllib/tomllib.py"
+          out="$(PYTHONPATH="$RUNNER_TEMP/no-tomllib" make verify 2>&1)" || {
+            echo "$out" | tail -20; echo "::error::make verify fails without tomllib"; exit 1; }
+          grep -q 'No tomllib' <<< "$out" \
+            || { echo "::error::the suite ran the TOML checks anyway, or did not say it skipped them"; exit 1; }
+
       - name: the suite passes on a fork that made every documented edit
         run: |
           cp -a . /tmp/fork && cd /tmp/fork

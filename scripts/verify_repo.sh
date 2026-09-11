@@ -85,6 +85,19 @@ docker_live() {
     [ "$DOCKER_LIVE" = yes ]
 }
 
+# tomllib is python 3.11+, and 22.04 — the kit's own default base — ships 3.10.
+# A check that parses TOML there printed nothing (its stderr goes to /dev/null)
+# and the contract read that silence as a finding: "src/uv.lock is stale" on a
+# host where nothing was wrong. Gate them the way docker_live gates the
+# container-backed ones, and say at the end what this host could not check.
+has_tomllib() {
+    [ -n "${DEVKIT_HAS_TOMLLIB:-}" ] || {
+        DEVKIT_HAS_TOMLLIB=no
+        python3 -c 'import tomllib' 2>/dev/null && DEVKIT_HAS_TOMLLIB=yes
+    }
+    [ "$DEVKIT_HAS_TOMLLIB" = yes ]
+}
+
 # ONE directory per run, removed however the run ends. Each group used to
 # mktemp and rm its own, so an interrupted suite (Ctrl-C, or a probe failing
 # under errexit) left them behind — 45 had accumulated here. An in-process
@@ -3273,6 +3286,7 @@ awk '
 # …and the lock must still describe THIS pyproject. Presence alone let a
 # dependency added without `mksync` through: `uv sync --locked` then failed
 # minutes into the production build, which is the one place it must not.
+if has_tomllib; then
 lock_state="$(python3 - <<'PYLOCK' 2>/dev/null || echo 'parse failed'
 import pathlib, tomllib
 from collections import Counter
@@ -3314,6 +3328,7 @@ PYLOCK
 )"
 [ "$lock_state" = "in sync" ] \
     || log_err "src/uv.lock is stale — ${lock_state}. Run mksync in the container and commit the lock, or 'make bake-prod' dies at 'uv sync --locked'."
+fi
 # The legacy tier's test runner has a ceiling, and the lock must land under it:
 # pytest 8.1 made `consider_namespace_packages` a REQUIRED keyword of
 # import_path(), and the launch_testing plugin ROS foxy bundles calls the older
@@ -3322,23 +3337,10 @@ PYLOCK
 # the try/except fallback; foxy's, frozen at EOL, does not.) Upstream only —
 # src/pyproject.toml belongs to the fork.
 if upstream_checks; then
-    lock_pytest="$(python3 - <<'PYPIN' 2>/dev/null
-import re, tomllib
-spec = lockver = ''
-with open('src/pyproject.toml','rb') as fh:
-    for dep in (tomllib.load(fh).get('dependency-groups') or {}).get('dev', []):
-        if dep.startswith('pytest') and "python_version < '3.9'" in dep:
-            spec = dep.split(';')[0].strip()
-with open('src/uv.lock','rb') as fh:
-    for pkg in tomllib.load(fh).get('package', []):
-        pass
-for line in open('src/uv.lock', encoding='utf-8'):
-    m = re.search(r'name = "pytest", version = "([^"]+)".*python_full_version < .3\.9', line)
-    if m: lockver = m.group(1)
-print(f"{spec}|{lockver}")
-PYPIN
-)"
-    lock_pytest_spec="${lock_pytest%%|*}"; lock_pytest_ver="${lock_pytest#*|}"
+    # Read with grep, not a TOML parser: this check has to work on the hosts the
+    # ceiling protects, and 20.04/22.04 ship a python without tomllib.
+    lock_pytest_spec="$(sed -n 's/^[[:space:]]*"\(pytest[^;"]*\);[^"]*python_version < .3\.9.*/\1/p' src/pyproject.toml | head -n 1)"
+    lock_pytest_ver="$(sed -n "s/.*name = \"pytest\", version = \"\([^\"]*\)\".*python_full_version < '3\.9.*/\1/p" src/uv.lock | head -n 1)"
     case "$lock_pytest_spec" in
         *"<8.1"*|*"<8.0"*|*"<8"[,\ ]*|*"<8") ;;
         *) log_err "the legacy tier pins '${lock_pytest_spec:-nothing}': pytest 8.1+ breaks ROS foxy's launch_testing (import_path gained a required keyword), and 'make test' dies at collection." ;;
@@ -3672,6 +3674,7 @@ grep -q 'Usage: make adopt NAME=' <<< "$adopt_usage" \
 # breaks, and uv fails only later, at sync time.
 # …and the shipped default must already satisfy the rule adopt enforces: a fork
 # that never runs adopt still has to `uv sync`.
+if has_tomllib; then
 uv_index_ok="$(DEVKIT_UPSTREAM_CHECKS="$(upstream_checks && echo 1 || echo 0)" python3 - <<'PYINDEX' 2>/dev/null || true
 import os, re, tomllib, pathlib
 upstream = os.environ.get('DEVKIT_UPSTREAM_CHECKS') == '1'
@@ -3721,6 +3724,7 @@ PYINDEX
 )"
 [ "$uv_index_ok" = "ok" ] \
     || log_err "src/pyproject.toml: ${uv_index_ok}."
+fi
 grep -q 'name = "torch"' src/uv.lock 2>/dev/null \
     && log_err "src/uv.lock still resolves torch; the lock was not regenerated after the extras became an example."
 # The description is user text. Spliced straight into a TOML basic string, a
@@ -3733,6 +3737,7 @@ cp "${ROOT_DIR}/src/pyproject.toml" "$adopt_probe/src/"
 adopt_desc_case() {   # adopt_desc_case <description>
     cp "${ROOT_DIR}/src/pyproject.toml" "$adopt_probe/src/pyproject.toml"
     ( cd "$adopt_probe" && make adopt NAME=robot DESC="$1" ) >/dev/null 2>&1 || true
+    has_tomllib || return 0   # the round-trip needs a TOML parser; 3.10 has none
     python3 - "$adopt_probe/src/pyproject.toml" "$1" <<'PYADOPT' 2>/dev/null
 import sys, tomllib
 want = sys.argv[2]
@@ -3753,11 +3758,16 @@ adopt_names="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$adopt_probe/.env" "$adopt_
 # …and nothing unparsable may be published. Fed a pyproject that is already
 # broken, adopt must refuse and leave the file it was given untouched.
 # Broken where adopt does NOT rewrite, so the damage survives into the output.
-printf '[project]\nname = "x"\ndescription = "d"\nthis line is not toml\n' > "$adopt_probe/src/pyproject.toml"
-adopt_before="$(cat "$adopt_probe/src/pyproject.toml")"
-( cd "$adopt_probe" && make adopt NAME=robot DESC=fine ) >/dev/null 2>&1 || true
-[ "$(cat "$adopt_probe/src/pyproject.toml")" = "$adopt_before" ] \
-    || log_err "adopt published a pyproject.toml that does not parse; a half-written identity file is worse than none."
+# Only where adopt CAN parse: without tomllib it deliberately skips validation
+# (the guard that keeps python 3.10 from reporting "not valid TOML"), so asking
+# it to refuse there would be asking for a check it documents as absent.
+if has_tomllib; then
+    printf '[project]\nname = "x"\ndescription = "d"\nthis line is not toml\n' > "$adopt_probe/src/pyproject.toml"
+    adopt_before="$(cat "$adopt_probe/src/pyproject.toml")"
+    ( cd "$adopt_probe" && make adopt NAME=robot DESC=fine ) >/dev/null 2>&1 || true
+    [ "$(cat "$adopt_probe/src/pyproject.toml")" = "$adopt_before" ] \
+        || log_err "adopt published a pyproject.toml that does not parse; a half-written identity file is worse than none."
+fi
 [ ! -f "$adopt_probe/src/pyproject.toml.tmp" ] \
     || log_err "adopt leaves src/pyproject.toml.tmp behind when it refuses."
 rm -rf "$adopt_probe"
@@ -4988,6 +4998,7 @@ echo ""
 # repo codename refusal, the entrypoint boot and ownership probes, the real
 # build-context probe, the `make term` binary probe); without one the report
 # used to be byte-identical to a full run and still read as complete coverage.
+has_tomllib || log_warn "No tomllib (python < 3.11, as on Ubuntu 22.04): the lock/pyproject parsers were skipped — src/uv.lock freshness, the uv index names and the adopt description round-trip."
 docker_live || log_warn "No docker daemon: 6 container-backed groups were checked statically only (ROS repo codename, entrypoint boot, first-run ownership, build context, terminal probe, bash 3.2)."
 if [ "$FAILED" -gt 0 ]; then
     echo -e "  \033[0;31m[FAIL]\033[0m ${FAILED} verification check(s) failed!" >&2
